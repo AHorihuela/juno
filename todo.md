@@ -62,17 +62,17 @@ A structured checklist covering each phase of the Dictation & AI-Assisted Writin
 ---
 
 ## 5. Whisper API Integration
-- [ ] **Replace Stub with Real Whisper Calls**
-  - [ ] Require a valid OpenAI API key (use environment variable or config).
-  - [ ] Add error handling for API failures (e.g., 401, network issues).
+- [x] **Replace Stub with Real Whisper Calls**
+  - [x] Require a valid OpenAI API key (use environment variable or config).
+  - [x] Add error handling for API failures (e.g., 401, network issues).
 
-- [ ] **Transcription Storage**
-  - [ ] Store the last 10 transcriptions in JSON or a local DB (SQLite).
-  - [ ] Create retrieval and display logic (e.g., a small "History" component).
+- [x] **Transcription Storage**
+  - [x] Store the last 10 transcriptions in JSON or a local DB (SQLite).
+  - [x] Create retrieval and display logic (e.g., a small "History" component).
 
-- [ ] **Write/Update Tests**
-  - [ ] Mock the Whisper API to verify success and error paths.
-  - [ ] Ensure stored transcriptions match actual results.
+- [x] **Write/Update Tests**
+  - [x] Mock the Whisper API to verify success and error paths.
+  - [x] Ensure stored transcriptions match actual results.
 
 ---
 

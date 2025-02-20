@@ -3,7 +3,8 @@ module.exports = {
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   moduleNameMapper: {
     '\\.(css|less|sass|scss)$': '<rootDir>/__mocks__/styleMock.js',
-    '\\.(gif|ttf|eot|svg)$': '<rootDir>/__mocks__/fileMock.js'
+    '\\.(gif|ttf|eot|svg)$': '<rootDir>/__mocks__/fileMock.js',
+    'electron-store': '<rootDir>/__mocks__/electron-store.js',
   },
   transform: {
     '^.+\\.(js|jsx)$': 'babel-jest'
@@ -13,5 +14,8 @@ module.exports = {
     '<rootDir>/src/**/*.{spec,test}.{js,jsx}'
   ],
   moduleFileExtensions: ['js', 'jsx'],
-  verbose: true
+  verbose: true,
+  transformIgnorePatterns: [
+    '/node_modules/(?!(electron-store)/)'
+  ]
 }; 
