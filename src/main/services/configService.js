@@ -4,6 +4,8 @@ let Store;
 })();
 
 const crypto = require('crypto');
+const path = require('path');
+const fs = require('fs');
 
 class ConfigService {
   constructor() {
@@ -14,37 +16,95 @@ class ConfigService {
     if (!Store) {
       Store = (await import('electron-store')).default;
     }
-    if (!this.store) {
-      this.store = new Store({
-        encryptionKey: crypto.randomBytes(32).toString('hex'),
-        schema: {
-          openaiApiKey: {
-            type: 'string',
+    
+    try {
+      if (!this.store) {
+        this.store = new Store({
+          encryptionKey: crypto.randomBytes(32).toString('hex'),
+          schema: {
+            openaiApiKey: {
+              type: 'string',
+            },
+            aiTriggerWord: {
+              type: 'string',
+              default: 'juno',
+            },
+            aiModel: {
+              type: 'string',
+              default: 'gpt-4',
+            },
+            aiTemperature: {
+              type: 'number',
+              minimum: 0,
+              maximum: 2,
+              default: 0.7,
+            },
+            startupBehavior: {
+              type: 'string',
+              enum: ['minimized', 'normal'],
+              default: 'minimized',
+            },
+            defaultMicrophone: {
+              type: 'string',
+            },
           },
-          aiTriggerWord: {
-            type: 'string',
-            default: 'juno',
-          },
-          aiModel: {
-            type: 'string',
-            default: 'gpt-4',
-          },
-          aiTemperature: {
-            type: 'number',
-            minimum: 0,
-            maximum: 2,
-            default: 0.7,
-          },
-          startupBehavior: {
-            type: 'string',
-            enum: ['minimized', 'normal'],
-            default: 'minimized',
-          },
-          defaultMicrophone: {
-            type: 'string',
-          },
-        },
-      });
+        });
+      }
+    } catch (error) {
+      console.error('Error initializing store:', error);
+      
+      // If there's a JSON parse error, the config file is corrupted
+      if (error instanceof SyntaxError) {
+        console.log('Config file corrupted, attempting recovery...');
+        try {
+          // Get the config file path
+          const userDataPath = (await import('electron')).app.getPath('userData');
+          const configPath = path.join(userDataPath, 'config.json');
+          
+          // Delete the corrupted file
+          if (fs.existsSync(configPath)) {
+            fs.unlinkSync(configPath);
+            console.log('Deleted corrupted config file');
+          }
+          
+          // Try initializing again
+          this.store = new Store({
+            encryptionKey: crypto.randomBytes(32).toString('hex'),
+            schema: {
+              openaiApiKey: {
+                type: 'string',
+              },
+              aiTriggerWord: {
+                type: 'string',
+                default: 'juno',
+              },
+              aiModel: {
+                type: 'string',
+                default: 'gpt-4',
+              },
+              aiTemperature: {
+                type: 'number',
+                minimum: 0,
+                maximum: 2,
+                default: 0.7,
+              },
+              startupBehavior: {
+                type: 'string',
+                enum: ['minimized', 'normal'],
+                default: 'minimized',
+              },
+              defaultMicrophone: {
+                type: 'string',
+              },
+            },
+          });
+        } catch (recoveryError) {
+          console.error('Failed to recover config:', recoveryError);
+          throw new Error('Failed to initialize settings storage');
+        }
+      } else {
+        throw error;
+      }
     }
     return this.store;
   }

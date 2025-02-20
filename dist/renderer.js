@@ -33626,55 +33626,86 @@ var Settings = function Settings() {
     microphones = _useState10[0],
     setMicrophones = _useState10[1];
   (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(function () {
+    console.log('Settings component mounted');
     var ipcRenderer = (0,_utils_electron__WEBPACK_IMPORTED_MODULE_1__.getIpcRenderer)();
-    if (!ipcRenderer) return;
+    if (!ipcRenderer) {
+      console.error('IPC renderer not available');
+      return;
+    }
+    console.log('IPC renderer available');
 
     // Load initial settings
-    ipcRenderer.send('get-settings');
-    ipcRenderer.on('settings-loaded', function (_, loadedSettings) {
-      setSettings(loadedSettings);
-      setLoading(false);
-    });
-
-    // Load available microphones using the new invoke method
-    var loadMicrophones = /*#__PURE__*/function () {
+    var loadSettings = /*#__PURE__*/function () {
       var _ref = _asyncToGenerator(/*#__PURE__*/_regeneratorRuntime().mark(function _callee() {
-        var devices;
+        var loadedSettings;
         return _regeneratorRuntime().wrap(function _callee$(_context) {
           while (1) switch (_context.prev = _context.next) {
             case 0:
-              _context.prev = 0;
-              _context.next = 3;
-              return ipcRenderer.invoke('get-microphones');
-            case 3:
-              devices = _context.sent;
-              setMicrophones(devices);
-              _context.next = 10;
+              console.log('Loading settings...');
+              _context.prev = 1;
+              console.log('Invoking get-settings...');
+              _context.next = 5;
+              return ipcRenderer.invoke('get-settings');
+            case 5:
+              loadedSettings = _context.sent;
+              console.log('Settings loaded:', loadedSettings);
+              setSettings(loadedSettings);
+              setLoading(false);
+              _context.next = 16;
               break;
-            case 7:
-              _context.prev = 7;
-              _context.t0 = _context["catch"](0);
+            case 11:
+              _context.prev = 11;
+              _context.t0 = _context["catch"](1);
+              console.error('Error loading settings:', _context.t0);
               setError(_context.t0.message);
-            case 10:
+              setLoading(false);
+            case 16:
             case "end":
               return _context.stop();
           }
-        }, _callee, null, [[0, 7]]);
+        }, _callee, null, [[1, 11]]);
       }));
-      return function loadMicrophones() {
+      return function loadSettings() {
         return _ref.apply(this, arguments);
       };
     }();
-    loadMicrophones();
+    loadSettings();
 
-    // Handle errors
-    ipcRenderer.on('settings-error', function (_, errorMessage) {
-      setError(errorMessage);
-      setLoading(false);
-    });
+    // Load available microphones
+    var loadMicrophones = /*#__PURE__*/function () {
+      var _ref2 = _asyncToGenerator(/*#__PURE__*/_regeneratorRuntime().mark(function _callee2() {
+        var devices;
+        return _regeneratorRuntime().wrap(function _callee2$(_context2) {
+          while (1) switch (_context2.prev = _context2.next) {
+            case 0:
+              console.log('Loading microphones...');
+              _context2.prev = 1;
+              _context2.next = 4;
+              return ipcRenderer.invoke('get-microphones');
+            case 4:
+              devices = _context2.sent;
+              console.log('Microphones loaded:', devices);
+              setMicrophones(devices);
+              _context2.next = 13;
+              break;
+            case 9:
+              _context2.prev = 9;
+              _context2.t0 = _context2["catch"](1);
+              console.error('Error loading microphones:', _context2.t0);
+              setError(_context2.t0.message);
+            case 13:
+            case "end":
+              return _context2.stop();
+          }
+        }, _callee2, null, [[1, 9]]);
+      }));
+      return function loadMicrophones() {
+        return _ref2.apply(this, arguments);
+      };
+    }();
+    loadMicrophones();
     return function () {
-      ipcRenderer.removeAllListeners('settings-loaded');
-      ipcRenderer.removeAllListeners('settings-error');
+      // No need to remove listeners since we're using invoke
     };
   }, []);
   var handleChange = function handleChange(key, value) {
@@ -33684,36 +33715,41 @@ var Settings = function Settings() {
     setSuccess(false);
   };
   var handleSubmit = /*#__PURE__*/function () {
-    var _ref2 = _asyncToGenerator(/*#__PURE__*/_regeneratorRuntime().mark(function _callee2(e) {
+    var _ref3 = _asyncToGenerator(/*#__PURE__*/_regeneratorRuntime().mark(function _callee3(e) {
       var ipcRenderer;
-      return _regeneratorRuntime().wrap(function _callee2$(_context2) {
-        while (1) switch (_context2.prev = _context2.next) {
+      return _regeneratorRuntime().wrap(function _callee3$(_context3) {
+        while (1) switch (_context3.prev = _context3.next) {
           case 0:
             e.preventDefault();
             setError(null);
             setSuccess(false);
             ipcRenderer = (0,_utils_electron__WEBPACK_IMPORTED_MODULE_1__.getIpcRenderer)();
             if (ipcRenderer) {
-              _context2.next = 7;
+              _context3.next = 7;
               break;
             }
             setError('IPC not available');
-            return _context2.abrupt("return");
+            return _context3.abrupt("return");
           case 7:
-            try {
-              ipcRenderer.send('save-settings', settings);
-              setSuccess(true);
-            } catch (err) {
-              setError(err.message);
-            }
-          case 8:
+            _context3.prev = 7;
+            _context3.next = 10;
+            return ipcRenderer.invoke('save-settings', settings);
+          case 10:
+            setSuccess(true);
+            _context3.next = 16;
+            break;
+          case 13:
+            _context3.prev = 13;
+            _context3.t0 = _context3["catch"](7);
+            setError(_context3.t0.message);
+          case 16:
           case "end":
-            return _context2.stop();
+            return _context3.stop();
         }
-      }, _callee2);
+      }, _callee3, null, [[7, 13]]);
     }));
     return function handleSubmit(_x) {
-      return _ref2.apply(this, arguments);
+      return _ref3.apply(this, arguments);
     };
   }();
   if (loading) {

@@ -3,6 +3,8 @@ const path = require('path');
 const recorder = require('./src/main/services/recorder');
 const configService = require('./src/main/services/configService');
 
+console.log('Main process starting...');
+
 // Handle creating/removing shortcuts on Windows when installing/uninstalling
 if (require('electron-squirrel-startup')) {
   app.quit();
@@ -15,6 +17,7 @@ let lastFnKeyPress = 0;
 
 function createWindow() {
   try {
+    console.log('Creating window...');
     mainWindow = new BrowserWindow({
       width: 800,
       height: 600,
@@ -24,7 +27,7 @@ function createWindow() {
       },
     });
 
-    // Load the index.html file
+    console.log('Loading index.html...');
     mainWindow.loadFile('index.html');
 
     // Open DevTools in development
@@ -92,7 +95,33 @@ function registerShortcuts() {
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  console.log('App ready, initializing...');
+  
+  // Initialize config service first
+  console.log('Initializing config service...');
+  await configService.initializeStore();
+  
+  console.log('Registering IPC handlers...');
+  // Register IPC handlers before creating window
+  ipcMain.handle('get-settings', async () => {
+    console.log('Handling get-settings request...');
+    try {
+      return {
+        openaiApiKey: await configService.getOpenAIApiKey(),
+        aiTriggerWord: await configService.getAITriggerWord(),
+        aiModel: await configService.getAIModel(),
+        aiTemperature: await configService.getAITemperature(),
+        startupBehavior: await configService.getStartupBehavior(),
+        defaultMicrophone: await configService.getDefaultMicrophone(),
+      };
+    } catch (error) {
+      console.error('Error getting settings:', error);
+      throw new Error(`Failed to load settings: ${error.message}`);
+    }
+  });
+
+  console.log('Creating window and registering shortcuts...');
   createWindow();
   registerShortcuts();
 }).catch(error => {
@@ -127,24 +156,8 @@ process.on('uncaughtException', (error) => {
   }
 });
 
-// Add IPC handlers for settings
-ipcMain.on('get-settings', async (event) => {
-  try {
-    const settings = {
-      openaiApiKey: await configService.getOpenAIApiKey(),
-      aiTriggerWord: await configService.getAITriggerWord(),
-      aiModel: await configService.getAIModel(),
-      aiTemperature: await configService.getAITemperature(),
-      startupBehavior: await configService.getStartupBehavior(),
-      defaultMicrophone: await configService.getDefaultMicrophone(),
-    };
-    event.reply('settings-loaded', settings);
-  } catch (error) {
-    event.reply('settings-error', error.message);
-  }
-});
-
-ipcMain.on('save-settings', async (event, settings) => {
+// Update settings handlers to use handle/invoke
+ipcMain.handle('save-settings', async (_, settings) => {
   try {
     await configService.setOpenAIApiKey(settings.openaiApiKey);
     await configService.setAITriggerWord(settings.aiTriggerWord);
@@ -152,9 +165,9 @@ ipcMain.on('save-settings', async (event, settings) => {
     await configService.setAITemperature(settings.aiTemperature);
     await configService.setStartupBehavior(settings.startupBehavior);
     await configService.setDefaultMicrophone(settings.defaultMicrophone);
-    event.reply('settings-saved');
+    return { success: true };
   } catch (error) {
-    event.reply('settings-error', error.message);
+    throw new Error(`Failed to save settings: ${error.message}`);
   }
 });
 

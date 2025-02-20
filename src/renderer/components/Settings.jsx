@@ -17,36 +17,47 @@ const Settings = () => {
   const [microphones, setMicrophones] = useState([]);
 
   useEffect(() => {
+    console.log('Settings component mounted');
     const ipcRenderer = getIpcRenderer();
-    if (!ipcRenderer) return;
+    if (!ipcRenderer) {
+      console.error('IPC renderer not available');
+      return;
+    }
+    console.log('IPC renderer available');
 
     // Load initial settings
-    ipcRenderer.send('get-settings');
-    ipcRenderer.on('settings-loaded', (_, loadedSettings) => {
-      setSettings(loadedSettings);
-      setLoading(false);
-    });
+    const loadSettings = async () => {
+      console.log('Loading settings...');
+      try {
+        console.log('Invoking get-settings...');
+        const loadedSettings = await ipcRenderer.invoke('get-settings');
+        console.log('Settings loaded:', loadedSettings);
+        setSettings(loadedSettings);
+        setLoading(false);
+      } catch (error) {
+        console.error('Error loading settings:', error);
+        setError(error.message);
+        setLoading(false);
+      }
+    };
+    loadSettings();
 
-    // Load available microphones using the new invoke method
+    // Load available microphones
     const loadMicrophones = async () => {
+      console.log('Loading microphones...');
       try {
         const devices = await ipcRenderer.invoke('get-microphones');
+        console.log('Microphones loaded:', devices);
         setMicrophones(devices);
       } catch (error) {
+        console.error('Error loading microphones:', error);
         setError(error.message);
       }
     };
     loadMicrophones();
 
-    // Handle errors
-    ipcRenderer.on('settings-error', (_, errorMessage) => {
-      setError(errorMessage);
-      setLoading(false);
-    });
-
     return () => {
-      ipcRenderer.removeAllListeners('settings-loaded');
-      ipcRenderer.removeAllListeners('settings-error');
+      // No need to remove listeners since we're using invoke
     };
   }, []);
 
@@ -67,10 +78,10 @@ const Settings = () => {
     }
 
     try {
-      ipcRenderer.send('save-settings', settings);
+      await ipcRenderer.invoke('save-settings', settings);
       setSuccess(true);
-    } catch (err) {
-      setError(err.message);
+    } catch (error) {
+      setError(error.message);
     }
   };
 
