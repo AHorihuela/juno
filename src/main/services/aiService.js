@@ -15,6 +15,11 @@ const ACTION_VERBS = new Set([
   'elaborate',
   'fix',
   'check',
+  'shorten',
+  'expand',
+  'clarify',
+  'lengthen',
+  'shorten',
 ]);
 
 class AIService {

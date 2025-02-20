@@ -22,7 +22,7 @@ This Mac application is a dictation tool that allows users to transcribe speech 
 
 ### **2.2 AI Integration & Commands**
 - **Triggering AI Processing:**
-  - If the first word is the trigger (default: `Juno`), send the full input to OpenAI.
+  - If among the first three words is the trigger (default: `Juno`), send the full input to OpenAI.
   - If an action verb is detected in the first two words (e.g., *"Summarize this"*), assume AI intent.
   - Exception: If the phrase starts with *"Transcribe the following..."*, it is always transcribed.
 - **Clipboard & Highlighted Text Context:**
