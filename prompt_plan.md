@@ -315,33 +315,162 @@ We want robust error handling. Implement notifications or audible feedback.
 
 Generate the complete code changes and tests.
 
-Prompt 9: Final Integration & Packaging
 
-We have all the main functionality. Let’s do final wiring and packaging.
+## **Prompt 9: Transcription History & Storage**
+
+We have transcription working. Now we need to store and manage recent transcriptions and provide a way to review them.
 
 **Goal**:
-1. Ensure all components are connected in a coherent flow:
-   - Recording and transcription trigger the text processing steps.
-   - AI commands are detected and GPT calls are made.
-   - Responses are inserted into active fields or displayed in a pop-up.
-   - Settings are saved and loaded properly.
-2. Perform an end-to-end test verifying dictation -> AI response -> insertion into a text field.
-3. Configure `electron-builder` or a similar tool to package the app for macOS (`.dmg`).
-4. Provide final instructions on how to build, test, and run the app.
+1. Maintain a history of the last 10 transcriptions in local storage (JSON file or SQLite).
+2. Provide a minimal UI (in React) that lists the recent transcriptions.
+3. Allow users to clear the history or remove individual entries.
+4. Write Jest tests to confirm:
+   - Transcription records are added in chronological order.
+   - Only the latest 10 are preserved.
+   - Deletion/clearing logic works correctly.
 
 **Output**:
-- A final consolidated codebase.
-- Packaging config (e.g., in `package.json` or `electron-builder.yml`).
-- End-to-end test scripts and instructions.
+- All relevant code (services, UI components, tests).
+- A clear description of how and where transcriptions are stored.
 
-Generate the complete integrated code, ensuring no orphan code remains.
+---
 
-5. How to Use These Prompts
-	1.	Copy each prompt (in order) into your chosen code-generation LLM.
-	2.	Review the generated code carefully.
-	3.	Run tests and ensure everything passes.
-	4.	Iterate to fix any issues or refine as needed.
-	5.	Proceed to the next prompt once you are satisfied with the current step.
+## **Prompt 10: User Dictionary & Custom Word Corrections**
 
-This sequence of prompts should yield a stable, test-driven approach to building the dictation & AI-assisted writing tool.
+We have text processing for auto-punctuation, filler words, etc. Let’s add a user-maintained dictionary for corrections.
 
+**Goal**:
+1. Implement a local JSON file (e.g., `userDictionary.json`) where users can add “incorrect → correct” mappings (e.g., if “Jhon” is often misheard, map it to “John”).
+2. Extend the text processing to replace occurrences of these words after filler word removal, self-correction handling, etc.
+3. Provide a simple React UI to let users add/remove entries in the dictionary.
+4. Write unit tests verifying that recognized words get replaced according to the dictionary.
+
+**Output**:
+- `dictionaryService.js` (or similar) that loads/saves mappings.
+- Updated text processing code that applies user-defined replacements.
+- UI components to manage dictionary entries, plus tests.
+
+---
+
+## **Prompt 11: Inline AI Editing & Text Insertion Logic**
+
+Our AI commands can return GPT responses, but we need to finalize how text is inserted or replaced in the active text field.
+
+**Goal**:
+1. Detect if the user has highlighted text in the active field:
+   - If so, replace that highlighted text with the AI output.
+2. If no text is highlighted, insert the AI output at the cursor position in the active field (using `robotjs` or similar).
+3. If no active field is found, show the pop-up with a “Copy to Clipboard” button.
+4. Confirm the logic for the special phrase “Transcribe the following…” (it should bypass AI).
+5. Write tests to ensure:
+   - Highlight detection triggers replacements correctly.
+   - Correct insertion at the cursor.
+   - Proper fallback to pop-up when no active field.
+
+**Output**:
+- All updated code showing how highlighted text is detected and replaced.
+- The fallback pop-up code.
+- Test coverage for each insertion scenario.
+
+---
+
+## **Prompt 12: Microphone Selection & Device Management**
+
+We currently use the system default microphone. We want to let users choose a mic from settings.
+
+**Goal**:
+1. Enumerate available audio input devices (using a Node library or relevant OS calls).
+2. Extend the Settings UI to display a dropdown of devices.
+3. On selection, store the user’s mic choice in the config file and use it for dictation.
+4. Write tests verifying:
+   - The list of devices is fetched and displayed.
+   - The chosen device is persisted across app restarts.
+
+**Output**:
+- Updated settings UI code and any device enumeration logic.
+- Code changes to apply the selected microphone to `node-record-lpcm16` or equivalent.
+- Tests covering enumeration, selection, and persistence.
+
+---
+
+## **Prompt 13: Auto-Launch at System Startup & Crash Recovery**
+
+The specification requires the app to auto-start at login and restart after crashes.
+
+**Goal**:
+1. Add code to enable “launch at login” on macOS:
+   - Use Electron APIs, AppleScript, or `electron-builder` configuration to register the app as a login item.
+2. Implement a simple crash detection:
+   - On crash, auto-restart the app (e.g., a master process that respawns the main Electron process).
+3. Write tests (or describe manual steps) to confirm:
+   - The app appears in “Login Items” (macOS).
+   - The app restarts on unexpected exit.
+
+**Output**:
+- Configuration details for auto-start (e.g., in `package.json` or build scripts).
+- Crash recovery code (if using a secondary watcher process or a built-in approach).
+- Any relevant test or manual test instructions.
+
+---
+
+## **Prompt 14: Final Packaging & Mac Distribution**
+
+We need a distributable version for macOS.
+
+**Goal**:
+1. Use `electron-builder` or similar to create a `.dmg` or `.pkg` installer.
+2. Include code-signing (optional, if you have a developer certificate).
+3. Provide instructions for building and distributing the app.
+4. Confirm that the final package runs the entire feature set out of the box.
+
+**Output**:
+- Updated `package.json` scripts for `dist` or `build`.
+- Any necessary configuration in `electron-builder.yml` or equivalents.
+- Steps to sign the app if applicable, plus a final `.dmg` creation workflow.
+
+---
+
+## **Prompt 15: Performance & Resource Usage Tuning**
+
+We want a lightweight background process that does not strain the system.
+
+**Goal**:
+1. Optimize the Electron app so it uses minimal CPU when idle.
+2. Load only necessary modules when needed (dynamic imports if required).
+3. Ensure that transcription/AI tasks do not block the UI. Consider spawning worker processes for heavy tasks if needed.
+4. Provide tests or logs showing average CPU/RAM usage during idle and during active dictation.
+
+**Output**:
+- Code or config changes illustrating optimizations (lazy loading, worker processes, etc.).
+- Explanation of how to measure performance, e.g., using Electron’s built-in profiling or external tools.
+- Any test or measurement results demonstrating improvement.
+
+---
+
+## **Prompt 16: Final Integration & Acceptance Testing**
+
+We now bring everything together to verify the end-to-end flow.
+
+**Goal**:
+1. Perform a full integration test:
+   - Launch the app.
+   - Start dictation.
+   - Confirm transcription, text processing, and insertion into a text field.
+   - Trigger an AI command and verify GPT output insertion/replacement.
+   - Use the settings page to change the microphone, AI model, etc.
+   - Check error notifications (simulate API failure).
+   - Restart the app; confirm settings persist and auto-launch works.
+2. If feasible, automate these flows using a test runner like Spectron or Playwright for Electron.
+3. Provide a final readiness checklist:
+   - All required features implemented.
+   - All tests passing.
+
+**Output**:
+- Instructions or scripts for running the full integration test.
+- Documentation of test results and final readiness status.
+
+---
+
+## **Next Steps**
+
+Use each prompt above (9–16) to guide your AI through the final stages of development. For each prompt, request **full updated code** (no truncation), including tests, configurations, and any UI changes required. This process ensures all specification items are completed and thoroughly tested.

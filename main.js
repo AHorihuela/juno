@@ -2,6 +2,8 @@ const { app, BrowserWindow, globalShortcut, ipcMain } = require('electron');
 const path = require('path');
 const recorder = require('./src/main/services/recorder');
 const configService = require('./src/main/services/configService');
+const trayService = require('./src/main/services/trayService');
+const transcriptionHistoryService = require('./src/main/services/transcriptionHistoryService');
 
 console.log('Main process starting...');
 
@@ -25,10 +27,20 @@ function createWindow() {
         nodeIntegration: true,
         contextIsolation: false,
       },
+      show: false, // Don't show window initially
     });
 
     console.log('Loading index.html...');
     mainWindow.loadFile('index.html');
+
+    // Show window when ready to show
+    mainWindow.once('ready-to-show', () => {
+      console.log('Window ready to show');
+      mainWindow.show();
+    });
+
+    // Initialize tray after window creation
+    trayService.initialize(mainWindow);
 
     // Open DevTools in development
     if (process.env.NODE_ENV === 'development') {
@@ -48,6 +60,7 @@ function createWindow() {
       if (mainWindow) {
         mainWindow.webContents.send('recording-status', true);
       }
+      trayService.updateRecordingStatus(true);
     };
 
     const onRecordingStop = () => {
@@ -58,6 +71,7 @@ function createWindow() {
       if (mainWindow) {
         mainWindow.webContents.send('recording-status', false);
       }
+      trayService.updateRecordingStatus(false);
     };
 
     const onRecordingError = (error) => {
@@ -69,6 +83,12 @@ function createWindow() {
     const onTranscription = (text) => {
       if (mainWindow) {
         mainWindow.webContents.send('transcription', text);
+        // Add transcription to history
+        try {
+          transcriptionHistoryService.addTranscription(text);
+        } catch (error) {
+          console.error('Failed to add transcription to history:', error);
+        }
       }
     };
 
@@ -77,6 +97,38 @@ function createWindow() {
     recorder.on('stop', onRecordingStop);
     recorder.on('error', onRecordingError);
     recorder.on('transcription', onTranscription);
+
+    // Register IPC handlers for transcription history
+    ipcMain.on('get-transcription-history', (event) => {
+      try {
+        const history = transcriptionHistoryService.getHistory();
+        event.reply('transcription-history', history);
+      } catch (error) {
+        console.error('Failed to get transcription history:', error);
+        event.reply('transcription-history-error', error.message);
+      }
+    });
+
+    ipcMain.on('delete-transcription', (event, id) => {
+      try {
+        transcriptionHistoryService.deleteTranscription(id);
+        const history = transcriptionHistoryService.getHistory();
+        event.reply('transcription-history', history);
+      } catch (error) {
+        console.error('Failed to delete transcription:', error);
+        event.reply('transcription-history-error', error.message);
+      }
+    });
+
+    ipcMain.on('clear-transcription-history', (event) => {
+      try {
+        transcriptionHistoryService.clearHistory();
+        event.reply('transcription-history', []);
+      } catch (error) {
+        console.error('Failed to clear transcription history:', error);
+        event.reply('transcription-history-error', error.message);
+      }
+    });
 
     mainWindow.on('closed', () => {
       // Clean up event handlers
@@ -202,15 +254,21 @@ app.whenReady().then(async () => {
   app.quit();
 });
 
+app.on('before-quit', () => {
+  app.isQuitting = true;
+});
+
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
   if (recorder.isRecording()) {
     recorder.stop();
   }
+  trayService.destroy();
 });
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
+    app.isQuitting = true;
     app.quit();
   }
 });
