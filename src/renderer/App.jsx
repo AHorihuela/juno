@@ -1,19 +1,12 @@
 import React, { useState, useEffect } from 'react';
-
-// Get electron IPC renderer safely
-const getIpcRenderer = () => {
-  try {
-    return window.require('electron').ipcRenderer;
-  } catch (e) {
-    console.warn('Failed to load electron IPC, are we in a test environment?');
-    return null;
-  }
-};
+import { getIpcRenderer } from './utils/electron';
+import Settings from './components/Settings';
 
 const App = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [error, setError] = useState(null);
   const [transcription, setTranscription] = useState('');
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     const ipcRenderer = getIpcRenderer();
@@ -54,51 +47,70 @@ const App = () => {
 
   return (
     <div style={{ padding: '20px' }}>
-      <h1>Dictation Tool</h1>
-      
-      <div style={{ marginTop: '20px' }}>
-        <div style={{
-          padding: '10px',
-          backgroundColor: isRecording ? '#ffebee' : '#f1f8e9',
-          borderRadius: '4px',
-          marginBottom: '10px'
-        }}>
-          Status: {isRecording ? 'Recording...' : 'Ready'}
-        </div>
-
-        {error && (
-          <div style={{
-            padding: '10px',
-            backgroundColor: '#fff3e0',
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+        <h1>Dictation Tool</h1>
+        <button
+          onClick={() => setShowSettings(!showSettings)}
+          style={{
+            padding: '8px 16px',
+            backgroundColor: '#0066cc',
+            color: 'white',
+            border: 'none',
             borderRadius: '4px',
-            color: '#d32f2f',
-            marginBottom: '10px'
-          }}>
-            Error: {error}
-          </div>
-        )}
-
-        {transcription && (
-          <div style={{
-            padding: '10px',
-            backgroundColor: '#e8f5e9',
-            borderRadius: '4px',
-            marginBottom: '10px'
-          }}>
-            <strong>Last Transcription:</strong>
-            <p>{transcription}</p>
-          </div>
-        )}
-
-        <div style={{ marginTop: '20px', fontSize: '14px', color: '#666' }}>
-          <p>Keyboard Shortcuts:</p>
-          <ul>
-            <li>Double-tap F6: Start recording</li>
-            <li>Single-tap F6: Stop recording</li>
-            <li>Esc: Stop recording</li>
-          </ul>
-        </div>
+            cursor: 'pointer',
+          }}
+        >
+          {showSettings ? 'Back to App' : 'Settings'}
+        </button>
       </div>
+
+      {showSettings ? (
+        <Settings />
+      ) : (
+        <div style={{ marginTop: '20px' }}>
+          <div style={{
+            padding: '10px',
+            backgroundColor: isRecording ? '#ffebee' : '#f1f8e9',
+            borderRadius: '4px',
+            marginBottom: '10px'
+          }}>
+            Status: {isRecording ? 'Recording...' : 'Ready'}
+          </div>
+
+          {error && (
+            <div style={{
+              padding: '10px',
+              backgroundColor: '#fff3e0',
+              borderRadius: '4px',
+              color: '#d32f2f',
+              marginBottom: '10px'
+            }}>
+              Error: {error}
+            </div>
+          )}
+
+          {transcription && (
+            <div style={{
+              padding: '10px',
+              backgroundColor: '#e8f5e9',
+              borderRadius: '4px',
+              marginBottom: '10px'
+            }}>
+              <strong>Last Transcription:</strong>
+              <p>{transcription}</p>
+            </div>
+          )}
+
+          <div style={{ marginTop: '20px', fontSize: '14px', color: '#666' }}>
+            <p>Keyboard Shortcuts:</p>
+            <ul>
+              <li>Double-tap F6: Start recording</li>
+              <li>Single-tap F6: Stop recording</li>
+              <li>Esc: Stop recording</li>
+            </ul>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

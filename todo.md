@@ -4,7 +4,7 @@ A structured checklist covering each phase of the Dictation & AI-Assisted Writin
 
 ---
 
-## 1. Project Initialization & Basic Setup
+## 1. Project Initialization & Basic Setup ✓
 - [x] **Create Electron + React Application**
   - [x] Run `npm init` (or `yarn init`) to initialize project.
   - [x] Install `electron`, `react`, `react-dom`, and necessary build tools.
@@ -24,21 +24,21 @@ A structured checklist covering each phase of the Dictation & AI-Assisted Writin
 
 ---
 
-## 2. Basic Menu/Tray & Configuration UI (Placeholder)
-- [ ] **Add System Tray Icon or Minimal Window**
-  - [ ] Create a tray icon (or minimal menubar window on macOS).
-  - [ ] Show a placeholder for future settings or status.
+## 2. Basic Menu/Tray & Configuration UI ✓
+- [x] **Add System Tray Icon or Minimal Window**
+  - [x] Create a tray icon (or minimal menubar window on macOS).
+  - [x] Show a placeholder for future settings or status.
 
-- [ ] **Placeholder Settings UI**
-  - [ ] Create a React component (e.g., `Settings.js`) in `renderer/`.
-  - [ ] Include stubs for user preferences (API key, trigger word).
-  - [ ] Link it from the tray or a simple menu to open the settings window/section.
+- [x] **Settings UI**
+  - [x] Create a React component (`Settings.js`) in `renderer/`.
+  - [x] Include user preferences (API key, trigger word).
+  - [x] Link it from the tray or a simple menu to open the settings window/section.
 
 ---
 
-## 3. Hotkey Registration & Audio Capture
+## 3. Hotkey Registration & Audio Capture ✓
 - [x] **GlobalShortcut Registration**
-  - [x] Register double-tap `Fn`, single-tap `Fn`, and press-and-hold `Fn`.
+  - [x] Register double-tap `F6`, single-tap `F6`, and press-and-hold `F6`.
   - [x] Ensure `Esc` key also stops any ongoing recording.
   - [x] Write tests to confirm shortcuts are registered.
 
@@ -49,7 +49,7 @@ A structured checklist covering each phase of the Dictation & AI-Assisted Writin
 
 ---
 
-## 4. Stubbed Transcription
+## 4. Stubbed Transcription ✓
 - [x] **Create `transcriptionService.js`**
   - [x] Export a `transcribeAudio` function that returns `"This is a stub transcription."`
   - [x] Update code so that when recording ends, `transcribeAudio` is called.
@@ -61,7 +61,7 @@ A structured checklist covering each phase of the Dictation & AI-Assisted Writin
 
 ---
 
-## 5. Whisper API Integration
+## 5. Whisper API Integration ✓
 - [x] **Replace Stub with Real Whisper Calls**
   - [x] Require a valid OpenAI API key (use environment variable or config).
   - [x] Add error handling for API failures (e.g., 401, network issues).
@@ -76,7 +76,7 @@ A structured checklist covering each phase of the Dictation & AI-Assisted Writin
 
 ---
 
-## 6. Text Processing & Cleanup
+## 6. Text Processing & Cleanup ✓
 - [x] **Implement Processing Functions**
   - [x] `autoPunctuate` (adds periods, commas, and capitalizes sentences)
   - [x] `filterFillerWords` (removes "uh", "um", "like")
@@ -96,7 +96,7 @@ A structured checklist covering each phase of the Dictation & AI-Assisted Writin
 
 ---
 
-## 7. AI Command Detection & GPT Integration
+## 7. AI Command Detection & GPT Integration ✓
 - [x] **Parse Transcribed Text**
   - [x] If first word = trigger (default "Juno"), or first two words contain an action verb (e.g., "Summarize"), treat as AI command.
   - [x] If phrase starts with "Transcribe the following...", do not use AI.
@@ -116,26 +116,27 @@ A structured checklist covering each phase of the Dictation & AI-Assisted Writin
 
 ---
 
-## 8. Settings & Configuration
-- [ ] **Create or Expand Settings UI**
-  - [ ] Provide fields for:
-    - [ ] OpenAI API Key
-    - [ ] AI Trigger Word
-    - [ ] Model (default GPT-4o)
-    - [ ] Temperature
-    - [ ] Optionally: Startup behavior, microphone selection
+## 8. Settings & Configuration ✓
+- [x] **Create Settings UI**
+  - [x] Provide fields for:
+    - [x] OpenAI API Key
+    - [x] AI Trigger Word
+    - [x] Model (default GPT-4o)
+    - [x] Temperature
+    - [x] Startup behavior
+    - [x] Default microphone selection
 
-- [ ] **Local Storage / Config**
-  - [ ] Implement logic to save and load these preferences in a local JSON or DB.
-  - [ ] Securely store API key if possible (OS keychain or encryption).
+- [x] **Local Storage / Config**
+  - [x] Implement logic to save and load these preferences in a local JSON or DB.
+  - [x] Securely store API key using encryption.
 
-- [ ] **Testing Persistence**
-  - [ ] Restart the app to confirm settings persist.
-  - [ ] Unit tests for saving/loading config.
+- [x] **Testing Persistence**
+  - [x] Restart the app to confirm settings persist.
+  - [x] Unit tests for saving/loading config.
 
 ---
 
-## 9. Error Handling & Notifications
+## 9. Error Handling & Notifications (In Progress)
 - [ ] **OpenAI API Errors**
   - [ ] Show subtle notification (Electron `new Notification()` or library).
   - [ ] Play an error sound or beep.
@@ -183,6 +184,15 @@ A structured checklist covering each phase of the Dictation & AI-Assisted Writin
 - [ ] **Additional AI-Powered Writing Tools** (rewrite, grammar check, etc.).
 - [ ] **Export/Import Transcription History**.
 - [ ] **Multi-Platform** (Windows, Linux).
+
+---
+
+## Next Steps:
+1. Complete Error Handling & Notifications section
+2. Implement system notifications and error sounds
+3. Add microphone permission handling
+4. Set up crash recovery system
+5. Begin final integration and packaging
 
 ---
 
