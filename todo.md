@@ -97,22 +97,22 @@ A structured checklist covering each phase of the Dictation & AI-Assisted Writin
 ---
 
 ## 7. AI Command Detection & GPT Integration
-- [ ] **Parse Transcribed Text**
-  - [ ] If first word = trigger (default "Juno"), or first two words contain an action verb (e.g., "Summarize"), treat as AI command.
-  - [ ] If phrase starts with "Transcribe the following...", do not use AI.
+- [x] **Parse Transcribed Text**
+  - [x] If first word = trigger (default "Juno"), or first two words contain an action verb (e.g., "Summarize"), treat as AI command.
+  - [x] If phrase starts with "Transcribe the following...", do not use AI.
 
-- [ ] **Gather Context**
-  - [ ] Collect highlighted text + clipboard if AI is triggered.
-  - [ ] Build full prompt for GPT (including user preferences like temperature, model, etc.).
+- [x] **Gather Context**
+  - [x] Collect highlighted text + clipboard if AI is triggered.
+  - [x] Build full prompt for GPT (including user preferences like temperature, model, etc.).
 
-- [ ] **Call GPT and Insert Response**
-  - [ ] If there's a highlighted region, replace it with GPT response.
-  - [ ] If no active field, show a pop-up with the response and "Copy to Clipboard" button.
+- [x] **Call GPT and Insert Response**
+  - [x] If there's a highlighted region, replace it with GPT response.
+  - [x] If no active field, show a pop-up with the response and "Copy to Clipboard" button.
 
-- [ ] **Tests**
-  - [ ] AI detection logic with various phrases.
-  - [ ] GPT mock tests (network success/failure).
-  - [ ] Proper insertion and fallback pop-up scenario.
+- [x] **Tests**
+  - [x] AI detection logic with various phrases.
+  - [x] GPT mock tests (network success/failure).
+  - [x] Proper insertion and fallback pop-up scenario.
 
 ---
 

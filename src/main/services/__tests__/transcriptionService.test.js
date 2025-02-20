@@ -3,6 +3,7 @@ const path = require('path');
 const OpenAI = require('openai');
 const configService = require('../configService');
 const textProcessing = require('../textProcessing');
+const aiService = require('../aiService');
 const transcriptionService = require('../transcriptionService');
 
 // Mock OpenAI
@@ -30,6 +31,12 @@ jest.mock('../textProcessing', () => ({
   processText: jest.fn(text => text),
 }));
 
+// Mock aiService
+jest.mock('../aiService', () => ({
+  isAICommand: jest.fn(),
+  processCommand: jest.fn(),
+}));
+
 // Mock fs operations
 jest.mock('fs', () => ({
   promises: {
@@ -50,6 +57,14 @@ describe('TranscriptionService', () => {
     
     // Reset transcriptionService state
     transcriptionService.openai = null;
+
+    // Reset AI service mocks
+    aiService.isAICommand.mockReturnValue(false);
+    aiService.processCommand.mockResolvedValue({
+      text: 'AI response',
+      hasHighlight: false,
+      originalCommand: null,
+    });
   });
 
   it('initializes OpenAI client with API key', () => {
@@ -70,7 +85,8 @@ describe('TranscriptionService', () => {
     const audioData = Buffer.from('test audio data');
     const result = await transcriptionService.transcribeAudio(audioData);
 
-    expect(result).toBe(mockResponse.text);
+    expect(result.isAICommand).toBe(false);
+    expect(result.result.text).toBe(mockResponse.text);
     expect(fs.promises.writeFile).toHaveBeenCalled();
     expect(fs.createReadStream).toHaveBeenCalled();
     expect(fs.promises.unlink).toHaveBeenCalled();
@@ -122,30 +138,50 @@ describe('TranscriptionService', () => {
     expect(fs.promises.unlink).toHaveBeenCalled();
   });
 
-  it('processes transcribed text before returning', async () => {
-    const rawTranscription = 'um like hello there I mean hi';
-    const processedTranscription = 'Hi.';
-    
-    OpenAI.mockCreate.mockResolvedValue({ text: rawTranscription });
-    textProcessing.processText.mockReturnValue(processedTranscription);
+  describe('AI Integration', () => {
+    it('detects and processes AI commands', async () => {
+      const mockTranscription = 'juno help me with this';
+      OpenAI.mockCreate.mockResolvedValue({ text: mockTranscription });
+      aiService.isAICommand.mockReturnValue(true);
+      aiService.processCommand.mockResolvedValue({
+        text: 'AI response',
+        hasHighlight: true,
+        originalCommand: mockTranscription,
+      });
 
-    const audioData = Buffer.from('test audio data');
-    const result = await transcriptionService.transcribeAudio(audioData);
+      const audioData = Buffer.from('test audio data');
+      const highlightedText = 'selected text';
+      const result = await transcriptionService.transcribeAudio(audioData, highlightedText);
 
-    expect(textProcessing.processText).toHaveBeenCalledWith(rawTranscription);
-    expect(result).toBe(processedTranscription);
-  });
-
-  it('handles text processing errors gracefully', async () => {
-    const rawTranscription = 'test transcription';
-    OpenAI.mockCreate.mockResolvedValue({ text: rawTranscription });
-    textProcessing.processText.mockImplementation(() => {
-      throw new Error('Processing error');
+      expect(result.isAICommand).toBe(true);
+      expect(result.result.text).toBe('AI response');
+      expect(result.result.hasHighlight).toBe(true);
+      expect(aiService.processCommand).toHaveBeenCalledWith(mockTranscription, highlightedText);
     });
 
-    const audioData = Buffer.from('test audio data');
-    await expect(transcriptionService.transcribeAudio(audioData))
-      .rejects
-      .toThrow('Transcription failed: Processing error');
+    it('processes regular transcription when not an AI command', async () => {
+      const mockTranscription = 'regular transcription text';
+      OpenAI.mockCreate.mockResolvedValue({ text: mockTranscription });
+      aiService.isAICommand.mockReturnValue(false);
+
+      const audioData = Buffer.from('test audio data');
+      const result = await transcriptionService.transcribeAudio(audioData);
+
+      expect(result.isAICommand).toBe(false);
+      expect(result.result.text).toBe(mockTranscription);
+      expect(aiService.processCommand).not.toHaveBeenCalled();
+    });
+
+    it('handles AI processing errors', async () => {
+      const mockTranscription = 'juno help me';
+      OpenAI.mockCreate.mockResolvedValue({ text: mockTranscription });
+      aiService.isAICommand.mockReturnValue(true);
+      aiService.processCommand.mockRejectedValue(new Error('AI processing failed'));
+
+      const audioData = Buffer.from('test audio data');
+      await expect(transcriptionService.transcribeAudio(audioData))
+        .rejects
+        .toThrow('AI processing failed');
+    });
   });
 }); 

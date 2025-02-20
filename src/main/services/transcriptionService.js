@@ -5,6 +5,7 @@
 const OpenAI = require('openai');
 const configService = require('./configService');
 const textProcessing = require('./textProcessing');
+const aiService = require('./aiService');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -51,12 +52,41 @@ class TranscriptionService {
   }
 
   /**
+   * Process transcribed text through AI if it's a command
+   * @param {string} text - The transcribed text
+   * @param {string} highlightedText - Currently highlighted text
+   * @returns {Promise<Object>} Processed result with text and metadata
+   */
+  async processTranscribedText(text, highlightedText = '') {
+    const processedText = textProcessing.processText(text);
+    
+    // Check if this is an AI command
+    if (aiService.isAICommand(processedText)) {
+      return {
+        isAICommand: true,
+        result: await aiService.processCommand(processedText, highlightedText),
+      };
+    }
+
+    // Regular transcription
+    return {
+      isAICommand: false,
+      result: {
+        text: processedText,
+        hasHighlight: false,
+        originalCommand: null,
+      },
+    };
+  }
+
+  /**
    * Transcribe audio data to text using OpenAI Whisper
    * @param {Buffer} audioData - The raw audio data to transcribe
-   * @returns {Promise<string>} A promise that resolves to the transcribed text
+   * @param {string} highlightedText - Currently highlighted text
+   * @returns {Promise<Object>} A promise that resolves to the processed result
    * @throws {Error} If transcription fails
    */
-  async transcribeAudio(audioData) {
+  async transcribeAudio(audioData, highlightedText = '') {
     if (!this.openai) {
       this.initializeOpenAI();
     }
@@ -77,8 +107,7 @@ class TranscriptionService {
       });
 
       // Process the transcribed text
-      const processedText = textProcessing.processText(response.text);
-      return processedText;
+      return await this.processTranscribedText(response.text, highlightedText);
 
     } catch (error) {
       if (error.message === 'OpenAI API key not configured') {
