@@ -1,5 +1,6 @@
 const OpenAI = require('openai');
 const configService = require('./configService');
+const notificationService = require('./notificationService');
 const { clipboard } = require('electron');
 
 // Action verbs that trigger AI processing
@@ -23,13 +24,16 @@ class AIService {
   }
 
   async initializeOpenAI() {
-    if (this.openai) return;
-    
-    const apiKey = await configService.getOpenAIApiKey();
-    if (!apiKey) {
-      throw new Error('OpenAI API key not configured');
+    try {
+      const apiKey = await configService.getOpenAIApiKey();
+      if (!apiKey) {
+        throw new Error('OpenAI API key not configured');
+      }
+      this.openai = new OpenAI({ apiKey });
+    } catch (error) {
+      notificationService.showAPIError(error);
+      throw error;
     }
-    this.openai = new OpenAI({ apiKey });
   }
 
   /**
@@ -82,8 +86,14 @@ class AIService {
    */
   async processCommand(command, highlightedText = '') {
     try {
+      // Cancel any existing request
+      this.cancelCurrentRequest();
+
       await this.initializeOpenAI();
 
+      // Create AbortController for this request
+      const controller = new AbortController();
+      
       // Get context
       const context = await this.getContext();
       context.highlightedText = highlightedText;
@@ -92,21 +102,24 @@ class AIService {
       const prompt = this.buildPrompt(command, context);
 
       // Create completion request
-      this.currentRequest = this.openai.chat.completions.create({
-        model: await configService.getAIModel() || 'gpt-4',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a helpful AI assistant integrated into a dictation tool. ' +
-                     'Respond directly and concisely. Format output in markdown when appropriate.'
-          },
-          { role: 'user', content: prompt }
-        ],
-        temperature: await configService.getAITemperature() || 0.7,
-      });
+      this.currentRequest = {
+        controller,
+        promise: this.openai.chat.completions.create({
+          model: await configService.getAIModel() || 'gpt-4',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a helpful AI assistant integrated into a dictation tool. ' +
+                       'Respond directly and concisely. Format output in markdown when appropriate.'
+            },
+            { role: 'user', content: prompt }
+          ],
+          temperature: await configService.getAITemperature() || 0.7,
+        }, { signal: controller.signal })
+      };
 
       // Wait for response
-      const response = await this.currentRequest;
+      const response = await this.currentRequest.promise;
       this.currentRequest = null;
 
       return {
@@ -116,17 +129,28 @@ class AIService {
       };
 
     } catch (error) {
+      // Don't show notification for cancelled requests
+      if (error.name === 'AbortError') {
+        console.log('AI request cancelled');
+        return null;
+      }
+
       if (error.response) {
         const status = error.response.status;
         switch (status) {
           case 401:
+            notificationService.showAPIError(error);
             throw new Error('Invalid OpenAI API key');
           case 429:
+            notificationService.showAPIError(error);
             throw new Error('OpenAI API rate limit exceeded');
           default:
+            notificationService.showAIError(error);
             throw new Error(`AI processing failed: ${error.message}`);
         }
       }
+      
+      notificationService.showAIError(error);
       throw new Error(`AI processing failed: ${error.message}`);
     }
   }
@@ -160,10 +184,11 @@ class AIService {
    * Cancel any ongoing AI request
    */
   cancelCurrentRequest() {
-    if (this.currentRequest && typeof this.currentRequest.abort === 'function') {
-      this.currentRequest.abort();
+    if (this.currentRequest && this.currentRequest.controller) {
+      console.log('Cancelling current AI request');
+      this.currentRequest.controller.abort();
+      this.currentRequest = null;
     }
-    this.currentRequest = null;
   }
 }
 

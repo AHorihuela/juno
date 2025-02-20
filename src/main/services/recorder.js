@@ -1,6 +1,8 @@
-const record = require('node-record-lpcm16');
 const { EventEmitter } = require('events');
+const record = require('node-record-lpcm16');
 const transcriptionService = require('./transcriptionService');
+const notificationService = require('./notificationService');
+const { systemPreferences } = require('electron');
 
 class AudioRecorder extends EventEmitter {
   constructor() {
@@ -10,10 +12,35 @@ class AudioRecorder extends EventEmitter {
     this.audioData = [];
   }
 
-  start() {
+  async checkMicrophonePermission() {
+    if (process.platform === 'darwin') {
+      const status = systemPreferences.getMediaAccessStatus('microphone');
+      
+      if (status === 'not-determined') {
+        const granted = await systemPreferences.askForMediaAccess('microphone');
+        return granted;
+      }
+      
+      return status === 'granted';
+    }
+    
+    // For non-macOS platforms, we'll assume permission is granted
+    // and handle any errors during recording
+    return true;
+  }
+
+  async start() {
     if (this.recording) return;
     
     try {
+      // Check microphone permission
+      const hasPermission = await this.checkMicrophonePermission();
+      if (!hasPermission) {
+        notificationService.showMicrophoneError();
+        this.emit('error', new Error('Microphone access denied'));
+        return;
+      }
+
       console.log('Starting recording with settings:', {
         sampleRate: 16000,
         channels: 1,
@@ -42,6 +69,11 @@ class AudioRecorder extends EventEmitter {
         })
         .on('error', (err) => {
           console.error('Recording error:', err);
+          notificationService.showNotification(
+            'Recording Error',
+            err.message || 'Failed to record audio',
+            'error'
+          );
           this.emit('error', err);
           this.stop();
         });
@@ -51,6 +83,11 @@ class AudioRecorder extends EventEmitter {
       console.log('Recording started');
     } catch (error) {
       console.error('Failed to start recording:', error);
+      notificationService.showNotification(
+        'Recording Error',
+        error.message || 'Failed to start recording',
+        'error'
+      );
       this.emit('error', error);
     }
   }
@@ -81,6 +118,7 @@ class AudioRecorder extends EventEmitter {
         console.log('Transcription received:', transcription);
       } catch (error) {
         console.error('Transcription error:', error);
+        notificationService.showTranscriptionError(error);
         this.emit('error', error);
       }
 
@@ -88,6 +126,11 @@ class AudioRecorder extends EventEmitter {
       console.log('Recording stopped');
     } catch (error) {
       console.error('Failed to stop recording:', error);
+      notificationService.showNotification(
+        'Recording Error',
+        error.message || 'Failed to stop recording',
+        'error'
+      );
       this.emit('error', error);
     }
   }

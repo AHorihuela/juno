@@ -6,10 +6,33 @@ let Store;
 const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
+const { app } = require('electron');
 
 class ConfigService {
   constructor() {
     this.store = null;
+    this.encryptionKey = null;
+  }
+
+  async getEncryptionKey() {
+    if (this.encryptionKey) return this.encryptionKey;
+
+    const keyPath = path.join(app.getPath('userData'), '.encryption-key');
+    
+    try {
+      // Try to read existing key
+      if (fs.existsSync(keyPath)) {
+        this.encryptionKey = fs.readFileSync(keyPath, 'utf8');
+      } else {
+        // Generate and save new key if none exists
+        this.encryptionKey = crypto.randomBytes(32).toString('hex');
+        fs.writeFileSync(keyPath, this.encryptionKey, { mode: 0o600 });
+      }
+      return this.encryptionKey;
+    } catch (error) {
+      console.error('Error managing encryption key:', error);
+      throw new Error('Failed to manage encryption key');
+    }
   }
 
   async initializeStore() {
@@ -19,8 +42,9 @@ class ConfigService {
     
     try {
       if (!this.store) {
+        const encryptionKey = await this.getEncryptionKey();
         this.store = new Store({
-          encryptionKey: crypto.randomBytes(32).toString('hex'),
+          encryptionKey,
           schema: {
             openaiApiKey: {
               type: 'string',
@@ -68,8 +92,9 @@ class ConfigService {
           }
           
           // Try initializing again
+          const encryptionKey = await this.getEncryptionKey();
           this.store = new Store({
-            encryptionKey: crypto.randomBytes(32).toString('hex'),
+            encryptionKey,
             schema: {
               openaiApiKey: {
                 type: 'string',

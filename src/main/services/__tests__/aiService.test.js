@@ -2,6 +2,7 @@ const OpenAI = require('openai');
 const { clipboard } = require('electron');
 const configService = require('../configService');
 const aiService = require('../aiService');
+const notificationService = require('../notificationService');
 
 // Mock OpenAI
 jest.mock('openai', () => {
@@ -31,6 +32,9 @@ jest.mock('../configService', () => ({
   getAIModel: jest.fn(),
   getAITemperature: jest.fn(),
 }));
+
+// Mock notificationService
+jest.mock('../notificationService');
 
 describe('AIService', () => {
   beforeEach(() => {
@@ -150,6 +154,57 @@ describe('AIService', () => {
       aiService.cancelCurrentRequest();
       
       expect(mockAbort).toHaveBeenCalled();
+      expect(aiService.currentRequest).toBeNull();
+    });
+
+    it('cancels ongoing request when new one starts', async () => {
+      // Setup a mock for the OpenAI request
+      const mockAbort = jest.fn();
+      const mockController = { abort: mockAbort };
+      global.AbortController = jest.fn(() => mockController);
+
+      // Start first request
+      const firstPromise = aiService.processCommand('first command');
+      
+      // Start second request before first completes
+      const secondPromise = aiService.processCommand('second command');
+
+      // Verify first request was cancelled
+      expect(mockAbort).toHaveBeenCalled();
+      
+      // Verify no notification for cancelled request
+      expect(notificationService.showAIError).not.toHaveBeenCalled();
+    });
+
+    it('handles AbortError without showing notification', async () => {
+      // Setup mock that throws AbortError
+      const abortError = new Error('Request aborted');
+      abortError.name = 'AbortError';
+      
+      const mockCreate = jest.fn().mockRejectedValue(abortError);
+      aiService.openai = { chat: { completions: { create: mockCreate } } };
+
+      const result = await aiService.processCommand('test command');
+      
+      // Verify result is null for cancelled request
+      expect(result).toBeNull();
+      
+      // Verify no notification was shown
+      expect(notificationService.showAIError).not.toHaveBeenCalled();
+    });
+
+    it('cleans up currentRequest after completion', async () => {
+      // Setup successful response
+      const mockResponse = {
+        choices: [{ message: { content: 'test response' } }]
+      };
+      
+      const mockCreate = jest.fn().mockResolvedValue(mockResponse);
+      aiService.openai = { chat: { completions: { create: mockCreate } } };
+
+      await aiService.processCommand('test command');
+      
+      // Verify currentRequest is cleared
       expect(aiService.currentRequest).toBeNull();
     });
   });

@@ -136,24 +136,37 @@ A structured checklist covering each phase of the Dictation & AI-Assisted Writin
 
 ---
 
-## 9. Error Handling & Notifications (In Progress)
+## 9. Error Handling & Notifications ✓
 - [x] **OpenAI API Errors**
   - [x] Show subtle notification (Electron `new Notification()` or library).
   - [x] Play an error sound or beep.
+  - [x] Implemented in `notificationService.js` with custom messages for different error types (401, 429)
+  - [x] Platform-specific sound handling (macOS system sounds, custom sounds for others)
 
 - [x] **Microphone Access Denied**
   - [x] Prompt the user to grant microphone permissions.
   - [x] Fallback or instructions if permission remains denied.
+  - [x] Implemented in `recorder.js` with `systemPreferences` API
+  - [x] Platform-specific handling for macOS permissions
 
 - [x] **Crash & Auto-Restart**
   - [x] Implement logic to catch crashes (`process.on('uncaughtException', ...)`) and relaunch.
   - [x] Test if the app restarts on unexpected errors (mock approach).
+  - [x] Added handlers for renderer and GPU process crashes
+  - [x] 2-second delay before restart to ensure notification visibility
 
 - [x] **Cancel Ongoing AI Request**
   - [x] If user starts a new dictation, cancel the current request.
+  - [x] Implemented with AbortController in aiService.js
+  - [x] Clean request cancellation without showing error notifications
+  - [x] Proper cleanup of cancelled request resources
 
 - [x] **Test Each Error Scenario**
   - [x] Unit tests and integration tests verifying notifications, handling, and crash recovery.
+  - [x] Comprehensive test suite in `notificationService.test.js`
+  - [x] Crash recovery tests in `crashRecovery.test.js`
+  - [x] AI cancellation tests in `aiService.test.js`
+  - [x] Platform-specific test cases for macOS
 
 ---
 
@@ -162,6 +175,10 @@ A structured checklist covering each phase of the Dictation & AI-Assisted Writin
   - [x] Confirm end-to-end flow: Start recording -> Transcribe -> Process text or AI command -> Output.
   - [x] Verify settings update logic and real-time usage (trigger word, etc.).
   - [x] Check transcription history UI and AI responses.
+  - [x] Implement text insertion with robotjs
+  - [x] Add clipboard management for text insertion
+  - [x] Handle fallback to popup when insertion fails
+  - [x] Add tests for text insertion scenarios
 
 - [ ] **Bundle with Electron Builder**
   - [ ] Configure `electron-builder` or equivalent to create .dmg.

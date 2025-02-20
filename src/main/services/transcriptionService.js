@@ -6,6 +6,8 @@ const OpenAI = require('openai');
 const configService = require('./configService');
 const textProcessing = require('./textProcessing');
 const aiService = require('./aiService');
+const textInsertionService = require('./textInsertionService');
+const notificationService = require('./notificationService');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -55,40 +57,53 @@ class TranscriptionService {
   }
 
   /**
-   * Process transcribed text through AI if it's a command
+   * Process transcribed text and insert it
    * @param {string} text - The transcribed text
    * @param {string} highlightedText - Currently highlighted text
-   * @returns {Promise<Object>} Processed result with text and metadata
+   * @returns {Promise<void>}
    */
-  async processTranscribedText(text, highlightedText = '') {
-    const processedText = textProcessing.processText(text);
-    
-    // Check if this is an AI command
-    if (await aiService.isAICommand(processedText)) {
-      return {
-        isAICommand: true,
-        result: await aiService.processCommand(processedText, highlightedText),
-      };
-    }
+  async processAndInsertText(text, highlightedText = '') {
+    try {
+      const processedText = textProcessing.processText(text);
+      
+      // Check if this is an AI command
+      if (await aiService.isAICommand(processedText)) {
+        const aiResponse = await aiService.processCommand(processedText, highlightedText);
+        if (aiResponse) {
+          // Try to insert the AI response
+          const success = await textInsertionService.insertText(
+            aiResponse.text,
+            aiResponse.hasHighlight
+          );
 
-    // Regular transcription
-    return {
-      isAICommand: false,
-      result: {
-        text: processedText,
-        hasHighlight: false,
-        originalCommand: null,
-      },
-    };
+          // If insertion failed, show popup
+          if (!success) {
+            textInsertionService.showCopyPopup(aiResponse.text);
+          }
+        }
+      } else {
+        // Regular transcription - try to insert
+        const success = await textInsertionService.insertText(processedText);
+        
+        // If insertion failed, show popup
+        if (!success) {
+          textInsertionService.showCopyPopup(processedText);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to process and insert text:', error);
+      notificationService.showTranscriptionError(error);
+      throw error;
+    }
   }
 
   /**
    * Transcribe audio data to text using OpenAI Whisper
    * @param {Buffer} audioBuffer - The raw audio data to transcribe
-   * @returns {Promise<Object>} A promise that resolves to the processed result
-   * @throws {Error} If transcription fails
+   * @param {string} highlightedText - Currently highlighted text
+   * @returns {Promise<void>}
    */
-  async transcribeAudio(audioBuffer) {
+  async transcribeAudio(audioBuffer, highlightedText = '') {
     try {
       const apiKey = await configService.getOpenAIApiKey();
       console.log('Using OpenAI API key for transcription, length:', apiKey ? apiKey.length : 0);
@@ -167,26 +182,8 @@ class TranscriptionService {
         const result = await response.json();
         console.log('Transcription received:', result);
 
-        // Process transcribed text
-        const processedText = textProcessing.processText(result.text);
-        
-        // Check if this is an AI command
-        if (await aiService.isAICommand(processedText)) {
-          return {
-            isAICommand: true,
-            result: await aiService.processCommand(processedText)
-          };
-        }
-
-        // Regular transcription
-        return {
-          isAICommand: false,
-          result: {
-            text: processedText,
-            hasHighlight: false,
-            originalCommand: null
-          }
-        };
+        // Process and insert the transcribed text
+        await this.processAndInsertText(result.text, highlightedText);
 
       } catch (error) {
         // Clean up temp file in case of error
