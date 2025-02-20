@@ -1,5 +1,6 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, globalShortcut, ipcMain } = require('electron');
 const path = require('path');
+const recorder = require('./src/main/services/recorder');
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling
 if (require('electron-squirrel-startup')) {
@@ -7,6 +8,9 @@ if (require('electron-squirrel-startup')) {
 }
 
 let mainWindow = null;
+let fnKeyTimeout = null;
+const FN_DOUBLE_TAP_DELAY = 300; // ms
+let lastFnKeyPress = 0;
 
 function createWindow() {
   try {
@@ -30,17 +34,72 @@ function createWindow() {
     mainWindow.on('closed', () => {
       mainWindow = null;
     });
+
+    // Setup recording event handlers
+    recorder.on('start', () => {
+      mainWindow.webContents.send('recording-status', true);
+    });
+
+    recorder.on('stop', () => {
+      mainWindow.webContents.send('recording-status', false);
+    });
+
+    recorder.on('error', (error) => {
+      mainWindow.webContents.send('recording-error', error.message);
+    });
+
   } catch (error) {
     console.error('Error creating window:', error);
     app.quit();
   }
 }
 
+function registerShortcuts() {
+  // Register F6 key for toggle (simulating Fn key)
+  globalShortcut.register('F6', () => {
+    const now = Date.now();
+    
+    if (now - lastFnKeyPress <= FN_DOUBLE_TAP_DELAY) {
+      // Double tap detected
+      clearTimeout(fnKeyTimeout);
+      if (!recorder.isRecording()) {
+        recorder.start();
+      }
+    } else {
+      // Single tap - wait to see if it's a double tap
+      fnKeyTimeout = setTimeout(() => {
+        if (recorder.isRecording()) {
+          recorder.stop();
+        }
+      }, FN_DOUBLE_TAP_DELAY);
+    }
+    
+    lastFnKeyPress = now;
+  });
+
+  // Register Escape key to stop recording
+  globalShortcut.register('Escape', () => {
+    if (recorder.isRecording()) {
+      recorder.stop();
+    }
+  });
+}
+
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
-app.whenReady().then(createWindow).catch(error => {
+app.whenReady().then(() => {
+  createWindow();
+  registerShortcuts();
+}).catch(error => {
   console.error('Error during app initialization:', error);
   app.quit();
+});
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
+  if (recorder.isRecording()) {
+    recorder.stop();
+  }
 });
 
 app.on('window-all-closed', () => {
