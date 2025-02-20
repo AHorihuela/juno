@@ -64,11 +64,19 @@ class TranscriptionService {
    */
   async processAndInsertText(text, highlightedText = '') {
     try {
-      const processedText = textProcessing.processText(text);
+      console.log('[TranscriptionService] Starting text processing pipeline');
+      console.log('[TranscriptionService] Raw text:', text);
       
-      // Check if this is an AI command
-      if (await aiService.isAICommand(processedText)) {
-        const aiResponse = await aiService.processCommand(processedText, highlightedText);
+      // First check if this is an AI command before any text processing
+      console.log('[TranscriptionService] Checking for AI command');
+      const isCommand = await aiService.isAICommand(text);
+      console.log('[TranscriptionService] Is AI command:', isCommand);
+
+      if (isCommand) {
+        console.log('[TranscriptionService] Processing AI command');
+        const aiResponse = await aiService.processCommand(text, highlightedText);
+        console.log('[TranscriptionService] AI response received:', aiResponse);
+        
         if (aiResponse) {
           // Try to insert the AI response
           const success = await textInsertionService.insertText(
@@ -82,7 +90,12 @@ class TranscriptionService {
           }
         }
       } else {
-        // Regular transcription - try to insert
+        console.log('[TranscriptionService] Processing as regular transcription');
+        // Regular transcription - process text first
+        const processedText = textProcessing.processText(text);
+        console.log('[TranscriptionService] Processed text:', processedText);
+        
+        // Try to insert
         const success = await textInsertionService.insertText(processedText);
         
         // If insertion failed, show popup
@@ -91,7 +104,8 @@ class TranscriptionService {
         }
       }
     } catch (error) {
-      console.error('Failed to process and insert text:', error);
+      console.error('[TranscriptionService] Error in processAndInsertText:', error);
+      console.error('[TranscriptionService] Error stack:', error.stack);
       notificationService.showTranscriptionError(error);
       throw error;
     }
@@ -180,7 +194,18 @@ class TranscriptionService {
         }
 
         const result = await response.json();
-        console.log('Transcription received:', result);
+        
+        // Log detailed API response
+        console.log('Whisper API Response:', {
+          result,
+          responseStatus: response.status,
+          responseHeaders: Object.fromEntries(response.headers.entries()),
+          requestDetails: {
+            fileSize: fileSize,
+            language: 'en',
+            model: 'whisper-1'
+          }
+        });
 
         // Process and insert the transcribed text
         await this.processAndInsertText(result.text, highlightedText);

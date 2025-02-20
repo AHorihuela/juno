@@ -10,6 +10,8 @@ class AudioRecorder extends EventEmitter {
     this.recording = false;
     this.recorder = null;
     this.audioData = [];
+    this.hasAudioContent = false;
+    this.silenceThreshold = 100; // Adjust this value based on testing
   }
 
   async checkMicrophonePermission() {
@@ -53,18 +55,26 @@ class AudioRecorder extends EventEmitter {
         audioType: 'raw',
       });
 
-      // Reset audio data buffer
+      // Reset audio data buffer and flags
       this.audioData = [];
+      this.hasAudioContent = false;
 
       // Log audio data for testing
       this.recorder.stream()
         .on('data', (data) => {
+          // Check audio levels
+          const hasSound = this.checkAudioLevels(data);
+          if (hasSound) {
+            this.hasAudioContent = true;
+          }
+
           this.audioData.push(data);
           this.emit('data', data);
           console.log('Audio data chunk received:', {
             chunkSize: data.length,
             totalSize: this.audioData.reduce((sum, chunk) => sum + chunk.length, 0),
-            chunks: this.audioData.length
+            chunks: this.audioData.length,
+            hasSound
           });
         })
         .on('error', (err) => {
@@ -92,6 +102,61 @@ class AudioRecorder extends EventEmitter {
     }
   }
 
+  checkAudioLevels(buffer) {
+    // Convert buffer to 16-bit samples
+    const samples = new Int16Array(buffer.buffer);
+    
+    // Calculate RMS (Root Mean Square) of the audio samples
+    let sum = 0;
+    let max = 0;
+    let min = 0;
+    let samplesAboveThreshold = 0;
+    let consecutiveSamplesAboveThreshold = 0;
+    let maxConsecutiveSamplesAboveThreshold = 0;
+    let currentConsecutive = 0;
+    
+    for (let i = 0; i < samples.length; i++) {
+      const sample = Math.abs(samples[i]);
+      sum += sample * sample;
+      max = Math.max(max, sample);
+      min = Math.min(min, sample);
+      
+      if (sample > this.silenceThreshold) {
+        samplesAboveThreshold++;
+        currentConsecutive++;
+        maxConsecutiveSamplesAboveThreshold = Math.max(
+          maxConsecutiveSamplesAboveThreshold,
+          currentConsecutive
+        );
+      } else {
+        currentConsecutive = 0;
+      }
+    }
+    
+    const rms = Math.sqrt(sum / samples.length);
+    
+    // Calculate percentage of samples above threshold
+    const percentageAboveThreshold = (samplesAboveThreshold / samples.length) * 100;
+    
+    // Log detailed audio metrics
+    console.log('Enhanced Audio metrics:', {
+      rms: Math.round(rms),
+      peakToPeak: max - min,
+      max: max,
+      min: min,
+      samplesAboveThreshold,
+      totalSamples: samples.length,
+      threshold: this.silenceThreshold,
+      percentageAboveThreshold: Math.round(percentageAboveThreshold),
+      maxConsecutiveSamplesAboveThreshold,
+      isLikelySpeech: percentageAboveThreshold > 30 && maxConsecutiveSamplesAboveThreshold > 100
+    });
+    
+    // Consider it real audio only if we have a significant percentage of samples above threshold
+    // AND we have some consecutive samples above threshold (indicating sustained sound)
+    return percentageAboveThreshold > 30 && maxConsecutiveSamplesAboveThreshold > 100;
+  }
+
   async stop() {
     if (!this.recording) return;
     
@@ -103,11 +168,43 @@ class AudioRecorder extends EventEmitter {
       }
       this.recording = false;
 
+      // Calculate final audio metrics
+      const totalSamples = this.audioData.reduce((sum, chunk) => sum + chunk.length, 0);
+      const samplesAboveThreshold = this.audioData.reduce((sum, chunk) => {
+        const samples = new Int16Array(chunk.buffer);
+        return sum + samples.filter(s => Math.abs(s) > this.silenceThreshold).length;
+      }, 0);
+      
+      const percentageAboveThreshold = (samplesAboveThreshold / totalSamples) * 100;
+      
+      console.log('Final audio analysis:', {
+        totalDuration: (totalSamples / 16000).toFixed(2) + 's',
+        percentageAboveThreshold: Math.round(percentageAboveThreshold) + '%',
+        totalChunks: this.audioData.length,
+        hasAudioContent: this.hasAudioContent,
+        averageRMS: Math.round(
+          this.audioData.reduce((sum, chunk) => {
+            const samples = new Int16Array(chunk.buffer);
+            const rms = Math.sqrt(samples.reduce((s, sample) => s + sample * sample, 0) / samples.length);
+            return sum + rms;
+          }, 0) / this.audioData.length
+        )
+      });
+
+      // Skip transcription if no real audio content detected
+      if (!this.hasAudioContent) {
+        console.log('No significant audio content detected, skipping transcription');
+        notificationService.showNoAudioDetected();
+        this.emit('stop');
+        return;
+      }
+
       // Combine all audio data into a single buffer
       const completeAudioData = Buffer.concat(this.audioData);
       console.log('Complete audio data:', {
         totalSize: completeAudioData.length,
-        chunks: this.audioData.length
+        chunks: this.audioData.length,
+        hadAudioContent: this.hasAudioContent
       });
       
       // Get transcription

@@ -1,19 +1,36 @@
 const { Notification } = require('electron');
 const path = require('path');
+const { exec } = require('child_process');
+const fs = require('fs').promises;
 
 class NotificationService {
   constructor() {
     this.errorSound = null;
+    this.customSoundPath = path.join(__dirname, '../../../assets/sounds/error.wav');
     this.initializeAudio();
   }
 
-  initializeAudio() {
+  async initializeAudio() {
     if (process.platform === 'darwin') {
       // On macOS, we can use the system sound
       this.errorSound = 'Basso';
     } else {
-      // For other platforms, we could load a custom sound file
-      this.errorSound = path.join(__dirname, '../../../assets/sounds/error.wav');
+      // For other platforms, ensure we have the error sound file
+      try {
+        await fs.access(this.customSoundPath);
+        this.errorSound = this.customSoundPath;
+      } catch (error) {
+        console.warn('Error sound file not found:', error);
+        // Create assets directory if it doesn't exist
+        const soundsDir = path.dirname(this.customSoundPath);
+        await fs.mkdir(soundsDir, { recursive: true });
+        
+        // Create a simple WAV file as fallback
+        // This is a placeholder - you should replace with a proper sound file
+        const fallbackSound = Buffer.from('RIFF....WAV....', 'utf8');
+        await fs.writeFile(this.customSoundPath, fallbackSound);
+        this.errorSound = this.customSoundPath;
+      }
     }
   }
 
@@ -33,15 +50,47 @@ class NotificationService {
     }
   }
 
-  playErrorSound() {
-    if (process.platform === 'darwin') {
-      // On macOS, use system sound
-      const { exec } = require('child_process');
-      exec(`afplay /System/Library/Sounds/${this.errorSound}.aiff`);
-    } else {
-      // For other platforms, we could use a sound library
-      // This is a placeholder for future implementation
-      console.log('Playing error sound on non-macOS platform');
+  async playErrorSound() {
+    try {
+      if (process.platform === 'darwin') {
+        // On macOS, use system sound
+        await new Promise((resolve, reject) => {
+          exec(`afplay /System/Library/Sounds/${this.errorSound}.aiff`, (error) => {
+            if (error) {
+              console.error('Failed to play error sound:', error);
+              reject(error);
+            } else {
+              resolve();
+            }
+          });
+        });
+      } else if (process.platform === 'win32') {
+        // On Windows, use PowerShell to play sound
+        await new Promise((resolve, reject) => {
+          exec(`powershell -c "(New-Object Media.SoundPlayer '${this.errorSound}').PlaySync()"`, (error) => {
+            if (error) {
+              console.error('Failed to play error sound:', error);
+              reject(error);
+            } else {
+              resolve();
+            }
+          });
+        });
+      } else {
+        // On Linux, try to use paplay (PulseAudio)
+        await new Promise((resolve, reject) => {
+          exec(`paplay ${this.errorSound}`, (error) => {
+            if (error) {
+              console.error('Failed to play error sound:', error);
+              reject(error);
+            } else {
+              resolve();
+            }
+          });
+        });
+      }
+    } catch (error) {
+      console.error('Error playing sound:', error);
     }
   }
 
@@ -77,6 +126,14 @@ class NotificationService {
       'Transcription Error',
       error.message || 'Failed to transcribe audio',
       'error'
+    );
+  }
+
+  showNoAudioDetected() {
+    this.showNotification(
+      'No Audio Detected',
+      'No speech was detected during the recording.',
+      'info'
     );
   }
 

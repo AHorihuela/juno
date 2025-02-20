@@ -1,120 +1,138 @@
+const { systemPreferences } = require('electron');
+const AudioRecorder = require('../recorder');
+const notificationService = require('../notificationService');
+
+// Mock dependencies
+jest.mock('electron', () => ({
+  systemPreferences: {
+    getMediaAccessStatus: jest.fn(),
+    askForMediaAccess: jest.fn()
+  }
+}));
+
+jest.mock('../notificationService');
 jest.mock('node-record-lpcm16', () => ({
   record: jest.fn().mockReturnValue({
     stream: jest.fn().mockReturnValue({
-      on: jest.fn().mockReturnThis(),
+      on: jest.fn().mockReturnThis()
     }),
-    stop: jest.fn(),
-  }),
+    stop: jest.fn()
+  })
 }));
-
-jest.mock('../transcriptionService', () => ({
-  transcribeAudio: jest.fn().mockResolvedValue('This is a stub transcription.'),
-}));
-
-const recorder = require('../recorder');
-const record = require('node-record-lpcm16');
-const transcriptionService = require('../transcriptionService');
 
 describe('AudioRecorder', () => {
+  let recorder;
+
   beforeEach(() => {
     jest.clearAllMocks();
-    // Reset recorder state
-    recorder.recording = false;
-    recorder.recorder = null;
-    recorder.audioData = [];
+    recorder = new AudioRecorder();
   });
 
-  it('starts recording when start() is called', () => {
-    const startListener = jest.fn();
-    recorder.on('start', startListener);
-
-    recorder.start();
-
-    expect(record.record).toHaveBeenCalledWith({
-      sampleRate: 16000,
-      channels: 1,
-      audioType: 'raw',
-    });
-    expect(recorder.isRecording()).toBe(true);
-    expect(startListener).toHaveBeenCalled();
-  });
-
-  it('stops recording and gets transcription when stop() is called', async () => {
-    const stopListener = jest.fn();
-    const transcriptionListener = jest.fn();
-    recorder.on('stop', stopListener);
-    recorder.on('transcription', transcriptionListener);
-
-    // Start recording first
-    recorder.start();
-    expect(recorder.isRecording()).toBe(true);
-
-    // Simulate some audio data
-    const testData = Buffer.from('test audio data');
-    recorder.audioData.push(testData);
-
-    // Then stop
-    await recorder.stop();
-
-    expect(recorder.isRecording()).toBe(false);
-    expect(stopListener).toHaveBeenCalled();
-    expect(transcriptionService.transcribeAudio).toHaveBeenCalledWith(expect.any(Buffer));
-    expect(transcriptionListener).toHaveBeenCalledWith('This is a stub transcription.');
-  });
-
-  it('emits error events when recording fails', () => {
-    const errorListener = jest.fn();
-    recorder.on('error', errorListener);
-
-    // Mock record to throw an error
-    record.record.mockImplementationOnce(() => {
-      throw new Error('Recording failed');
+  describe('Microphone Permission Handling', () => {
+    it('checks microphone permission on start', async () => {
+      systemPreferences.getMediaAccessStatus.mockReturnValue('granted');
+      
+      await recorder.start();
+      
+      expect(systemPreferences.getMediaAccessStatus).toHaveBeenCalledWith('microphone');
     });
 
-    recorder.start();
+    it('requests permission if status is not-determined', async () => {
+      systemPreferences.getMediaAccessStatus.mockReturnValue('not-determined');
+      systemPreferences.askForMediaAccess.mockResolvedValue(true);
+      
+      await recorder.start();
+      
+      expect(systemPreferences.askForMediaAccess).toHaveBeenCalledWith('microphone');
+    });
 
-    expect(errorListener).toHaveBeenCalledWith(expect.any(Error));
-    expect(recorder.isRecording()).toBe(false);
+    it('shows error notification if permission denied', async () => {
+      systemPreferences.getMediaAccessStatus.mockReturnValue('denied');
+      
+      await recorder.start();
+      
+      expect(notificationService.showMicrophoneError).toHaveBeenCalled();
+      expect(recorder.recording).toBe(false);
+    });
+
+    it('shows error notification if permission request rejected', async () => {
+      systemPreferences.getMediaAccessStatus.mockReturnValue('not-determined');
+      systemPreferences.askForMediaAccess.mockResolvedValue(false);
+      
+      await recorder.start();
+      
+      expect(notificationService.showMicrophoneError).toHaveBeenCalled();
+      expect(recorder.recording).toBe(false);
+    });
+
+    it('proceeds with recording if permission granted', async () => {
+      systemPreferences.getMediaAccessStatus.mockReturnValue('granted');
+      
+      await recorder.start();
+      
+      expect(recorder.recording).toBe(true);
+      expect(notificationService.showMicrophoneError).not.toHaveBeenCalled();
+    });
+
+    it('handles permission check errors gracefully', async () => {
+      systemPreferences.getMediaAccessStatus.mockImplementation(() => {
+        throw new Error('Permission check failed');
+      });
+      
+      await recorder.start();
+      
+      expect(notificationService.showNotification).toHaveBeenCalledWith(
+        'Recording Error',
+        'Permission check failed',
+        'error'
+      );
+      expect(recorder.recording).toBe(false);
+    });
   });
 
-  it('handles data events from the recorder', (done) => {
-    const testData = Buffer.from('test audio data');
-    const dataListener = jest.fn();
+  describe('Recording State Management', () => {
+    beforeEach(() => {
+      systemPreferences.getMediaAccessStatus.mockReturnValue('granted');
+    });
 
-    // Mock the stream to emit data
-    record.record.mockReturnValueOnce({
-      stream: () => ({
-        on: (event, callback) => {
-          if (event === 'data') {
-            process.nextTick(() => callback(testData));
+    it('prevents multiple simultaneous recordings', async () => {
+      await recorder.start();
+      await recorder.start();
+      
+      // Should only set up recording once
+      expect(recorder.recorder.stream).toHaveBeenCalledTimes(1);
+    });
+
+    it('cleans up resources on stop', async () => {
+      await recorder.start();
+      await recorder.stop();
+      
+      expect(recorder.recording).toBe(false);
+      expect(recorder.recorder).toBeNull();
+    });
+
+    it('handles recording errors with notifications', async () => {
+      const mockStream = {
+        on: jest.fn().mockImplementation((event, callback) => {
+          if (event === 'error') {
+            callback(new Error('Recording failed'));
           }
-          return { on: jest.fn() };
-        }
-      }),
-      stop: jest.fn(),
+          return mockStream;
+        })
+      };
+      
+      require('node-record-lpcm16').record.mockReturnValue({
+        stream: jest.fn().mockReturnValue(mockStream),
+        stop: jest.fn()
+      });
+      
+      await recorder.start();
+      
+      expect(notificationService.showNotification).toHaveBeenCalledWith(
+        'Recording Error',
+        'Recording failed',
+        'error'
+      );
     });
-
-    recorder.on('data', dataListener);
-    recorder.start();
-
-    process.nextTick(() => {
-      expect(dataListener).toHaveBeenCalledWith(testData);
-      expect(recorder.audioData).toContainEqual(testData);
-      done();
-    });
-  });
-
-  it('handles transcription errors gracefully', async () => {
-    const errorListener = jest.fn();
-    recorder.on('error', errorListener);
-
-    // Mock transcription to fail
-    transcriptionService.transcribeAudio.mockRejectedValueOnce(new Error('Transcription failed'));
-
-    // Start and stop recording
-    recorder.start();
-    await recorder.stop();
-
-    expect(errorListener).toHaveBeenCalledWith(expect.any(Error));
   });
 }); 

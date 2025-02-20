@@ -35,25 +35,60 @@ function createWindow() {
       mainWindow.webContents.openDevTools();
     }
 
-    mainWindow.on('closed', () => {
-      mainWindow = null;
-    });
-
     // Setup recording event handlers
-    recorder.on('start', () => {
-      mainWindow.webContents.send('recording-status', true);
-    });
+    const onRecordingStart = () => {
+      console.log('Recording started, registering Escape key');
+      // Register Escape key when recording starts
+      const escSuccess = globalShortcut.register('Escape', () => {
+        console.log('Escape pressed, stopping recording');
+        recorder.stop();
+      });
+      console.log('Escape key registration success:', escSuccess);
+      
+      if (mainWindow) {
+        mainWindow.webContents.send('recording-status', true);
+      }
+    };
 
-    recorder.on('stop', () => {
-      mainWindow.webContents.send('recording-status', false);
-    });
+    const onRecordingStop = () => {
+      console.log('Recording stopped, unregistering Escape key');
+      // Unregister Escape key when recording stops
+      globalShortcut.unregister('Escape');
+      
+      if (mainWindow) {
+        mainWindow.webContents.send('recording-status', false);
+      }
+    };
 
-    recorder.on('error', (error) => {
-      mainWindow.webContents.send('recording-error', error.message);
-    });
+    const onRecordingError = (error) => {
+      if (mainWindow) {
+        mainWindow.webContents.send('recording-error', error.message);
+      }
+    };
 
-    recorder.on('transcription', (text) => {
-      mainWindow.webContents.send('transcription', text);
+    const onTranscription = (text) => {
+      if (mainWindow) {
+        mainWindow.webContents.send('transcription', text);
+      }
+    };
+
+    // Register event handlers
+    recorder.on('start', onRecordingStart);
+    recorder.on('stop', onRecordingStop);
+    recorder.on('error', onRecordingError);
+    recorder.on('transcription', onTranscription);
+
+    mainWindow.on('closed', () => {
+      // Clean up event handlers
+      recorder.removeListener('start', onRecordingStart);
+      recorder.removeListener('stop', onRecordingStop);
+      recorder.removeListener('error', onRecordingError);
+      recorder.removeListener('transcription', onTranscription);
+      
+      // Ensure Escape key is unregistered
+      globalShortcut.unregister('Escape');
+      
+      mainWindow = null;
     });
 
   } catch (error) {
@@ -92,21 +127,32 @@ function registerShortcuts() {
   });
 
   console.log('Command+Shift+Space registration success:', success);
-
-  // Register Escape key to stop recording
-  const escSuccess = globalShortcut.register('Escape', () => {
-    console.log('Escape pressed');
-    if (recorder.isRecording()) {
-      recorder.stop();
-    }
-  });
-
-  console.log('Escape registration success:', escSuccess);
-
-  // Check if shortcuts are registered
-  console.log('Command+Shift+Space is registered:', globalShortcut.isRegistered('CommandOrControl+Shift+Space'));
-  console.log('Escape is registered:', globalShortcut.isRegistered('Escape'));
 }
+
+// Handle recording state changes
+recorder.on('start', () => {
+  console.log('Recording started, registering Escape key');
+  // Register Escape key when recording starts
+  const escSuccess = globalShortcut.register('Escape', () => {
+    console.log('Escape pressed, stopping recording');
+    recorder.stop();
+  });
+  console.log('Escape key registration success:', escSuccess);
+  
+  if (mainWindow) {
+    mainWindow.webContents.send('recording-status', true);
+  }
+});
+
+recorder.on('stop', () => {
+  console.log('Recording stopped, unregistering Escape key');
+  // Unregister Escape key when recording stops
+  globalShortcut.unregister('Escape');
+  
+  if (mainWindow) {
+    mainWindow.webContents.send('recording-status', false);
+  }
+});
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.

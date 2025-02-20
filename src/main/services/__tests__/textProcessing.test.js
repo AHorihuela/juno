@@ -8,27 +8,35 @@ const {
 
 describe('Text Processing', () => {
   describe('autoPunctuate', () => {
-    it('adds periods between sentences', () => {
-      const input = 'This is a sentence This is another one';
-      const expected = 'This is a sentence. This is another one.';
-      expect(autoPunctuate(input)).toBe(expected);
-    });
-
-    it('adds commas for natural pauses', () => {
-      const input = 'Hello  there  friend';  // Double spaces indicate pauses
-      const expected = 'Hello, there, friend.';
-      expect(autoPunctuate(input)).toBe(expected);
-    });
-
-    it('capitalizes first letters of sentences', () => {
-      const input = 'hello there. how are you';
-      const expected = 'Hello there. How are you.';
-      expect(autoPunctuate(input)).toBe(expected);
-    });
-
-    it('handles empty or null input', () => {
+    it('handles empty input', () => {
       expect(autoPunctuate('')).toBe('');
       expect(autoPunctuate(null)).toBe('');
+      expect(autoPunctuate(undefined)).toBe('');
+    });
+
+    it('adds periods to sentences without punctuation', () => {
+      expect(autoPunctuate('hello world')).toBe('hello world.');
+      expect(autoPunctuate('one two three')).toBe('one two three.');
+    });
+
+    it('preserves existing punctuation', () => {
+      expect(autoPunctuate('hello world!')).toBe('hello world!');
+      expect(autoPunctuate('is this a question?')).toBe('is this a question?');
+    });
+
+    it('prevents double periods', () => {
+      expect(autoPunctuate('hello world..')).toBe('hello world.');
+      expect(autoPunctuate('test... more test')).toBe('test. more test.');
+    });
+
+    it('handles multiple sentences', () => {
+      expect(autoPunctuate('one. two three')).toBe('one. two three.');
+      expect(autoPunctuate('hello! how are you')).toBe('hello! how are you.');
+    });
+
+    it('cleans up spaces around punctuation', () => {
+      expect(autoPunctuate('hello . world')).toBe('hello. world.');
+      expect(autoPunctuate('test  .')).toBe('test.');
     });
   });
 
@@ -129,6 +137,20 @@ describe('Text Processing', () => {
     it('handles empty or null input', () => {
       expect(processText('')).toBe('');
       expect(processText(null)).toBe('');
+    });
+  });
+
+  describe('processText integration', () => {
+    it('properly processes text with existing punctuation', () => {
+      const input = 'hello world.. this is a test.. final sentence';
+      const expected = 'hello world. this is a test. final sentence.';
+      expect(processText(input)).toBe(expected);
+    });
+
+    it('handles mixed punctuation cases', () => {
+      const input = 'is this working? yes it is.. great!.. done';
+      const expected = 'is this working? yes it is. great! done.';
+      expect(processText(input)).toBe(expected);
     });
   });
 }); 

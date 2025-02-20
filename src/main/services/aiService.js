@@ -44,25 +44,59 @@ class AIService {
   async isAICommand(text) {
     if (!text) return false;
 
+    console.log('[AIService] Checking if text is AI command:', text);
+
+    // First normalize the text to check conditions
+    const normalizedText = text.toLowerCase().trim();
+
     // Skip AI if explicitly requesting transcription
-    if (text.toLowerCase().startsWith('transcribe the following')) {
+    if (normalizedText.startsWith('transcribe the following')) {
+      console.log('[AIService] Skipping AI - explicit transcription request');
       return false;
     }
 
-    const words = text.toLowerCase().trim().split(/\s+/);
+    // Split into words, preserving original structure but normalized for comparison
+    const words = normalizedText.split(/\s+/);
     if (words.length === 0) return false;
 
-    // Check for trigger word
+    // Get trigger word from config
     const triggerWord = await configService.getAITriggerWord() || 'juno';
-    if (words[0] === triggerWord.toLowerCase()) {
-      return true;
+    console.log('[AIService] Trigger word:', triggerWord);
+
+    // Check first 3 words for trigger word
+    const firstThreeWords = words.slice(0, 3).map(w => w.replace(/[.,!?]$/, ''));
+    console.log('[AIService] Checking first three words:', firstThreeWords);
+
+    // Common greeting words that can precede the trigger word
+    const GREETINGS = new Set(['hey', 'hi', 'hello', 'yo', 'ok', 'okay', 'um', 'uh']);
+
+    // Check if trigger word appears in first 3 words with valid prefix
+    for (let i = 0; i < firstThreeWords.length; i++) {
+      if (firstThreeWords[i] === triggerWord.toLowerCase()) {
+        // If not first word, check if previous words are greetings
+        if (i === 0 || firstThreeWords.slice(0, i).every(w => GREETINGS.has(w))) {
+          console.log('[AIService] Trigger word matched with valid prefix');
+          return true;
+        }
+      }
     }
 
-    // Check for action verbs in first two words
+    // Check for action verbs in first two words (per spec)
     if (words.length >= 2) {
-      return ACTION_VERBS.has(words[0]) || ACTION_VERBS.has(words[1]);
+      const firstTwoWords = [
+        words[0].replace(/[.,!?]$/, ''),
+        words[1].replace(/[.,!?]$/, '')
+      ];
+      const hasActionVerb = ACTION_VERBS.has(firstTwoWords[0]) || ACTION_VERBS.has(firstTwoWords[1]);
+      console.log('[AIService] Action verb check:', {
+        firstWord: firstTwoWords[0],
+        secondWord: firstTwoWords[1],
+        hasActionVerb
+      });
+      return hasActionVerb;
     }
 
+    console.log('[AIService] No AI command detected');
     return false;
   }
 
@@ -110,7 +144,9 @@ class AIService {
             {
               role: 'system',
               content: 'You are a helpful AI assistant integrated into a dictation tool. ' +
-                       'Respond directly and concisely. Format output in markdown when appropriate.'
+                       'Respond directly and concisely. Do not use any markdown formatting, ' +
+                       'code blocks, or quotation marks around your responses. Provide your ' +
+                       'response as plain text that can be directly inserted into the user\'s document.'
             },
             { role: 'user', content: prompt }
           ],
@@ -122,8 +158,11 @@ class AIService {
       const response = await this.currentRequest.promise;
       this.currentRequest = null;
 
+      // Clean the response text
+      const cleanedText = this.cleanResponse(response.choices[0].message.content.trim());
+
       return {
-        text: response.choices[0].message.content.trim(),
+        text: cleanedText,
         hasHighlight: Boolean(highlightedText),
         originalCommand: command,
       };
@@ -178,6 +217,24 @@ class AIService {
     }
 
     return parts.join('\n');
+  }
+
+  /**
+   * Clean response text by removing markdown and unwanted formatting
+   * @param {string} text - Raw response text
+   * @returns {string} Cleaned text
+   */
+  cleanResponse(text) {
+    return text
+      // Remove code blocks
+      .replace(/```[\s\S]*?```/g, '')
+      // Remove inline code
+      .replace(/`([^`]+)`/g, '$1')
+      // Remove quotes
+      .replace(/^["']|["']$/g, '')
+      // Clean up extra whitespace
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
   }
 
   /**

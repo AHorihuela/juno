@@ -36,41 +36,40 @@ function debugLog(functionName, input, output) {
  * @returns {string} - Punctuated text
  */
 function autoPunctuate(text) {
-  if (!text) return '';
+  console.log('[TextProcessing] Starting autoPunctuate with:', text);
   
-  let processed = text;
+  // Normalize multiple periods to single period
+  text = text.replace(/\.+/g, '.');
   
-  // Remove any existing final punctuation
-  processed = processed.replace(/[.!?]\s*$/, '');
+  // Split on sentence boundaries while preserving punctuation
+  const sentences = text.split(/([.!?]+)/).filter(Boolean);
+  console.log('[TextProcessing] Split sentences:', sentences);
   
-  // Add periods for clear sentence breaks
-  processed = processed.replace(/([a-z])\s+([A-Z])/g, '$1. $2');
+  // Process each sentence
+  const processedSentences = sentences.map((part, i) => {
+    // If it's punctuation, preserve it
+    if (/^[.!?]+$/.test(part)) {
+      return part + ' '; // Add space after punctuation
+    }
+    
+    // Trim the sentence
+    const trimmed = part.trim();
+    if (!trimmed) return '';
+    
+    console.log('[TextProcessing] Processing sentence:', trimmed);
+    
+    // If next part is not punctuation, add period
+    const nextPart = sentences[i + 1];
+    if (!nextPart || !/^[.!?]+$/.test(nextPart)) {
+      return trimmed + '. ';
+    }
+    
+    return trimmed;
+  });
   
-  // Add commas for natural pauses (indicated by multiple spaces in Whisper output)
-  processed = processed.replace(/\s{2,}/g, ', ');
-  
-  // Add commas after transition words if not already present
-  const transitionPattern = new RegExp(`\\b(${TRANSITIONS.join('|')})\\b(?![,.](?:\\s|$))`, 'gi');
-  processed = processed.replace(transitionPattern, '$1,');
-  
-  // Ensure proper spacing after punctuation
-  processed = processed.replace(/([.,!?])\s*/g, '$1 ');
-  
-  // Capitalize first letter of sentences
-  processed = processed.replace(/(^|[.!?]\s+)([a-z])/g, (_, sep, letter) => sep + letter.toUpperCase());
-  
-  // Add final period if missing
-  if (!/[.!?]$/.test(processed)) {
-    processed += '.';
-  }
-  
-  // Clean up any double punctuation or spaces
-  processed = processed.replace(/([.,!?])\s*([.,!?])/g, '$2')
-    .replace(/\s+/g, ' ')
-    .trim();
-  
-  debugLog('autoPunctuate', text, processed);
-  return processed;
+  const result = processedSentences.join('').trim();
+  console.log('[TextProcessing] Final punctuated text:', result);
+  return result;
 }
 
 /**
