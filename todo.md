@@ -37,15 +37,15 @@ A structured checklist covering each phase of the Dictation & AI-Assisted Writin
 ---
 
 ## 3. Hotkey Registration & Audio Capture
-- [ ] **GlobalShortcut Registration**
-  - [ ] Register double-tap `Fn`, single-tap `Fn`, and press-and-hold `Fn`.
-  - [ ] Ensure `Esc` key also stops any ongoing recording.
-  - [ ] Write tests to confirm shortcuts are registered.
+- [x] **GlobalShortcut Registration**
+  - [x] Register double-tap `Fn`, single-tap `Fn`, and press-and-hold `Fn`.
+  - [x] Ensure `Esc` key also stops any ongoing recording.
+  - [x] Write tests to confirm shortcuts are registered.
 
-- [ ] **Integrate Microphone Access**
-  - [ ] Install `node-record-lpcm16` or similar library.
-  - [ ] Create logic to start/stop recording when shortcuts fire.
-  - [ ] Test raw audio logging to confirm data capture.
+- [x] **Integrate Microphone Access**
+  - [x] Install `node-record-lpcm16` or similar library.
+  - [x] Create logic to start/stop recording when shortcuts fire.
+  - [x] Test raw audio logging to confirm data capture.
 
 ---
 
