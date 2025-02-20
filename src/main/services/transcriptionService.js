@@ -19,8 +19,8 @@ class TranscriptionService {
    * Initialize OpenAI client with API key
    * @throws {Error} If API key is not set
    */
-  initializeOpenAI() {
-    const apiKey = configService.getOpenAIApiKey();
+  async initializeOpenAI() {
+    const apiKey = await configService.getOpenAIApiKey();
     if (!apiKey) {
       throw new Error('OpenAI API key not configured');
     }
@@ -61,7 +61,7 @@ class TranscriptionService {
     const processedText = textProcessing.processText(text);
     
     // Check if this is an AI command
-    if (aiService.isAICommand(processedText)) {
+    if (await aiService.isAICommand(processedText)) {
       return {
         isAICommand: true,
         result: await aiService.processCommand(processedText, highlightedText),
@@ -88,7 +88,7 @@ class TranscriptionService {
    */
   async transcribeAudio(audioData, highlightedText = '') {
     if (!this.openai) {
-      this.initializeOpenAI();
+      await this.initializeOpenAI();
     }
 
     let tempFile = null;

@@ -22,10 +22,10 @@ class AIService {
     this.currentRequest = null;
   }
 
-  initializeOpenAI() {
+  async initializeOpenAI() {
     if (this.openai) return;
     
-    const apiKey = configService.getOpenAIApiKey();
+    const apiKey = await configService.getOpenAIApiKey();
     if (!apiKey) {
       throw new Error('OpenAI API key not configured');
     }
@@ -35,9 +35,9 @@ class AIService {
   /**
    * Check if the transcribed text is an AI command
    * @param {string} text - Transcribed text to check
-   * @returns {boolean} True if this is an AI command
+   * @returns {Promise<boolean>} True if this is an AI command
    */
-  isAICommand(text) {
+  async isAICommand(text) {
     if (!text) return false;
 
     // Skip AI if explicitly requesting transcription
@@ -49,7 +49,7 @@ class AIService {
     if (words.length === 0) return false;
 
     // Check for trigger word
-    const triggerWord = configService.getAITriggerWord() || 'juno';
+    const triggerWord = await configService.getAITriggerWord() || 'juno';
     if (words[0] === triggerWord.toLowerCase()) {
       return true;
     }
@@ -82,7 +82,7 @@ class AIService {
    */
   async processCommand(command, highlightedText = '') {
     try {
-      this.initializeOpenAI();
+      await this.initializeOpenAI();
 
       // Get context
       const context = await this.getContext();
@@ -93,7 +93,7 @@ class AIService {
 
       // Create completion request
       this.currentRequest = this.openai.chat.completions.create({
-        model: configService.getAIModel() || 'gpt-4',
+        model: await configService.getAIModel() || 'gpt-4',
         messages: [
           {
             role: 'system',
@@ -102,7 +102,7 @@ class AIService {
           },
           { role: 'user', content: prompt }
         ],
-        temperature: configService.getAITemperature() || 0.7,
+        temperature: await configService.getAITemperature() || 0.7,
       });
 
       // Wait for response

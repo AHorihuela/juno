@@ -1,4 +1,8 @@
-const Store = require('electron-store');
+let Store;
+(async () => {
+  Store = (await import('electron-store')).default;
+})();
+
 const crypto = require('crypto');
 
 class ConfigService {
@@ -6,7 +10,10 @@ class ConfigService {
     this.store = null;
   }
 
-  initializeStore() {
+  async initializeStore() {
+    if (!Store) {
+      Store = (await import('electron-store')).default;
+    }
     if (!this.store) {
       this.store = new Store({
         encryptionKey: crypto.randomBytes(32).toString('hex'),
@@ -43,73 +50,85 @@ class ConfigService {
   }
 
   // OpenAI API Key
-  getOpenAIApiKey() {
-    return this.initializeStore().get('openaiApiKey');
+  async getOpenAIApiKey() {
+    const store = await this.initializeStore();
+    return store.get('openaiApiKey');
   }
 
-  setOpenAIApiKey(key) {
-    this.initializeStore().set('openaiApiKey', key);
+  async setOpenAIApiKey(key) {
+    const store = await this.initializeStore();
+    store.set('openaiApiKey', key);
   }
 
-  hasOpenAIApiKey() {
-    const key = this.getOpenAIApiKey();
+  async hasOpenAIApiKey() {
+    const key = await this.getOpenAIApiKey();
     return Boolean(key && key.trim());
   }
 
   // AI Trigger Word
-  getAITriggerWord() {
-    return this.initializeStore().get('aiTriggerWord');
+  async getAITriggerWord() {
+    const store = await this.initializeStore();
+    return store.get('aiTriggerWord');
   }
 
-  setAITriggerWord(word) {
-    this.initializeStore().set('aiTriggerWord', word);
+  async setAITriggerWord(word) {
+    const store = await this.initializeStore();
+    store.set('aiTriggerWord', word);
   }
 
   // AI Model
-  getAIModel() {
-    return this.initializeStore().get('aiModel');
+  async getAIModel() {
+    const store = await this.initializeStore();
+    return store.get('aiModel');
   }
 
-  setAIModel(model) {
-    this.initializeStore().set('aiModel', model);
+  async setAIModel(model) {
+    const store = await this.initializeStore();
+    store.set('aiModel', model);
   }
 
   // AI Temperature
-  getAITemperature() {
-    return this.initializeStore().get('aiTemperature');
+  async getAITemperature() {
+    const store = await this.initializeStore();
+    return store.get('aiTemperature');
   }
 
-  setAITemperature(temp) {
+  async setAITemperature(temp) {
     if (temp < 0 || temp > 2) {
       throw new Error('Temperature must be between 0 and 2');
     }
-    this.initializeStore().set('aiTemperature', temp);
+    const store = await this.initializeStore();
+    store.set('aiTemperature', temp);
   }
 
   // Startup Behavior
-  getStartupBehavior() {
-    return this.initializeStore().get('startupBehavior');
+  async getStartupBehavior() {
+    const store = await this.initializeStore();
+    return store.get('startupBehavior');
   }
 
-  setStartupBehavior(behavior) {
+  async setStartupBehavior(behavior) {
     if (!['minimized', 'normal'].includes(behavior)) {
       throw new Error('Invalid startup behavior');
     }
-    this.initializeStore().set('startupBehavior', behavior);
+    const store = await this.initializeStore();
+    store.set('startupBehavior', behavior);
   }
 
   // Default Microphone
-  getDefaultMicrophone() {
-    return this.initializeStore().get('defaultMicrophone');
+  async getDefaultMicrophone() {
+    const store = await this.initializeStore();
+    return store.get('defaultMicrophone');
   }
 
-  setDefaultMicrophone(deviceId) {
-    this.initializeStore().set('defaultMicrophone', deviceId);
+  async setDefaultMicrophone(deviceId) {
+    const store = await this.initializeStore();
+    store.set('defaultMicrophone', deviceId);
   }
 
   // Reset all settings to defaults
-  resetToDefaults() {
-    const store = this.initializeStore();
+  async resetToDefaults() {
+    const store = await this.initializeStore();
     store.clear();
     return store.store;
   }
