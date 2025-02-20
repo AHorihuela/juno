@@ -38,7 +38,7 @@ A structured checklist covering each phase of the Dictation & AI-Assisted Writin
 
 ## 3. Hotkey Registration & Audio Capture ✓
 - [x] **GlobalShortcut Registration**
-  - [x] Register double-tap `F6`, single-tap `F6`, and press-and-hold `F6`.
+  - [x] Register double-tap `Command+Shift+Space`, single-tap `Command+Shift+Space`, and press-and-hold `Command+Shift+Space`.
   - [x] Ensure `Esc` key also stops any ongoing recording.
   - [x] Write tests to confirm shortcuts are registered.
 
@@ -137,31 +137,31 @@ A structured checklist covering each phase of the Dictation & AI-Assisted Writin
 ---
 
 ## 9. Error Handling & Notifications (In Progress)
-- [ ] **OpenAI API Errors**
-  - [ ] Show subtle notification (Electron `new Notification()` or library).
-  - [ ] Play an error sound or beep.
+- [x] **OpenAI API Errors**
+  - [x] Show subtle notification (Electron `new Notification()` or library).
+  - [x] Play an error sound or beep.
 
-- [ ] **Microphone Access Denied**
-  - [ ] Prompt the user to grant microphone permissions.
-  - [ ] Fallback or instructions if permission remains denied.
+- [x] **Microphone Access Denied**
+  - [x] Prompt the user to grant microphone permissions.
+  - [x] Fallback or instructions if permission remains denied.
 
-- [ ] **Crash & Auto-Restart**
-  - [ ] Implement logic to catch crashes (`process.on('uncaughtException', ...)`) and relaunch.
-  - [ ] Test if the app restarts on unexpected errors (mock approach).
+- [x] **Crash & Auto-Restart**
+  - [x] Implement logic to catch crashes (`process.on('uncaughtException', ...)`) and relaunch.
+  - [x] Test if the app restarts on unexpected errors (mock approach).
 
-- [ ] **Cancel Ongoing AI Request**
-  - [ ] If user starts a new dictation, cancel the current request.
+- [x] **Cancel Ongoing AI Request**
+  - [x] If user starts a new dictation, cancel the current request.
 
-- [ ] **Test Each Error Scenario**
-  - [ ] Unit tests and integration tests verifying notifications, handling, and crash recovery.
+- [x] **Test Each Error Scenario**
+  - [x] Unit tests and integration tests verifying notifications, handling, and crash recovery.
 
 ---
 
-## 10. Final Integration & Packaging
-- [ ] **Wire All Components**
-  - [ ] Confirm end-to-end flow: Start recording -> Transcribe -> Process text or AI command -> Output.
-  - [ ] Verify settings update logic and real-time usage (trigger word, etc.).
-  - [ ] Check transcription history UI and AI responses.
+## 10. Final Integration & Packaging (In Progress)
+- [x] **Wire All Components**
+  - [x] Confirm end-to-end flow: Start recording -> Transcribe -> Process text or AI command -> Output.
+  - [x] Verify settings update logic and real-time usage (trigger word, etc.).
+  - [x] Check transcription history UI and AI responses.
 
 - [ ] **Bundle with Electron Builder**
   - [ ] Configure `electron-builder` or equivalent to create .dmg.
@@ -188,28 +188,28 @@ A structured checklist covering each phase of the Dictation & AI-Assisted Writin
 ---
 
 ## Next Steps:
-1. Complete Error Handling & Notifications section
-2. Implement system notifications and error sounds
-3. Add microphone permission handling
-4. Set up crash recovery system
-5. Begin final integration and packaging
+1. Complete Final Integration & Packaging section
+2. Configure electron-builder
+3. Perform end-to-end testing
+4. Generate macOS distribution package
+5. Begin optional post-release enhancements
 
 ---
 
 ## Usage of Prompts
-- [ ] **Utilize the Provided Code-Generation Prompts** in sequence:
+- [x] **Utilize the Provided Code-Generation Prompts** in sequence:
   1. [x] **Project Initialization & Basic Setup**
-  2. [ ] **Global Hotkey & Audio Capture Setup**
-  3. [ ] **Stubbed Transcription Function**
-  4. [ ] **Replace Stub with Whisper API Integration**
-  5. [ ] **Text Processing (Auto-Punctuation, Filler Word Filtering)**
-  6. [ ] **AI Command Detection & GPT Integration**
-  7. [ ] **Settings & Configuration**
-  8. [ ] **Error Handling & Notifications**
+  2. [x] **Global Hotkey & Audio Capture Setup**
+  3. [x] **Stubbed Transcription Function**
+  4. [x] **Replace Stub with Whisper API Integration**
+  5. [x] **Text Processing (Auto-Punctuation, Filler Word Filtering)**
+  6. [x] **AI Command Detection & GPT Integration**
+  7. [x] **Settings & Configuration**
+  8. [x] **Error Handling & Notifications**
   9. [ ] **Final Integration & Packaging**
 
-- [ ] **Iterate** over each prompt, review & refine generated code.
-- [ ] **Test** thoroughly before moving on to the next step.
+- [x] **Iterate** over each prompt, review & refine generated code.
+- [x] **Test** thoroughly before moving on to the next step.
 
 ---
 
