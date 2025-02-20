@@ -4,6 +4,7 @@
  */
 const OpenAI = require('openai');
 const configService = require('./configService');
+const textProcessing = require('./textProcessing');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -75,7 +76,10 @@ class TranscriptionService {
         language: 'en',
       });
 
-      return response.text;
+      // Process the transcribed text
+      const processedText = textProcessing.processText(response.text);
+      return processedText;
+
     } catch (error) {
       if (error.message === 'OpenAI API key not configured') {
         throw error;

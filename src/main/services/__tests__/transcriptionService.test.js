@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const OpenAI = require('openai');
 const configService = require('../configService');
+const textProcessing = require('../textProcessing');
 const transcriptionService = require('../transcriptionService');
 
 // Mock OpenAI
@@ -22,6 +23,11 @@ jest.mock('openai', () => {
 jest.mock('../configService', () => ({
   getOpenAIApiKey: jest.fn(),
   hasOpenAIApiKey: jest.fn(),
+}));
+
+// Mock textProcessing
+jest.mock('../textProcessing', () => ({
+  processText: jest.fn(text => text),
 }));
 
 // Mock fs operations
@@ -114,5 +120,32 @@ describe('TranscriptionService', () => {
     }
 
     expect(fs.promises.unlink).toHaveBeenCalled();
+  });
+
+  it('processes transcribed text before returning', async () => {
+    const rawTranscription = 'um like hello there I mean hi';
+    const processedTranscription = 'Hi.';
+    
+    OpenAI.mockCreate.mockResolvedValue({ text: rawTranscription });
+    textProcessing.processText.mockReturnValue(processedTranscription);
+
+    const audioData = Buffer.from('test audio data');
+    const result = await transcriptionService.transcribeAudio(audioData);
+
+    expect(textProcessing.processText).toHaveBeenCalledWith(rawTranscription);
+    expect(result).toBe(processedTranscription);
+  });
+
+  it('handles text processing errors gracefully', async () => {
+    const rawTranscription = 'test transcription';
+    OpenAI.mockCreate.mockResolvedValue({ text: rawTranscription });
+    textProcessing.processText.mockImplementation(() => {
+      throw new Error('Processing error');
+    });
+
+    const audioData = Buffer.from('test audio data');
+    await expect(transcriptionService.transcribeAudio(audioData))
+      .rejects
+      .toThrow('Transcription failed: Processing error');
   });
 }); 
