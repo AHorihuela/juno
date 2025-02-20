@@ -33831,9 +33831,56 @@ var Settings = function Settings() {
     className: "button-group"
   }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("button", {
     type: "submit"
-  }, "Save Settings"))), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("style", {
+  }, "Save Settings"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("button", {
+    type: "button",
+    onClick: /*#__PURE__*/_asyncToGenerator(/*#__PURE__*/_regeneratorRuntime().mark(function _callee4() {
+      var ipcRenderer, loadedSettings;
+      return _regeneratorRuntime().wrap(function _callee4$(_context4) {
+        while (1) switch (_context4.prev = _context4.next) {
+          case 0:
+            _context4.prev = 0;
+            ipcRenderer = (0,_utils_electron__WEBPACK_IMPORTED_MODULE_1__.getIpcRenderer)();
+            if (ipcRenderer) {
+              _context4.next = 5;
+              break;
+            }
+            setError('IPC not available');
+            return _context4.abrupt("return");
+          case 5:
+            if (!window.confirm('Are you sure you want to reset all settings to defaults?')) {
+              _context4.next = 13;
+              break;
+            }
+            _context4.next = 8;
+            return ipcRenderer.invoke('reset-settings');
+          case 8:
+            _context4.next = 10;
+            return ipcRenderer.invoke('get-settings');
+          case 10:
+            loadedSettings = _context4.sent;
+            setSettings(loadedSettings);
+            setSuccess(true);
+          case 13:
+            _context4.next = 19;
+            break;
+          case 15:
+            _context4.prev = 15;
+            _context4.t0 = _context4["catch"](0);
+            console.error('Error resetting settings:', _context4.t0);
+            setError(_context4.t0.message);
+          case 19:
+          case "end":
+            return _context4.stop();
+        }
+      }, _callee4, null, [[0, 15]]);
+    })),
+    style: {
+      marginLeft: '10px',
+      backgroundColor: '#d32f2f'
+    }
+  }, "Reset to Defaults"))), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("style", {
     jsx: true
-  }, "\n        .settings-container {\n          padding: 20px;\n          max-width: 600px;\n          margin: 0 auto;\n        }\n\n        .setting-group {\n          margin-bottom: 24px;\n          padding: 16px;\n          border: 1px solid #eee;\n          border-radius: 8px;\n        }\n\n        h2 {\n          margin-bottom: 24px;\n          color: #333;\n        }\n\n        h3 {\n          margin-bottom: 16px;\n          color: #666;\n        }\n\n        label {\n          display: block;\n          margin-bottom: 16px;\n          color: #333;\n        }\n\n        input, select {\n          display: block;\n          width: 100%;\n          padding: 8px;\n          margin-top: 4px;\n          border: 1px solid #ddd;\n          border-radius: 4px;\n        }\n\n        input[type=\"range\"] {\n          width: calc(100% - 40px);\n          display: inline-block;\n        }\n\n        .error-message {\n          padding: 12px;\n          background-color: #fee;\n          color: #c00;\n          border-radius: 4px;\n          margin-bottom: 16px;\n        }\n\n        .success-message {\n          padding: 12px;\n          background-color: #efe;\n          color: #0c0;\n          border-radius: 4px;\n          margin-bottom: 16px;\n        }\n\n        .button-group {\n          margin-top: 24px;\n          text-align: right;\n        }\n\n        button {\n          padding: 8px 16px;\n          background-color: #0066cc;\n          color: white;\n          border: none;\n          border-radius: 4px;\n          cursor: pointer;\n        }\n\n        button:hover {\n          background-color: #0052a3;\n        }\n      "));
+  }, "\n        .settings-container {\n          padding: 20px;\n          max-width: 600px;\n          margin: 0 auto;\n        }\n\n        .setting-group {\n          margin-bottom: 24px;\n          padding: 16px;\n          border: 1px solid #eee;\n          border-radius: 8px;\n        }\n\n        h2 {\n          margin-bottom: 24px;\n          color: #333;\n        }\n\n        h3 {\n          margin-bottom: 16px;\n          color: #666;\n        }\n\n        label {\n          display: block;\n          margin-bottom: 16px;\n          color: #333;\n        }\n\n        input, select {\n          display: block;\n          width: 100%;\n          padding: 8px;\n          margin-top: 4px;\n          border: 1px solid #ddd;\n          border-radius: 4px;\n        }\n\n        input[type=\"range\"] {\n          width: calc(100% - 40px);\n          display: inline-block;\n        }\n\n        .error-message {\n          padding: 12px;\n          background-color: #fee;\n          color: #c00;\n          border-radius: 4px;\n          margin-bottom: 16px;\n        }\n\n        .success-message {\n          padding: 12px;\n          background-color: #efe;\n          color: #0c0;\n          border-radius: 4px;\n          margin-bottom: 16px;\n        }\n\n        .button-group {\n          margin-top: 24px;\n          text-align: right;\n          display: flex;\n          justify-content: flex-end;\n          gap: 10px;\n        }\n\n        button {\n          padding: 8px 16px;\n          background-color: #0066cc;\n          color: white;\n          border: none;\n          border-radius: 4px;\n          cursor: pointer;\n        }\n\n        button:hover {\n          background-color: #0052a3;\n        }\n\n        button[type=\"button\"]:hover {\n          background-color: #b71c1c;\n        }\n      "));
 };
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (Settings);
 

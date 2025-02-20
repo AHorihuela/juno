@@ -198,6 +198,34 @@ const Settings = () => {
           <button type="submit">
             Save Settings
           </button>
+          <button 
+            type="button" 
+            onClick={async () => {
+              try {
+                const ipcRenderer = getIpcRenderer();
+                if (!ipcRenderer) {
+                  setError('IPC not available');
+                  return;
+                }
+                
+                if (window.confirm('Are you sure you want to reset all settings to defaults?')) {
+                  await ipcRenderer.invoke('reset-settings');
+                  const loadedSettings = await ipcRenderer.invoke('get-settings');
+                  setSettings(loadedSettings);
+                  setSuccess(true);
+                }
+              } catch (error) {
+                console.error('Error resetting settings:', error);
+                setError(error.message);
+              }
+            }}
+            style={{
+              marginLeft: '10px',
+              backgroundColor: '#d32f2f'
+            }}
+          >
+            Reset to Defaults
+          </button>
         </div>
       </form>
 
@@ -264,6 +292,9 @@ const Settings = () => {
         .button-group {
           margin-top: 24px;
           text-align: right;
+          display: flex;
+          justify-content: flex-end;
+          gap: 10px;
         }
 
         button {
@@ -277,6 +308,10 @@ const Settings = () => {
 
         button:hover {
           background-color: #0052a3;
+        }
+
+        button[type="button"]:hover {
+          background-color: #b71c1c;
         }
       `}</style>
     </div>

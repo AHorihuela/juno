@@ -136,6 +136,18 @@ app.whenReady().then(async () => {
     }
   });
 
+  // Add reset settings handler
+  ipcMain.handle('reset-settings', async () => {
+    console.log('Resetting settings to defaults...');
+    try {
+      await configService.resetToDefaults();
+      return { success: true };
+    } catch (error) {
+      console.error('Error resetting settings:', error);
+      throw new Error(`Failed to reset settings: ${error.message}`);
+    }
+  });
+
   console.log('Creating window and registering shortcuts...');
   createWindow();
   registerShortcuts();

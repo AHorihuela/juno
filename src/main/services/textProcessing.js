@@ -40,6 +40,9 @@ function autoPunctuate(text) {
   
   let processed = text;
   
+  // Remove any existing final punctuation
+  processed = processed.replace(/[.!?]\s*$/, '');
+  
   // Add periods for clear sentence breaks
   processed = processed.replace(/([a-z])\s+([A-Z])/g, '$1. $2');
   
@@ -61,8 +64,8 @@ function autoPunctuate(text) {
     processed += '.';
   }
   
-  // Clean up any double commas or spaces
-  processed = processed.replace(/,\s*,/g, ',')
+  // Clean up any double punctuation or spaces
+  processed = processed.replace(/([.,!?])\s*([.,!?])/g, '$2')
     .replace(/\s+/g, ' ')
     .trim();
   
