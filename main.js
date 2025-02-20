@@ -48,6 +48,10 @@ function createWindow() {
       mainWindow.webContents.send('recording-error', error.message);
     });
 
+    recorder.on('transcription', (text) => {
+      mainWindow.webContents.send('transcription', text);
+    });
+
   } catch (error) {
     console.error('Error creating window:', error);
     app.quit();

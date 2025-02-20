@@ -50,14 +50,14 @@ A structured checklist covering each phase of the Dictation & AI-Assisted Writin
 ---
 
 ## 4. Stubbed Transcription
-- [ ] **Create `transcriptionService.js`**
-  - [ ] Export a `transcribeAudio` function that returns `"This is a stub transcription."`
-  - [ ] Update code so that when recording ends, `transcribeAudio` is called.
-  - [ ] Display/log the stub string in React UI or the console.
+- [x] **Create `transcriptionService.js`**
+  - [x] Export a `transcribeAudio` function that returns `"This is a stub transcription."`
+  - [x] Update code so that when recording ends, `transcribeAudio` is called.
+  - [x] Display/log the stub string in React UI or the console.
 
-- [ ] **Add Tests for Stubbed Transcription**
-  - [ ] Confirm `transcribeAudio` is called upon stopping.
-  - [ ] Confirm the returned text is as expected.
+- [x] **Add Tests for Stubbed Transcription**
+  - [x] Confirm `transcribeAudio` is called upon stopping.
+  - [x] Confirm the returned text is as expected.
 
 ---
 

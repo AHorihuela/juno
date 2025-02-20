@@ -33468,6 +33468,10 @@ var App = function App() {
     _useState4 = _slicedToArray(_useState3, 2),
     error = _useState4[0],
     setError = _useState4[1];
+  var _useState5 = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(''),
+    _useState6 = _slicedToArray(_useState5, 2),
+    transcription = _useState6[0],
+    setTranscription = _useState6[1];
   (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(function () {
     var ipcRenderer = getIpcRenderer();
     if (!ipcRenderer) return;
@@ -33491,11 +33495,17 @@ var App = function App() {
       setError(errorMessage);
     });
 
+    // Listen for transcriptions
+    ipcRenderer.on('transcription', function (_, text) {
+      setTranscription(text);
+    });
+
     // Cleanup listeners
     return function () {
       ipcRenderer.removeAllListeners('recording-status');
       ipcRenderer.removeAllListeners('recording-error');
       ipcRenderer.removeAllListeners('error');
+      ipcRenderer.removeAllListeners('transcription');
     };
   }, []);
   return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("div", {
@@ -33518,9 +33528,17 @@ var App = function App() {
       padding: '10px',
       backgroundColor: '#fff3e0',
       borderRadius: '4px',
-      color: '#d32f2f'
+      color: '#d32f2f',
+      marginBottom: '10px'
     }
-  }, "Error: ", error), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("div", {
+  }, "Error: ", error), transcription && /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("div", {
+    style: {
+      padding: '10px',
+      backgroundColor: '#e8f5e9',
+      borderRadius: '4px',
+      marginBottom: '10px'
+    }
+  }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("strong", null, "Last Transcription:"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("p", null, transcription)), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("div", {
     style: {
       marginTop: '20px',
       fontSize: '14px',

@@ -56,6 +56,22 @@ describe('App Component', () => {
     expect(screen.getByText(/Microphone access denied/)).toBeInTheDocument();
   });
 
+  it('displays transcription when received', async () => {
+    render(<App />);
+    
+    // Get the transcription callback
+    const transcriptionCallback = mockIpcRenderer.on.mock.calls.find(
+      call => call[0] === 'transcription'
+    )[1];
+    
+    // Simulate transcription received
+    await act(async () => {
+      transcriptionCallback(null, 'This is a stub transcription.');
+    });
+    
+    expect(screen.getByText(/This is a stub transcription./)).toBeInTheDocument();
+  });
+
   it('cleans up listeners on unmount', () => {
     const { unmount } = render(<App />);
     unmount();
@@ -63,5 +79,6 @@ describe('App Component', () => {
     expect(mockIpcRenderer.removeAllListeners).toHaveBeenCalledWith('recording-status');
     expect(mockIpcRenderer.removeAllListeners).toHaveBeenCalledWith('recording-error');
     expect(mockIpcRenderer.removeAllListeners).toHaveBeenCalledWith('error');
+    expect(mockIpcRenderer.removeAllListeners).toHaveBeenCalledWith('transcription');
   });
 }); 

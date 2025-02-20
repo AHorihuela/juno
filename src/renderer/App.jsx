@@ -13,6 +13,7 @@ const getIpcRenderer = () => {
 const App = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [error, setError] = useState(null);
+  const [transcription, setTranscription] = useState('');
 
   useEffect(() => {
     const ipcRenderer = getIpcRenderer();
@@ -37,11 +38,17 @@ const App = () => {
       setError(errorMessage);
     });
 
+    // Listen for transcriptions
+    ipcRenderer.on('transcription', (_, text) => {
+      setTranscription(text);
+    });
+
     // Cleanup listeners
     return () => {
       ipcRenderer.removeAllListeners('recording-status');
       ipcRenderer.removeAllListeners('recording-error');
       ipcRenderer.removeAllListeners('error');
+      ipcRenderer.removeAllListeners('transcription');
     };
   }, []);
 
@@ -64,9 +71,22 @@ const App = () => {
             padding: '10px',
             backgroundColor: '#fff3e0',
             borderRadius: '4px',
-            color: '#d32f2f'
+            color: '#d32f2f',
+            marginBottom: '10px'
           }}>
             Error: {error}
+          </div>
+        )}
+
+        {transcription && (
+          <div style={{
+            padding: '10px',
+            backgroundColor: '#e8f5e9',
+            borderRadius: '4px',
+            marginBottom: '10px'
+          }}>
+            <strong>Last Transcription:</strong>
+            <p>{transcription}</p>
           </div>
         )}
 

@@ -1,11 +1,13 @@
 const record = require('node-record-lpcm16');
 const { EventEmitter } = require('events');
+const transcriptionService = require('./transcriptionService');
 
 class AudioRecorder extends EventEmitter {
   constructor() {
     super();
     this.recording = false;
     this.recorder = null;
+    this.audioData = [];
   }
 
   start() {
@@ -18,9 +20,13 @@ class AudioRecorder extends EventEmitter {
         audioType: 'raw',
       });
 
+      // Reset audio data buffer
+      this.audioData = [];
+
       // Log audio data for testing
       this.recorder.stream()
         .on('data', (data) => {
+          this.audioData.push(data);
           this.emit('data', data);
           console.log('Audio data received:', data.length, 'bytes');
         })
@@ -39,7 +45,7 @@ class AudioRecorder extends EventEmitter {
     }
   }
 
-  stop() {
+  async stop() {
     if (!this.recording) return;
     
     try {
@@ -48,6 +54,20 @@ class AudioRecorder extends EventEmitter {
         this.recorder = null;
       }
       this.recording = false;
+
+      // Combine all audio data into a single buffer
+      const completeAudioData = Buffer.concat(this.audioData);
+      
+      // Get transcription
+      try {
+        const transcription = await transcriptionService.transcribeAudio(completeAudioData);
+        this.emit('transcription', transcription);
+        console.log('Transcription:', transcription);
+      } catch (error) {
+        console.error('Transcription error:', error);
+        this.emit('error', error);
+      }
+
       this.emit('stop');
       console.log('Recording stopped');
     } catch (error) {

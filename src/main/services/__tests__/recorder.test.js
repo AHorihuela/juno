@@ -7,8 +7,13 @@ jest.mock('node-record-lpcm16', () => ({
   }),
 }));
 
+jest.mock('../transcriptionService', () => ({
+  transcribeAudio: jest.fn().mockResolvedValue('This is a stub transcription.'),
+}));
+
 const recorder = require('../recorder');
 const record = require('node-record-lpcm16');
+const transcriptionService = require('../transcriptionService');
 
 describe('AudioRecorder', () => {
   beforeEach(() => {
@@ -16,6 +21,7 @@ describe('AudioRecorder', () => {
     // Reset recorder state
     recorder.recording = false;
     recorder.recorder = null;
+    recorder.audioData = [];
   });
 
   it('starts recording when start() is called', () => {
@@ -33,19 +39,27 @@ describe('AudioRecorder', () => {
     expect(startListener).toHaveBeenCalled();
   });
 
-  it('stops recording when stop() is called', () => {
+  it('stops recording and gets transcription when stop() is called', async () => {
     const stopListener = jest.fn();
+    const transcriptionListener = jest.fn();
     recorder.on('stop', stopListener);
+    recorder.on('transcription', transcriptionListener);
 
     // Start recording first
     recorder.start();
     expect(recorder.isRecording()).toBe(true);
 
+    // Simulate some audio data
+    const testData = Buffer.from('test audio data');
+    recorder.audioData.push(testData);
+
     // Then stop
-    recorder.stop();
+    await recorder.stop();
 
     expect(recorder.isRecording()).toBe(false);
     expect(stopListener).toHaveBeenCalled();
+    expect(transcriptionService.transcribeAudio).toHaveBeenCalledWith(expect.any(Buffer));
+    expect(transcriptionListener).toHaveBeenCalledWith('This is a stub transcription.');
   });
 
   it('emits error events when recording fails', () => {
@@ -85,7 +99,22 @@ describe('AudioRecorder', () => {
 
     process.nextTick(() => {
       expect(dataListener).toHaveBeenCalledWith(testData);
+      expect(recorder.audioData).toContainEqual(testData);
       done();
     });
+  });
+
+  it('handles transcription errors gracefully', async () => {
+    const errorListener = jest.fn();
+    recorder.on('error', errorListener);
+
+    // Mock transcription to fail
+    transcriptionService.transcribeAudio.mockRejectedValueOnce(new Error('Transcription failed'));
+
+    // Start and stop recording
+    recorder.start();
+    await recorder.stop();
+
+    expect(errorListener).toHaveBeenCalledWith(expect.any(Error));
   });
 }); 
