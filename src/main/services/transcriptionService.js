@@ -113,11 +113,22 @@ class TranscriptionService {
       await new Promise((resolve, reject) => {
         writer.on('error', reject);
         writer.on('finish', resolve);
-        writer.write(audioBuffer);
+        
+        // Write the audio data in chunks to avoid memory issues
+        const chunkSize = 8192;
+        for (let i = 0; i < audioBuffer.length; i += chunkSize) {
+          const chunk = audioBuffer.slice(i, i + chunkSize);
+          writer.write(chunk);
+        }
         writer.end();
       });
 
-      console.log('WAV file written, size:', fs.statSync(tempFile).size);
+      const fileSize = fs.statSync(tempFile).size;
+      console.log('WAV file written, size:', fileSize);
+      
+      if (fileSize === 0) {
+        throw new Error('WAV file is empty');
+      }
 
       // Create form data
       const form = new FormData();

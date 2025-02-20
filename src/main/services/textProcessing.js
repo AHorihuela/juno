@@ -8,10 +8,12 @@ const FILLER_WORDS = new Set([
 ]);
 
 const SELF_CORRECTION_PATTERNS = [
-  { pattern: /.*?(?:i mean|i meant|actually|rather)\s+(\w+.*)/gi, replace: '$1' },
-  { pattern: /.*?(?:make that|should be)\s+(\w+.*)/gi, replace: '$1' },
-  { pattern: /(?:wait|sorry|no|correction),?\s+(?:not|i meant)\s+(\w+.*)/gi, replace: '$1' },
-  { pattern: /.*?\bor\b\s+(?:make that\s+)?(\w+.*?)(?:\s|$)/i, replace: '$1' }
+  // Only match when there's a clear correction marker
+  { pattern: /(\w+),?\s+(?:i mean|i meant|actually|rather)\s+(\w+.*)/i, replace: '$2' },
+  { pattern: /(\w+),?\s+(?:make that|should be)\s+(\w+.*)/i, replace: '$2' },
+  { pattern: /(?:wait|sorry|no|correction),?\s+(?:not|i meant)\s+(\w+.*)/i, replace: '$1' },
+  // Only replace the exact corrected phrase
+  { pattern: /(\w+)\s+or\s+(?:make that\s+)?(\w+)(?:\s|$)/i, replace: '$2' }
 ];
 
 const TRANSITIONS = [
@@ -103,11 +105,21 @@ function handleSelfCorrections(text) {
   if (!text) return '';
   
   let processed = text;
+  let wasChanged = false;
   
   // Apply each correction pattern
   SELF_CORRECTION_PATTERNS.forEach(({ pattern, replace }) => {
-    processed = processed.replace(pattern, replace);
+    const newText = processed.replace(pattern, replace);
+    if (newText !== processed) {
+      wasChanged = true;
+      processed = newText;
+    }
   });
+  
+  // If no corrections were made, return the original text
+  if (!wasChanged) {
+    processed = text;
+  }
   
   debugLog('handleSelfCorrections', text, processed);
   return processed.trim();
