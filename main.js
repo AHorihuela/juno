@@ -158,18 +158,20 @@ ipcMain.on('save-settings', async (event, settings) => {
   }
 });
 
-ipcMain.on('get-microphones', async (event) => {
+// Update microphone handling
+ipcMain.handle('get-microphones', async () => {
   try {
-    // Get available audio input devices
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const microphones = devices
-      .filter(device => device.kind === 'audioinput')
-      .map(device => ({
-        id: device.deviceId,
-        label: device.label || `Microphone ${device.deviceId}`,
-      }));
-    event.reply('microphones-loaded', microphones);
+    // Use electron's desktopCapturer to get audio sources
+    const sources = await require('electron').desktopCapturer.getSources({
+      types: ['audio'],
+      thumbnailSize: { width: 0, height: 0 }
+    });
+    
+    return sources.map(source => ({
+      id: source.id,
+      label: source.name
+    }));
   } catch (error) {
-    event.reply('settings-error', 'Failed to load microphones: ' + error.message);
+    throw new Error('Failed to load microphones: ' + error.message);
   }
 }); 

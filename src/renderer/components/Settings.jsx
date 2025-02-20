@@ -27,11 +27,16 @@ const Settings = () => {
       setLoading(false);
     });
 
-    // Load available microphones
-    ipcRenderer.send('get-microphones');
-    ipcRenderer.on('microphones-loaded', (_, devices) => {
-      setMicrophones(devices);
-    });
+    // Load available microphones using the new invoke method
+    const loadMicrophones = async () => {
+      try {
+        const devices = await ipcRenderer.invoke('get-microphones');
+        setMicrophones(devices);
+      } catch (error) {
+        setError(error.message);
+      }
+    };
+    loadMicrophones();
 
     // Handle errors
     ipcRenderer.on('settings-error', (_, errorMessage) => {
@@ -42,7 +47,6 @@ const Settings = () => {
     return () => {
       ipcRenderer.removeAllListeners('settings-loaded');
       ipcRenderer.removeAllListeners('settings-error');
-      ipcRenderer.removeAllListeners('microphones-loaded');
     };
   }, []);
 
