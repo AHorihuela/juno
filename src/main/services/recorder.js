@@ -14,6 +14,12 @@ class AudioRecorder extends EventEmitter {
     if (this.recording) return;
     
     try {
+      console.log('Starting recording with settings:', {
+        sampleRate: 16000,
+        channels: 1,
+        audioType: 'raw'
+      });
+      
       this.recorder = record.record({
         sampleRate: 16000,
         channels: 1,
@@ -28,7 +34,11 @@ class AudioRecorder extends EventEmitter {
         .on('data', (data) => {
           this.audioData.push(data);
           this.emit('data', data);
-          console.log('Audio data received:', data.length, 'bytes');
+          console.log('Audio data chunk received:', {
+            chunkSize: data.length,
+            totalSize: this.audioData.reduce((sum, chunk) => sum + chunk.length, 0),
+            chunks: this.audioData.length
+          });
         })
         .on('error', (err) => {
           console.error('Recording error:', err);
@@ -49,6 +59,7 @@ class AudioRecorder extends EventEmitter {
     if (!this.recording) return;
     
     try {
+      console.log('Stopping recording...');
       if (this.recorder) {
         this.recorder.stop();
         this.recorder = null;
@@ -57,12 +68,17 @@ class AudioRecorder extends EventEmitter {
 
       // Combine all audio data into a single buffer
       const completeAudioData = Buffer.concat(this.audioData);
+      console.log('Complete audio data:', {
+        totalSize: completeAudioData.length,
+        chunks: this.audioData.length
+      });
       
       // Get transcription
       try {
+        console.log('Sending audio for transcription...');
         const transcription = await transcriptionService.transcribeAudio(completeAudioData);
         this.emit('transcription', transcription);
-        console.log('Transcription:', transcription);
+        console.log('Transcription received:', transcription);
       } catch (error) {
         console.error('Transcription error:', error);
         this.emit('error', error);

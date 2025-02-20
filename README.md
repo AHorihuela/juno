@@ -47,8 +47,8 @@ npm run test:watch
 
 ## Usage
 
-- Double-tap F6 to start recording
-- Single-tap F6 to stop recording
+- Double-tap ⌘+⇧+Space (Command+Shift+Space) to start recording
+- Single-tap ⌘+⇧+Space to stop recording
 - Press Escape to stop recording at any time
 - Watch the status indicator for recording state
 - Check the error display if something goes wrong

@@ -104,8 +104,8 @@ const App = () => {
           <div style={{ marginTop: '20px', fontSize: '14px', color: '#666' }}>
             <p>Keyboard Shortcuts:</p>
             <ul>
-              <li>Double-tap F6: Start recording</li>
-              <li>Single-tap F6: Stop recording</li>
+              <li>Double-tap ⌘+⇧+Space: Start recording</li>
+              <li>Single-tap ⌘+⇧+Space: Stop recording</li>
               <li>Esc: Stop recording</li>
             </ul>
           </div>

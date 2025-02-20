@@ -33561,7 +33561,7 @@ var App = function App() {
       fontSize: '14px',
       color: '#666'
     }
-  }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("p", null, "Keyboard Shortcuts:"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("ul", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("li", null, "Double-tap F6: Start recording"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("li", null, "Single-tap F6: Stop recording"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("li", null, "Esc: Stop recording")))));
+  }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("p", null, "Keyboard Shortcuts:"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("ul", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("li", null, "Double-tap \u2318+\u21E7+Space: Start recording"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("li", null, "Single-tap \u2318+\u21E7+Space: Stop recording"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("li", null, "Esc: Stop recording")))));
 };
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (App);
 
@@ -33732,21 +33732,26 @@ var Settings = function Settings() {
             return _context3.abrupt("return");
           case 7:
             _context3.prev = 7;
-            _context3.next = 10;
+            console.log('Saving settings...', _objectSpread(_objectSpread({}, settings), {}, {
+              openaiApiKey: settings.openaiApiKey ? '[KEY LENGTH: ' + settings.openaiApiKey.length + ']' : 'none'
+            }));
+            _context3.next = 11;
             return ipcRenderer.invoke('save-settings', settings);
-          case 10:
+          case 11:
+            console.log('Settings saved successfully');
             setSuccess(true);
-            _context3.next = 16;
+            _context3.next = 19;
             break;
-          case 13:
-            _context3.prev = 13;
+          case 15:
+            _context3.prev = 15;
             _context3.t0 = _context3["catch"](7);
+            console.error('Error saving settings:', _context3.t0);
             setError(_context3.t0.message);
-          case 16:
+          case 19:
           case "end":
             return _context3.stop();
         }
-      }, _callee3, null, [[7, 13]]);
+      }, _callee3, null, [[7, 15]]);
     }));
     return function handleSubmit(_x) {
       return _ref3.apply(this, arguments);

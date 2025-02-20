@@ -78,9 +78,15 @@ const Settings = () => {
     }
 
     try {
+      console.log('Saving settings...', {
+        ...settings,
+        openaiApiKey: settings.openaiApiKey ? '[KEY LENGTH: ' + settings.openaiApiKey.length + ']' : 'none'
+      });
       await ipcRenderer.invoke('save-settings', settings);
+      console.log('Settings saved successfully');
       setSuccess(true);
     } catch (error) {
+      console.error('Error saving settings:', error);
       setError(error.message);
     }
   };

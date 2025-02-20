@@ -111,13 +111,20 @@ class ConfigService {
 
   // OpenAI API Key
   async getOpenAIApiKey() {
-    const store = await this.initializeStore();
-    return store.get('openaiApiKey');
+    const key = this.store.get('openaiApiKey', '');
+    console.log('Retrieved OpenAI API key, length:', key ? key.length : 0);
+    return key;
   }
 
   async setOpenAIApiKey(key) {
-    const store = await this.initializeStore();
-    store.set('openaiApiKey', key);
+    console.log('Setting OpenAI API key, length:', key ? key.length : 0);
+    if (!key) {
+      console.log('Deleting OpenAI API key');
+      this.store.delete('openaiApiKey');
+    } else {
+      console.log('Storing new OpenAI API key');
+      this.store.set('openaiApiKey', key);
+    }
   }
 
   async hasOpenAIApiKey() {
@@ -133,7 +140,11 @@ class ConfigService {
 
   async setAITriggerWord(word) {
     const store = await this.initializeStore();
-    store.set('aiTriggerWord', word);
+    if (!word) {
+      store.set('aiTriggerWord', 'juno'); // Use default
+    } else {
+      store.set('aiTriggerWord', word);
+    }
   }
 
   // AI Model
@@ -144,7 +155,11 @@ class ConfigService {
 
   async setAIModel(model) {
     const store = await this.initializeStore();
-    store.set('aiModel', model);
+    if (!model) {
+      store.set('aiModel', 'gpt-4'); // Use default
+    } else {
+      store.set('aiModel', model);
+    }
   }
 
   // AI Temperature
@@ -154,11 +169,14 @@ class ConfigService {
   }
 
   async setAITemperature(temp) {
-    if (temp < 0 || temp > 2) {
-      throw new Error('Temperature must be between 0 and 2');
-    }
     const store = await this.initializeStore();
-    store.set('aiTemperature', temp);
+    if (temp === null || temp === undefined) {
+      store.set('aiTemperature', 0.7); // Use default
+    } else if (temp < 0 || temp > 2) {
+      throw new Error('Temperature must be between 0 and 2');
+    } else {
+      store.set('aiTemperature', temp);
+    }
   }
 
   // Startup Behavior
@@ -168,11 +186,14 @@ class ConfigService {
   }
 
   async setStartupBehavior(behavior) {
-    if (!['minimized', 'normal'].includes(behavior)) {
-      throw new Error('Invalid startup behavior');
-    }
     const store = await this.initializeStore();
-    store.set('startupBehavior', behavior);
+    if (!behavior) {
+      store.set('startupBehavior', 'minimized'); // Use default
+    } else if (!['minimized', 'normal'].includes(behavior)) {
+      throw new Error('Invalid startup behavior');
+    } else {
+      store.set('startupBehavior', behavior);
+    }
   }
 
   // Default Microphone
@@ -183,7 +204,11 @@ class ConfigService {
 
   async setDefaultMicrophone(deviceId) {
     const store = await this.initializeStore();
-    store.set('defaultMicrophone', deviceId);
+    if (!deviceId) {
+      store.delete('defaultMicrophone');
+    } else {
+      store.set('defaultMicrophone', deviceId);
+    }
   }
 
   // Reset all settings to defaults

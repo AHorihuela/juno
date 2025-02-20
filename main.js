@@ -63,20 +63,26 @@ function createWindow() {
 }
 
 function registerShortcuts() {
-  // Register F6 key for toggle (simulating Fn key)
-  globalShortcut.register('F6', () => {
+  console.log('Registering shortcuts...');
+  
+  // Register Command+Shift+Space for toggle (instead of F6)
+  const success = globalShortcut.register('CommandOrControl+Shift+Space', () => {
+    console.log('Shortcut triggered');
     const now = Date.now();
     
     if (now - lastFnKeyPress <= FN_DOUBLE_TAP_DELAY) {
       // Double tap detected
+      console.log('Double tap detected, starting recording');
       clearTimeout(fnKeyTimeout);
       if (!recorder.isRecording()) {
         recorder.start();
       }
     } else {
       // Single tap - wait to see if it's a double tap
+      console.log('Single tap detected, waiting for potential double tap');
       fnKeyTimeout = setTimeout(() => {
         if (recorder.isRecording()) {
+          console.log('Single tap timeout reached, stopping recording');
           recorder.stop();
         }
       }, FN_DOUBLE_TAP_DELAY);
@@ -85,12 +91,21 @@ function registerShortcuts() {
     lastFnKeyPress = now;
   });
 
+  console.log('Command+Shift+Space registration success:', success);
+
   // Register Escape key to stop recording
-  globalShortcut.register('Escape', () => {
+  const escSuccess = globalShortcut.register('Escape', () => {
+    console.log('Escape pressed');
     if (recorder.isRecording()) {
       recorder.stop();
     }
   });
+
+  console.log('Escape registration success:', escSuccess);
+
+  // Check if shortcuts are registered
+  console.log('Command+Shift+Space is registered:', globalShortcut.isRegistered('CommandOrControl+Shift+Space'));
+  console.log('Escape is registered:', globalShortcut.isRegistered('Escape'));
 }
 
 // This method will be called when Electron has finished
@@ -159,14 +174,28 @@ process.on('uncaughtException', (error) => {
 // Update settings handlers to use handle/invoke
 ipcMain.handle('save-settings', async (_, settings) => {
   try {
-    await configService.setOpenAIApiKey(settings.openaiApiKey);
-    await configService.setAITriggerWord(settings.aiTriggerWord);
-    await configService.setAIModel(settings.aiModel);
-    await configService.setAITemperature(settings.aiTemperature);
-    await configService.setStartupBehavior(settings.startupBehavior);
-    await configService.setDefaultMicrophone(settings.defaultMicrophone);
+    // Handle each setting individually to properly handle null/undefined
+    if (settings.openaiApiKey !== undefined) {
+      await configService.setOpenAIApiKey(settings.openaiApiKey || '');
+    }
+    if (settings.aiTriggerWord !== undefined) {
+      await configService.setAITriggerWord(settings.aiTriggerWord || 'juno');
+    }
+    if (settings.aiModel !== undefined) {
+      await configService.setAIModel(settings.aiModel || 'gpt-4');
+    }
+    if (settings.aiTemperature !== undefined) {
+      await configService.setAITemperature(settings.aiTemperature || 0.7);
+    }
+    if (settings.startupBehavior !== undefined) {
+      await configService.setStartupBehavior(settings.startupBehavior || 'minimized');
+    }
+    if (settings.defaultMicrophone !== undefined) {
+      await configService.setDefaultMicrophone(settings.defaultMicrophone || '');
+    }
     return { success: true };
   } catch (error) {
+    console.error('Error saving settings:', error);
     throw new Error(`Failed to save settings: ${error.message}`);
   }
 });
