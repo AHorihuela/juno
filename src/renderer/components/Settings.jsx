@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getIpcRenderer } from '../utils/electron';
+import DictionaryManager from './DictionaryManager';
 
 const Settings = () => {
   const [settings, setSettings] = useState({
@@ -228,6 +229,8 @@ const Settings = () => {
           </button>
         </div>
       </form>
+
+      <DictionaryManager />
 
       <style jsx>{`
         .settings-container {

@@ -25,6 +25,8 @@ const TRANSITIONS = [
   'in conclusion'
 ];
 
+const dictionaryService = require('./dictionaryService');
+
 function debugLog(functionName, input, output) {
   console.log(`[${functionName}] Input: "${input}"`);
   console.log(`[${functionName}] Output: "${output}"`);
@@ -235,6 +237,9 @@ function processText(text) {
   processed = filterFillerWords(processed);
   processed = handleSelfCorrections(processed);
   
+  // Apply dictionary replacements after filler words and self-corrections
+  processed = dictionaryService.processText(processed);
+  
   // Split into sentences and process each one
   const sentences = processed.split(/(?<=[.!?])\s+/);
   processed = sentences
@@ -248,7 +253,7 @@ function processText(text) {
   processed = autoPunctuate(processed);
   processed = insertParagraphBreaks(processed);
   
-  debugLog('processText - final', text, processed);
+  debugLog('processText - end', text, processed);
   return processed;
 }
 

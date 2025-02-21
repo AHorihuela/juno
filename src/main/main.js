@@ -48,4 +48,15 @@ app.on('gpu-process-crashed', (event, killed) => {
     app.relaunch();
     app.exit(0);
   }, 2000);
+});
+
+const setupDictionaryIpcHandlers = require('./services/dictionaryIpcHandlers');
+
+app.whenReady().then(() => {
+  // ... existing setup code ...
+  
+  // Set up dictionary IPC handlers
+  setupDictionaryIpcHandlers();
+  
+  // ... rest of the setup code ...
 }); 
