@@ -52,12 +52,6 @@ const App = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
-      {/* Test Component */}
-      <div className="bg-blue-500 text-white p-4 rounded-lg shadow-lg mb-8">
-        <h1 className="text-2xl font-bold">Tailwind Test</h1>
-        <p className="mt-2">If you can see this styled in blue with white text, Tailwind is working!</p>
-      </div>
-
       <div className="max-w-3xl mx-auto p-6">
         {/* Header */}
         <header className="flex justify-between items-start mb-8">

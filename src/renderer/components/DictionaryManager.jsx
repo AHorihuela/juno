@@ -76,9 +76,9 @@ const DictionaryManager = () => {
   };
 
   return (
-    <div className="dictionary-container">
-      <h2>Your dictionary</h2>
-      <p className="subtitle">Add words that you want Flow to remember</p>
+    <div className="max-w-3xl mx-auto p-5">
+      <h2 className="text-2xl font-bold text-gray-900 mb-2">Your dictionary</h2>
+      <p className="text-gray-600 mb-6">Add words that you want Flow to remember</p>
       
       {error && (
         <div className="error-message">
@@ -86,32 +86,38 @@ const DictionaryManager = () => {
         </div>
       )}
 
-      <div className="add-word-container">
+      {success && (
+        <div className="success-message">
+          Word updated successfully!
+        </div>
+      )}
+
+      <div className="flex gap-3 mb-8">
         <input
           type="text"
           value={newWord}
           onChange={(e) => setNewWord(e.target.value)}
           placeholder="Add a new word"
-          className="word-input"
+          className="input flex-1"
         />
         <button 
           onClick={handleAddWord}
-          className="add-button"
+          className={`btn ${newWord.trim() ? 'btn-primary' : 'btn-disabled'}`}
           disabled={!newWord.trim()}
         >
           Add to dictionary
         </button>
       </div>
 
-      <div className="words-section">
-        <h3>Your words ({words.length})</h3>
-        <div className="words-list">
+      <div className="bg-gray-50 rounded-xl p-6">
+        <h3 className="text-lg font-medium text-gray-900 mb-4">Your words ({words.length})</h3>
+        <div className="space-y-3">
           {words.map((word) => (
-            <div key={word} className="word-item">
-              <span className="word-text">{word}</span>
-              <div className="word-actions">
+            <div key={word} className="flex justify-between items-center bg-white p-4 rounded-lg border border-gray-200">
+              <span className="text-gray-900">{word}</span>
+              <div className="flex gap-2">
                 <button
-                  className="action-button edit"
+                  className="text-gray-500 hover:text-gray-700 transition-colors"
                   onClick={() => {
                     setNewWord(word);
                     handleRemoveWord(word);
@@ -120,7 +126,7 @@ const DictionaryManager = () => {
                   <span role="img" aria-label="edit">✏️</span>
                 </button>
                 <button
-                  className="action-button delete"
+                  className="text-gray-500 hover:text-gray-700 transition-colors"
                   onClick={() => handleRemoveWord(word)}
                 >
                   <span role="img" aria-label="delete">🗑️</span>
@@ -129,128 +135,10 @@ const DictionaryManager = () => {
             </div>
           ))}
           {words.length === 0 && (
-            <p className="no-words">No words in your dictionary yet</p>
+            <p className="text-center text-gray-500 italic py-6">No words in your dictionary yet</p>
           )}
         </div>
       </div>
-
-      <style>{`
-        .dictionary-container {
-          padding: 20px;
-          max-width: 800px;
-          margin: 0 auto;
-        }
-
-        h2 {
-          font-size: 24px;
-          margin-bottom: 8px;
-          color: #333;
-        }
-
-        .subtitle {
-          color: #666;
-          margin-bottom: 24px;
-        }
-
-        .add-word-container {
-          display: flex;
-          gap: 12px;
-          margin-bottom: 32px;
-        }
-
-        .word-input {
-          flex: 1;
-          padding: 12px;
-          border: 1px solid #ddd;
-          border-radius: 8px;
-          font-size: 16px;
-        }
-
-        .add-button {
-          padding: 12px 24px;
-          background-color: #6b7280;
-          color: white;
-          border: none;
-          border-radius: 8px;
-          cursor: pointer;
-          font-size: 16px;
-        }
-
-        .add-button:hover {
-          background-color: #4b5563;
-        }
-
-        .add-button:disabled {
-          background-color: #d1d5db;
-          cursor: not-allowed;
-        }
-
-        .words-section {
-          background-color: #f9fafb;
-          border-radius: 12px;
-          padding: 24px;
-        }
-
-        h3 {
-          font-size: 18px;
-          color: #374151;
-          margin-bottom: 16px;
-        }
-
-        .words-list {
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-        }
-
-        .word-item {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 12px 16px;
-          background-color: white;
-          border-radius: 8px;
-          border: 1px solid #e5e7eb;
-        }
-
-        .word-text {
-          font-size: 16px;
-          color: #111827;
-        }
-
-        .word-actions {
-          display: flex;
-          gap: 8px;
-        }
-
-        .action-button {
-          background: none;
-          border: none;
-          cursor: pointer;
-          padding: 4px;
-          opacity: 0.6;
-          transition: opacity 0.2s;
-        }
-
-        .action-button:hover {
-          opacity: 1;
-        }
-
-        .no-words {
-          text-align: center;
-          color: #6b7280;
-          font-style: italic;
-          padding: 24px;
-        }
-
-        .error-message {
-          background-color: #fee2e2;
-          color: #991b1b;
-          padding: 12px 16px;
-          border-radius: 8px;
-          margin-bottom: 16px;
-        }
-      `}</style>
     </div>
   );
 };
