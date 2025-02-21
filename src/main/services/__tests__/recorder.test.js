@@ -5,6 +5,7 @@ const { systemPreferences } = require('electron');
 const AudioRecorder = require('../recorder');
 const transcriptionService = require('../transcriptionService');
 const notificationService = require('../notificationService');
+const contextService = require('../contextService');
 
 // Mock dependencies
 jest.mock('electron', () => ({
@@ -14,7 +15,22 @@ jest.mock('electron', () => ({
   }
 }));
 
-jest.mock('../notificationService');
+jest.mock('../transcriptionService', () => ({
+  transcribeAudio: jest.fn()
+}));
+
+jest.mock('../notificationService', () => ({
+  showMicrophoneError: jest.fn(),
+  showNotification: jest.fn(),
+  showNoAudioDetected: jest.fn(),
+  showTranscriptionError: jest.fn()
+}));
+
+jest.mock('../contextService', () => ({
+  startRecording: jest.fn(),
+  stopRecording: jest.fn()
+}));
+
 jest.mock('node-record-lpcm16', () => ({
   record: jest.fn().mockReturnValue({
     stream: jest.fn().mockReturnValue({
@@ -211,5 +227,50 @@ describe('AudioRecorder', () => {
     
     recorder.processAudioData(buffer);
     expect(recorder.hasAudioContent).toBe(false);
+  });
+
+  describe('Context Service Integration', () => {
+    beforeEach(() => {
+      systemPreferences.getMediaAccessStatus.mockReturnValue('granted');
+    });
+
+    it('starts context tracking when recording starts', async () => {
+      await recorder.start();
+      
+      expect(contextService.startRecording).toHaveBeenCalled();
+    });
+
+    it('stops context tracking when recording stops', async () => {
+      recorder.recording = true;
+      await recorder.stop();
+      
+      expect(contextService.stopRecording).toHaveBeenCalled();
+    });
+
+    it('handles context service errors gracefully', async () => {
+      contextService.startRecording.mockImplementation(() => {
+        throw new Error('Context service error');
+      });
+      
+      await recorder.start();
+      
+      expect(notificationService.showNotification).toHaveBeenCalledWith(
+        'Recording Error',
+        'Context service error',
+        'error'
+      );
+      expect(recorder.recording).toBe(false);
+    });
+
+    it('ensures context tracking stops even if transcription fails', async () => {
+      recorder.recording = true;
+      recorder.hasAudioContent = true;
+      recorder.audioData = [Buffer.from('test audio data')];
+      transcriptionService.transcribeAudio.mockRejectedValue(new Error('Transcription failed'));
+
+      await recorder.stop();
+      
+      expect(contextService.stopRecording).toHaveBeenCalled();
+    });
   });
 }); 

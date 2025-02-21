@@ -10,6 +10,8 @@ const configService = require('../configService');
 const textProcessing = require('../textProcessing');
 const aiService = require('../aiService');
 const transcriptionService = require('../transcriptionService');
+const dictionaryService = require('../dictionaryService');
+const textInsertionService = require('../textInsertionService');
 
 // Mock fetch
 global.fetch = jest.fn();
@@ -107,7 +109,9 @@ describe('TranscriptionService', () => {
     transcriptionService.openai = null;
 
     // Reset AI service mocks
-    aiService.isAICommand.mockReturnValue(false);
+    aiService.isAICommand.mockReset();
+    aiService.processCommand.mockReset();
+    aiService.isAICommand.mockResolvedValue(false);
     aiService.processCommand.mockResolvedValue({
       text: 'AI response',
       hasHighlight: false,
@@ -286,5 +290,80 @@ describe('TranscriptionService', () => {
       expect(result).toBe('Just a regular transcription');
       expect(aiService.processCommand).not.toHaveBeenCalled();
     }, 10000);
+  });
+
+  describe('AI Command Processing', () => {
+    test('detects and processes AI commands', async () => {
+      // Setup AI command detection
+      aiService.isAICommand.mockResolvedValue(true);
+      aiService.processCommand.mockResolvedValue({
+        text: 'AI processed response',
+        hasHighlight: false,
+        originalCommand: 'Juno help me'
+      });
+
+      const result = await transcriptionService.processAndInsertText('Juno help me');
+
+      // Verify AI command was checked
+      expect(aiService.isAICommand).toHaveBeenCalledWith('Juno help me');
+      
+      // Verify AI command was processed
+      expect(aiService.processCommand).toHaveBeenCalledWith('Juno help me', '');
+      
+      // Verify AI response was inserted
+      expect(textInsertionService.insertText).toHaveBeenCalledWith('AI processed response', '');
+      
+      // Verify the response was returned
+      expect(result).toBe('AI processed response');
+      
+      // Verify dictionary and text processing were NOT called
+      expect(dictionaryService.processTranscribedText).not.toHaveBeenCalled();
+      expect(textProcessing.processText).not.toHaveBeenCalled();
+    });
+
+    test('processes normal text when not an AI command', async () => {
+      // Setup non-AI text
+      aiService.isAICommand.mockResolvedValue(false);
+      dictionaryService.processTranscribedText.mockResolvedValue('dictionary processed');
+      textProcessing.processText.mockReturnValue('final processed text');
+
+      const result = await transcriptionService.processAndInsertText('normal text');
+
+      // Verify AI command was checked but not processed
+      expect(aiService.isAICommand).toHaveBeenCalledWith('normal text');
+      expect(aiService.processCommand).not.toHaveBeenCalled();
+      
+      // Verify normal text processing occurred
+      expect(dictionaryService.processTranscribedText).toHaveBeenCalledWith('normal text');
+      expect(textProcessing.processText).toHaveBeenCalledWith('dictionary processed');
+      
+      // Verify processed text was inserted
+      expect(textInsertionService.insertText).toHaveBeenCalledWith('final processed text', '');
+      
+      // Verify the processed text was returned
+      expect(result).toBe('final processed text');
+    });
+
+    test('handles highlighted text with AI commands', async () => {
+      // Setup AI command with highlight
+      aiService.isAICommand.mockResolvedValue(true);
+      aiService.processCommand.mockResolvedValue({
+        text: 'AI processed with highlight',
+        hasHighlight: true,
+        originalCommand: 'Juno improve this'
+      });
+
+      const highlightedText = 'selected text';
+      const result = await transcriptionService.processAndInsertText('Juno improve this', highlightedText);
+
+      // Verify AI command processing included highlight
+      expect(aiService.processCommand).toHaveBeenCalledWith('Juno improve this', highlightedText);
+      
+      // Verify AI response was inserted with highlight
+      expect(textInsertionService.insertText).toHaveBeenCalledWith('AI processed with highlight', highlightedText);
+      
+      // Verify the response was returned
+      expect(result).toBe('AI processed with highlight');
+    });
   });
 }); 

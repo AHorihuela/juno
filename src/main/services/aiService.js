@@ -1,7 +1,7 @@
 const OpenAI = require('openai');
 const configService = require('./configService');
 const notificationService = require('./notificationService');
-const { clipboard } = require('electron');
+const contextService = require('./contextService');
 
 // Action verbs that trigger AI processing
 const ACTION_VERBS = new Set([
@@ -20,6 +20,20 @@ const ACTION_VERBS = new Set([
   'clarify',
   'lengthen',
   'shorten',
+  'write',
+  'update',
+  'modify',
+  'edit',
+  'revise',
+  'make',
+]);
+
+// Verbs that benefit from both primary and secondary context
+const DUAL_CONTEXT_VERBS = new Set([
+  'compare',
+  'contrast',
+  'differentiate',
+  'merge',
 ]);
 
 class AIService {
@@ -106,18 +120,6 @@ class AIService {
   }
 
   /**
-   * Get the current system context (clipboard + highlighted text)
-   * @returns {Object} Context object with clipboard and highlight
-   */
-  async getContext() {
-    return {
-      clipboardText: clipboard.readText() || '',
-      // Note: Highlighted text will be passed in from the main process
-      highlightedText: '',
-    };
-  }
-
-  /**
    * Process an AI command with GPT
    * @param {string} command - The user's command
    * @param {string} highlightedText - Currently highlighted text
@@ -133,9 +135,8 @@ class AIService {
       // Create AbortController for this request
       const controller = new AbortController();
       
-      // Get context
-      const context = await this.getContext();
-      context.highlightedText = highlightedText;
+      // Get context using the context service
+      const context = contextService.getContext(highlightedText);
 
       // Build the prompt
       const prompt = this.buildPrompt(command, context);
@@ -202,23 +203,35 @@ class AIService {
   /**
    * Build the prompt for GPT based on command and context
    * @param {string} command - The user's command
-   * @param {Object} context - Context object with clipboard/highlight
+   * @param {Object} context - Context object with primary and secondary contexts
    * @returns {string} The full prompt for GPT
    */
   buildPrompt(command, context) {
     const parts = [];
+    const commandLower = command.toLowerCase();
+    const isDualContextCommand = DUAL_CONTEXT_VERBS.has(commandLower.split(/\s+/)[0]);
     
     // Add the command
     parts.push(command);
 
-    // Add highlighted text if present
-    if (context.highlightedText) {
-      parts.push('\nSelected text:\n"""\n' + context.highlightedText + '\n"""');
+    // For dual context commands, treat both contexts as equally important
+    if (isDualContextCommand) {
+      if (context.primaryContext) {
+        parts.push(`\nFirst text:\n"""\n${context.primaryContext.content}\n"""`);
+      }
+      if (context.secondaryContext) {
+        parts.push(`\nSecond text:\n"""\n${context.secondaryContext.content}\n"""`);
+      }
     }
-
-    // Add clipboard content if present and different from highlight
-    if (context.clipboardText && context.clipboardText !== context.highlightedText) {
-      parts.push('\nClipboard content:\n"""\n' + context.clipboardText + '\n"""');
+    // For normal commands, maintain hierarchy
+    else {
+      if (context.primaryContext) {
+        const label = context.primaryContext.type === 'highlight' ? 'Selected text' : 'Recent clipboard content';
+        parts.push(`\n${label}:\n"""\n${context.primaryContext.content}\n"""`);
+      }
+      if (context.secondaryContext) {
+        parts.push(`\nAdditional context:\n"""\n${context.secondaryContext.content}\n"""`);
+      }
     }
 
     return parts.join('\n');

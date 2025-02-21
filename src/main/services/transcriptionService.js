@@ -115,14 +115,31 @@ class TranscriptionService {
   }
 
   /**
-   * Process transcribed text and insert it
-   * @param {string} text - The transcribed text
+   * Process transcribed text and insert it into the active text field
+   * @param {string} text - Raw transcribed text
    * @param {string} highlightedText - Currently highlighted text
    * @returns {Promise<void>}
    */
   async processAndInsertText(text, highlightedText = '') {
     console.log('[TranscriptionService] Starting text processing pipeline');
     console.log('[TranscriptionService] Raw text:', text);
+
+    // First check if this is an AI command
+    const isAICommand = await aiService.isAICommand(text);
+    console.log('[TranscriptionService] Is AI command:', isAICommand);
+
+    if (isAICommand) {
+      console.log('[TranscriptionService] Processing as AI command');
+      const aiResponse = await aiService.processCommand(text, highlightedText);
+      console.log('[TranscriptionService] AI response:', aiResponse);
+      
+      // Insert the AI response
+      await textInsertionService.insertText(aiResponse.text, highlightedText);
+      return aiResponse.text;
+    }
+
+    // If not an AI command, proceed with normal text processing
+    console.log('[TranscriptionService] Processing as normal text');
 
     // First apply dictionary processing
     const dictionaryProcessed = await dictionaryService.processTranscribedText(text);
