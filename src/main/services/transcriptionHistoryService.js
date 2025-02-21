@@ -10,8 +10,16 @@ class TranscriptionHistoryService {
   }
 
   ensureHistoryFile() {
-    if (!fs.existsSync(this.historyFile)) {
-      fs.writeFileSync(this.historyFile, JSON.stringify({ transcriptions: [] }));
+    try {
+      const dir = path.dirname(this.historyFile);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      if (!fs.existsSync(this.historyFile)) {
+        fs.writeFileSync(this.historyFile, JSON.stringify({ transcriptions: [] }));
+      }
+    } catch (error) {
+      console.error('Error ensuring history file exists:', error);
     }
   }
 

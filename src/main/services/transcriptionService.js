@@ -115,7 +115,7 @@ class TranscriptionService {
    * Transcribe audio data to text using OpenAI Whisper
    * @param {Buffer} audioBuffer - The raw audio data to transcribe
    * @param {string} highlightedText - Currently highlighted text
-   * @returns {Promise<void>}
+   * @returns {Promise<string>} The transcribed text
    */
   async transcribeAudio(audioBuffer, highlightedText = '') {
     try {
@@ -220,6 +220,9 @@ class TranscriptionService {
 
         // Process and insert the transcribed text
         await this.processAndInsertText(result.text, highlightedText);
+        
+        // Return the transcribed text
+        return result.text;
 
       } catch (error) {
         // Clean up temp file in case of error
