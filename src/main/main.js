@@ -34,6 +34,16 @@ function createWindow() {
     }
   });
 
+  // Set Content Security Policy
+  mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': ["default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';"]
+      }
+    });
+  });
+
   // Log window creation success
   console.log('[Main] BrowserWindow created:', !!mainWindow);
   console.log('[Main] Window ID:', mainWindow.id);

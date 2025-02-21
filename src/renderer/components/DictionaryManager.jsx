@@ -134,7 +134,7 @@ const DictionaryManager = () => {
         </div>
       </div>
 
-      <style jsx>{`
+      <style>{`
         .dictionary-container {
           padding: 20px;
           max-width: 800px;
