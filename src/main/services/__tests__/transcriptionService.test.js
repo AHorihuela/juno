@@ -10,20 +10,69 @@ const aiService = require('../aiService');
 const dictionaryService = require('../dictionaryService');
 const textInsertionService = require('../textInsertionService');
 const selectionService = require('../selectionService');
-const { TranscriptionService } = require('../transcriptionService');
+
+// Mock Electron
+jest.mock('electron', () => ({
+  Notification: jest.fn().mockImplementation(() => ({
+    show: jest.fn()
+  })),
+  app: {
+    getPath: jest.fn().mockReturnValue('/mock/path')
+  }
+}));
+
+// Mock FormData
+class MockFormData {
+  constructor() {
+    this.data = new Map();
+  }
+
+  append(key, value, options = {}) {
+    this.data.set(key, { value, options });
+  }
+
+  get(key) {
+    const entry = this.data.get(key);
+    return entry ? entry.value : null;
+  }
+
+  getHeaders() {
+    return {
+      'Content-Type': 'multipart/form-data; boundary=---boundary'
+    };
+  }
+
+  toString() {
+    return '[FormData]';
+  }
+}
+
+// Mock form-data module
+jest.mock('form-data', () => {
+  return jest.fn().mockImplementation(() => new MockFormData());
+});
 
 // Mock OpenAI
+let mockOpenAIInstance;
 jest.mock('openai', () => {
-  return jest.fn().mockImplementation(() => ({
-    audio: {
-      transcriptions: {
-        create: jest.fn().mockResolvedValue({
-          text: 'Test transcription'
-        })
+  return jest.fn().mockImplementation(() => {
+    mockOpenAIInstance = {
+      audio: {
+        transcriptions: {
+          create: jest.fn().mockImplementation(async (params) => {
+            if (params.file === 'mock-stream') {
+              return { text: 'Test transcription' };
+            }
+            throw new Error('Invalid API key');
+          })
+        }
       }
-    }
-  }));
+    };
+    return mockOpenAIInstance;
+  });
 });
+
+const transcriptionService = require('../transcriptionService');
 
 // Mock dependencies
 jest.mock('fs', () => ({
@@ -81,14 +130,8 @@ jest.mock('../selectionService', () => ({
 }));
 
 describe('TranscriptionService', () => {
-  let transcriptionService;
-  let mockOpenAI;
-
   beforeEach(() => {
     jest.clearAllMocks();
-    
-    // Create service instance
-    transcriptionService = new TranscriptionService();
     
     // Setup successful API key
     configService.getOpenAIApiKey.mockResolvedValue('test-api-key');
@@ -120,16 +163,18 @@ describe('TranscriptionService', () => {
 
     it('handles invalid API key error', async () => {
       configService.getOpenAIApiKey.mockResolvedValue('invalid-key');
+      fs.createReadStream.mockReturnValue('invalid-stream');
       const audioData = Buffer.from('test audio');
       
       await expect(transcriptionService.transcribeAudio(audioData))
         .rejects
-        .toThrow('OpenAI API key not configured');
+        .toThrow('Invalid API key');
       expect(fs.unlinkSync).toHaveBeenCalled();
     });
 
     it('cleans up temp file even if transcription fails', async () => {
       configService.getOpenAIApiKey.mockResolvedValue('invalid-key');
+      fs.createReadStream.mockReturnValue('invalid-stream');
       const audioData = Buffer.from('test audio data');
       
       try {

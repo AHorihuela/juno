@@ -2,10 +2,66 @@ const { clipboard } = require('electron');
 
 class ContextService {
   constructor() {
-    this.clipboardTimestamp = null;
-    this.clipboardContent = null;
+    // Initialize with current clipboard content but no timestamp
+    const currentClipboard = clipboard.readText();
+    this.lastSystemClipboard = currentClipboard;
+    this.clipboardContent = currentClipboard;
+    this.clipboardTimestamp = null;  // Start with no timestamp
+    
     this.recordingStartTime = null;
     this.isRecording = false;
+    this.isInternalClipboardOperation = false;
+    
+    // Set up clipboard monitoring
+    this.checkInterval = setInterval(() => this.checkClipboardChange(), 1000);
+  }
+
+  /**
+   * Check for real clipboard changes from the system
+   * @private
+   */
+  checkClipboardChange() {
+    // Skip if we're doing internal clipboard operations
+    if (this.isInternalClipboardOperation) {
+      return;
+    }
+
+    const currentClipboard = clipboard.readText();
+    if (currentClipboard !== this.lastSystemClipboard) {
+      this.lastSystemClipboard = currentClipboard;
+      this.clipboardContent = currentClipboard;
+      this.clipboardTimestamp = Date.now();
+      console.log('[ContextService] Real clipboard change detected at:', this.clipboardTimestamp);
+    }
+  }
+
+  /**
+   * Start an internal clipboard operation
+   */
+  startInternalOperation() {
+    this.isInternalClipboardOperation = true;
+  }
+
+  /**
+   * End an internal clipboard operation
+   */
+  endInternalOperation() {
+    this.isInternalClipboardOperation = false;
+    // Update our last known clipboard state without updating timestamp
+    this.lastSystemClipboard = clipboard.readText();
+    this.clipboardContent = this.lastSystemClipboard;
+  }
+
+  /**
+   * Update clipboard content without updating timestamp
+   */
+  updateClipboardContext() {
+    const content = clipboard.readText();
+    if (content !== this.clipboardContent) {
+      this.clipboardContent = content;
+      this.lastSystemClipboard = content;
+      console.log('[ContextService] Clipboard content synced without updating timestamp');
+    }
   }
 
   /**
@@ -24,18 +80,6 @@ class ContextService {
     this.recordingStartTime = null;
     this.isRecording = false;
     console.log('[ContextService] Recording stopped');
-  }
-
-  /**
-   * Update clipboard timestamp and content when clipboard changes
-   */
-  updateClipboardContext() {
-    const content = clipboard.readText();
-    if (content !== this.clipboardContent) {
-      this.clipboardTimestamp = Date.now();
-      this.clipboardContent = content;
-      console.log('[ContextService] Clipboard updated at:', this.clipboardTimestamp);
-    }
   }
 
   /**
@@ -104,6 +148,16 @@ class ContextService {
     });
 
     return context;
+  }
+
+  /**
+   * Clean up resources
+   */
+  cleanup() {
+    if (this.checkInterval) {
+      clearInterval(this.checkInterval);
+      this.checkInterval = null;
+    }
   }
 }
 

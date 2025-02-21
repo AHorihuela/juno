@@ -12,8 +12,6 @@ const selectionService = require('./selectionService');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const fetch = require('node-fetch');
-const FormData = require('form-data');
 const dictionaryService = require('./dictionaryService');
 
 // WAV header constants
@@ -201,61 +199,31 @@ class TranscriptionService {
   }
 
   /**
-   * Prepare form data for API request
-   * @param {string} tempFile - Path to temporary WAV file
-   * @returns {Promise<FormData>} Prepared form data
-   */
-  async prepareFormData(tempFile) {
-    const prompt = await dictionaryService.generateWhisperPrompt();
-    const form = new FormData();
-    
-    form.append('file', fs.createReadStream(tempFile), {
-      filename: 'audio.wav',
-      contentType: 'audio/wav'
-    });
-    form.append('model', 'whisper-1');
-    form.append('language', 'en');
-    
-    if (prompt) {
-      console.log('[Transcription] Using dictionary-enhanced prompt');
-      form.append('prompt', prompt);
-    } else {
-      console.log('[Transcription] No dictionary prompt available');
-    }
-    
-    return form;
-  }
-
-  /**
    * Make request to Whisper API
-   * @param {FormData} form - Prepared form data
-   * @param {string} apiKey - OpenAI API key
+   * @param {string} tempFile - Path to temporary WAV file
    * @returns {Promise<Object>} API response data
    */
-  async callWhisperAPI(form, apiKey) {
+  async callWhisperAPI(tempFile) {
     console.log('[Transcription] Sending request to Whisper API...');
     
-    const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        ...form.getHeaders()
-      },
-      body: form
-    });
-
-    console.log('[Transcription] Response received:', {
-      ok: response.ok,
-      status: response.status
-    });
-
-    if (!response.ok) {
-      const errorData = await response.text();
-      console.error('[Transcription] Error details:', errorData);
-      throw new Error(`Whisper API error: ${response.status}\nDetails: ${errorData}`);
+    if (!this.openai) {
+      await this.initializeOpenAI();
     }
 
-    return response.json();
+    try {
+      const response = await this.openai.audio.transcriptions.create({
+        file: fs.createReadStream(tempFile),
+        model: 'whisper-1',
+        language: 'en',
+        prompt: await dictionaryService.generateWhisperPrompt()
+      });
+
+      console.log('[Transcription] Response received:', response);
+      return response;
+    } catch (error) {
+      console.error('[Transcription] Error details:', error);
+      throw error;
+    }
   }
 
   /**
@@ -295,12 +263,11 @@ class TranscriptionService {
     let tempFile = null;
     
     try {
-      const apiKey = await this.validateAndGetApiKey();
+      await this.validateAndGetApiKey();
       const wavData = await this.prepareAudioData(audioBuffer);
       tempFile = await this.createTempFile(wavData);
       
-      const form = await this.prepareFormData(tempFile);
-      const data = await this.callWhisperAPI(form, apiKey);
+      const data = await this.callWhisperAPI(tempFile);
       
       // Log the raw transcription before dictionary processing
       console.log('\n[Transcription] Raw transcription:', data.text);
