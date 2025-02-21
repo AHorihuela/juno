@@ -92,7 +92,7 @@ describe('TranscriptionHistory Component', () => {
     });
 
     // Find and click delete button
-    const deleteButton = screen.getByTitle('Delete');
+    const deleteButton = screen.getByTitle('Delete transcription');
     fireEvent.click(deleteButton);
 
     expect(mockIpcRenderer.send).toHaveBeenCalledWith('delete-transcription', 1);
