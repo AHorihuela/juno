@@ -23,7 +23,31 @@ module.exports = {
       },
       {
         test: /\.css$/,
-        use: ['style-loader', 'css-loader', 'postcss-loader']
+        use: [
+          {
+            loader: 'style-loader',
+            options: {
+              insert: function insertIntoTarget(element, options) {
+                console.log('[Style Loader] Inserting styles');
+                document.head.appendChild(element);
+              }
+            }
+          },
+          {
+            loader: 'css-loader',
+            options: {
+              importLoaders: 1
+            }
+          },
+          {
+            loader: 'postcss-loader',
+            options: {
+              postcssOptions: {
+                config: path.resolve(__dirname, 'postcss.config.js'),
+              }
+            },
+          }
+        ]
       }
     ]
   },

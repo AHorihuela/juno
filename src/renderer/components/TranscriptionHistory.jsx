@@ -52,20 +52,20 @@ const TranscriptionHistory = () => {
 
   if (error) {
     return (
-      <div className="p-4 text-red-600">
+      <div className="p-4 bg-red-50 text-red-600 rounded-lg">
         Error: {error}
       </div>
     );
   }
 
   return (
-    <div className="p-4">
+    <div className="mt-8">
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-semibold">Recent Transcriptions</h2>
+        <h2 className="text-xl font-semibold text-gray-900">Recent Transcriptions</h2>
         {history.length > 0 && (
           <button
             onClick={handleClear}
-            className="px-3 py-1 text-sm text-red-600 border border-red-600 rounded hover:bg-red-50"
+            className="px-3 py-1.5 text-sm font-medium text-red-600 bg-white border border-red-300 rounded-md hover:bg-red-50 transition-colors"
           >
             Clear All
           </button>
@@ -73,38 +73,35 @@ const TranscriptionHistory = () => {
       </div>
       
       {history.length === 0 ? (
-        <p className="text-gray-500">No transcriptions yet</p>
+        <p className="text-gray-500 text-center py-8 bg-gray-50 rounded-lg">No transcriptions yet</p>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {history.map((entry) => (
             <div
               key={entry.id}
-              className="p-4 bg-white rounded-lg shadow hover:shadow-md transition-shadow"
+              className="p-4 bg-white rounded-lg border border-gray-200 hover:border-gray-300 transition-colors"
             >
-              <div className="flex justify-between items-start mb-2">
-                <span className="text-sm text-gray-500">
-                  {formatDate(entry.timestamp)}
-                </span>
+              <div className="flex justify-between items-start gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-sm text-gray-500 flex-shrink-0">
+                      {formatDate(entry.timestamp)}
+                    </span>
+                  </div>
+                  <p className="text-gray-700 whitespace-pre-wrap break-words">
+                    {entry.text}
+                  </p>
+                </div>
                 <button
                   onClick={() => handleDelete(entry.id)}
-                  className="text-gray-400 hover:text-red-600"
+                  className="p-1 text-gray-400 hover:text-red-500 transition-colors"
                   title="Delete"
                 >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-5 w-5"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                      clipRule="evenodd"
-                    />
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
               </div>
-              <p className="text-gray-800 whitespace-pre-wrap">{entry.text}</p>
             </div>
           ))}
         </div>

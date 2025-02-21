@@ -1,5 +1,9 @@
+// Add OpenAI shim for Node environment
+require('openai/shims/node');
+
 const { systemPreferences } = require('electron');
 const AudioRecorder = require('../recorder');
+const transcriptionService = require('../transcriptionService');
 const notificationService = require('../notificationService');
 
 // Mock dependencies
@@ -26,6 +30,11 @@ describe('AudioRecorder', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     recorder = new AudioRecorder();
+    // Reset recorder state
+    recorder.recording = false;
+    recorder.recorder = null;
+    recorder.audioData = [];
+    recorder.hasAudioContent = false;
   });
 
   describe('Microphone Permission Handling', () => {
@@ -134,5 +143,73 @@ describe('AudioRecorder', () => {
         'error'
       );
     });
+  });
+
+  it('starts recording when not already recording', () => {
+    recorder.start();
+    expect(recorder.recording).toBe(true);
+    expect(recorder.emit).toHaveBeenCalledWith('start');
+  });
+
+  it('does not start recording when already recording', () => {
+    recorder.recording = true;
+    recorder.start();
+    expect(recorder.emit).not.toHaveBeenCalled();
+  });
+
+  it('stops recording and processes audio when audio content exists', async () => {
+    recorder.recording = true;
+    recorder.hasAudioContent = true;
+    recorder.audioData = [Buffer.from('test audio data')];
+
+    await recorder.stop();
+
+    expect(recorder.recording).toBe(false);
+    expect(transcriptionService.transcribeAudio).toHaveBeenCalled();
+    expect(recorder.emit).toHaveBeenCalledWith('stop');
+  });
+
+  it('stops recording without processing when no audio content exists', async () => {
+    recorder.recording = true;
+    recorder.hasAudioContent = false;
+
+    await recorder.stop();
+
+    expect(recorder.recording).toBe(false);
+    expect(transcriptionService.transcribeAudio).not.toHaveBeenCalled();
+    expect(notificationService.showNoAudioDetected).toHaveBeenCalled();
+    expect(recorder.emit).toHaveBeenCalledWith('stop');
+  });
+
+  it('handles recording errors', async () => {
+    const error = new Error('Recording error');
+    recorder.recording = true;
+    transcriptionService.transcribeAudio.mockRejectedValue(error);
+    recorder.hasAudioContent = true;
+    recorder.audioData = [Buffer.from('test audio data')];
+
+    await recorder.stop();
+
+    expect(notificationService.showTranscriptionError).toHaveBeenCalledWith(error);
+    expect(recorder.emit).toHaveBeenCalledWith('error', error);
+  });
+
+  it('correctly identifies audio content', () => {
+    const samples = new Int16Array(1000);
+    // Set some samples above threshold
+    samples[100] = 5000; // Above default threshold
+    const buffer = Buffer.from(samples.buffer);
+    
+    recorder.processAudioData(buffer);
+    expect(recorder.hasAudioContent).toBe(true);
+  });
+
+  it('identifies silence', () => {
+    const samples = new Int16Array(1000);
+    // All samples at 0 (silence)
+    const buffer = Buffer.from(samples.buffer);
+    
+    recorder.processAudioData(buffer);
+    expect(recorder.hasAudioContent).toBe(false);
   });
 }); 

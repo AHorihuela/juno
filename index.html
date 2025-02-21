@@ -3,9 +3,24 @@
   <head>
     <meta charset="UTF-8" />
     <title>Dictation Tool</title>
+    <script>
+      console.log('[HTML] Document loaded');
+      window.addEventListener('DOMContentLoaded', () => {
+        console.log('[HTML] DOM Content loaded');
+      });
+    </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- This text will be visible if HTML loads but React doesn't mount -->
+      <p style="padding: 20px; font-family: sans-serif;">Loading application...</p>
+    </div>
+    <script>
+      console.log('[HTML] Before loading renderer.js');
+    </script>
     <script src="dist/renderer.js"></script>
+    <script>
+      console.log('[HTML] After loading renderer.js');
+    </script>
   </body>
 </html> 

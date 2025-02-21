@@ -182,9 +182,19 @@ class TranscriptionService {
         // Clean up temp file
         await fs.promises.unlink(tempFile);
 
+        console.log('Response received:', {
+          ok: response.ok,
+          status: response.status,
+          headers: Object.fromEntries(response.headers.entries())
+        });
+
         if (!response.ok) {
           const error = await response.text();
           console.error('Transcription API error:', error);
+          console.log('Error response details:', {
+            status: response.status,
+            errorParsed: JSON.parse(error)
+          });
           if (response.status === 401) {
             throw new Error('Invalid OpenAI API key');
           } else if (response.status === 429) {
@@ -193,6 +203,7 @@ class TranscriptionService {
           throw new Error(`Transcription failed: ${response.status} ${error}`);
         }
 
+        console.log('Response is OK, parsing JSON');
         const result = await response.json();
         
         // Log detailed API response

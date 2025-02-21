@@ -6,6 +6,7 @@ const path = require('path');
 class TextInsertionService {
   constructor() {
     this.originalClipboard = null;
+    this.isInserting = false;
   }
 
   /**
@@ -38,9 +39,16 @@ class TextInsertionService {
    * @returns {boolean} - True if insertion was successful
    */
   async insertText(text, replaceHighlight = false) {
+    if (this.isInserting) {
+      console.log('[TextInsertion] Text insertion already in progress, skipping');
+      return false;
+    }
+
     console.log('[TextInsertion] Starting text insertion');
     console.log('[TextInsertion] Text to insert length:', text?.length || 0);
     console.log('[TextInsertion] Replace highlight:', replaceHighlight);
+
+    this.isInserting = true;
 
     try {
       // Save current clipboard
@@ -108,6 +116,8 @@ class TextInsertionService {
       console.log('[TextInsertion] Text kept in clipboard for manual pasting');
       
       return false;
+    } finally {
+      this.isInserting = false;
     }
   }
 
