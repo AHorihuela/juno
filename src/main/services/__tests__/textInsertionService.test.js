@@ -1,40 +1,41 @@
-const { clipboard, globalShortcut } = require('electron');
-const textInsertionService = require('../textInsertionService');
-const notificationService = require('../notificationService');
+const { clipboard } = require('electron');
+const { exec } = require('child_process');
+const notificationService = require('../../main/services/notificationService');
+const textInsertionService = require('../../main/services/textInsertionService');
 
 // Mock dependencies
 jest.mock('electron', () => ({
   clipboard: {
     readText: jest.fn(),
-    writeText: jest.fn(),
-  },
-  globalShortcut: {
-    register: jest.fn(),
-    unregister: jest.fn(),
-  },
+    writeText: jest.fn()
+  }
 }));
-jest.mock('../notificationService');
+
+jest.mock('child_process', () => ({
+  exec: jest.fn()
+}));
+
+jest.mock('../../main/services/notificationService', () => ({
+  showNotification: jest.fn()
+}));
 
 describe('TextInsertionService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    textInsertionService.isInserting = false;
     textInsertionService.originalClipboard = null;
-    
-    // Default mock values
-    clipboard.readText.mockReturnValue('original clipboard');
-    globalShortcut.register.mockReturnValue(true);
   });
 
   describe('clipboard management', () => {
     it('saves and restores clipboard content', () => {
-      const originalText = 'original text';
-      clipboard.readText.mockReturnValue(originalText);
+      const originalContent = 'original content';
+      clipboard.readText.mockReturnValue(originalContent);
 
       textInsertionService.saveClipboard();
-      expect(textInsertionService.originalClipboard).toBe(originalText);
+      expect(textInsertionService.originalClipboard).toBe(originalContent);
 
       textInsertionService.restoreClipboard();
-      expect(clipboard.writeText).toHaveBeenCalledWith(originalText);
+      expect(clipboard.writeText).toHaveBeenCalledWith(originalContent);
       expect(textInsertionService.originalClipboard).toBeNull();
     });
 
@@ -48,22 +49,32 @@ describe('TextInsertionService', () => {
   describe('text insertion', () => {
     it('successfully inserts text', async () => {
       const text = 'test text';
+      clipboard.readText
+        .mockReturnValueOnce('original')  // For saveClipboard
+        .mockReturnValueOnce(text);       // For verification
+      
+      exec.mockImplementation((cmd, callback) => callback(null));
       
       const success = await textInsertionService.insertText(text);
       
       expect(success).toBe(true);
       expect(clipboard.writeText).toHaveBeenCalledWith(text);
-      expect(globalShortcut.register).toHaveBeenCalledWith(
-        'CommandOrControl+V',
+      expect(exec).toHaveBeenCalledWith(
+        expect.stringContaining('osascript'),
         expect.any(Function)
       );
-      expect(clipboard.writeText).toHaveBeenCalledWith('original clipboard');
     });
 
-    it('handles shortcut registration failure', async () => {
+    it('handles AppleScript failure', async () => {
       const text = 'test text';
-      globalShortcut.register.mockReturnValue(false);
-
+      clipboard.readText
+        .mockReturnValueOnce('original')
+        .mockReturnValueOnce(text);
+      
+      exec.mockImplementation((cmd, callback) => 
+        callback(new Error('AppleScript failed'))
+      );
+      
       const success = await textInsertionService.insertText(text);
       
       expect(success).toBe(false);
@@ -75,22 +86,16 @@ describe('TextInsertionService', () => {
       expect(clipboard.writeText).toHaveBeenLastCalledWith(text);
     });
 
-    it('cleans up shortcuts after insertion', async () => {
-      const text = 'test text';
-      
-      await textInsertionService.insertText(text);
-      
-      // Fast-forward timers to trigger cleanup
-      jest.advanceTimersByTime(1000);
-      
-      expect(globalShortcut.unregister).toHaveBeenCalledWith('CommandOrControl+V');
+    it('prevents concurrent insertions', async () => {
+      textInsertionService.isInserting = true;
+      const success = await textInsertionService.insertText('test');
+      expect(success).toBe(false);
     });
   });
 
   describe('copy popup', () => {
     it('shows notification and copies text', () => {
-      const text = 'popup text';
-      
+      const text = 'test text';
       textInsertionService.showCopyPopup(text);
       
       expect(notificationService.showNotification).toHaveBeenCalledWith(
