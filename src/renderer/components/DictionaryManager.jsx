@@ -2,220 +2,253 @@ import React, { useState, useEffect } from 'react';
 import { getIpcRenderer } from '../utils/electron';
 
 const DictionaryManager = () => {
-  const [entries, setEntries] = useState({});
-  const [newIncorrect, setNewIncorrect] = useState('');
-  const [newCorrect, setNewCorrect] = useState('');
+  const [words, setWords] = useState([]);
+  const [newWord, setNewWord] = useState('');
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
-    loadEntries();
+    loadWords();
   }, []);
 
-  const loadEntries = async () => {
+  const loadWords = async () => {
+    console.log('Loading dictionary words...');
     try {
       const ipcRenderer = getIpcRenderer();
-      const loadedEntries = await ipcRenderer.invoke('get-dictionary-entries');
-      setEntries(loadedEntries);
+      if (!ipcRenderer) {
+        throw new Error('IPC renderer not available');
+      }
+      const loadedWords = await ipcRenderer.invoke('get-dictionary-words');
+      console.log('Loaded dictionary words:', loadedWords);
+      setWords(loadedWords);
+      setError(null);
     } catch (error) {
-      console.error('Error loading dictionary entries:', error);
-      setError('Failed to load dictionary entries');
+      console.error('Error loading dictionary words:', error);
+      setError('Failed to load dictionary');
+      setWords([]);
     }
   };
 
-  const handleAddEntry = async (e) => {
+  const handleAddWord = async (e) => {
     e.preventDefault();
     setError(null);
     setSuccess(false);
 
-    if (!newIncorrect || !newCorrect) {
-      setError('Both words are required');
+    const word = newWord.trim();
+    if (!word) {
       return;
     }
 
+    console.log('Adding word to dictionary:', word);
     try {
       const ipcRenderer = getIpcRenderer();
-      await ipcRenderer.invoke('add-dictionary-entry', {
-        incorrect: newIncorrect,
-        correct: newCorrect
-      });
+      if (!ipcRenderer) {
+        throw new Error('IPC renderer not available');
+      }
+      await ipcRenderer.invoke('add-dictionary-word', word);
+      console.log('Word added successfully:', word);
       
-      // Reset form and reload entries
-      setNewIncorrect('');
-      setNewCorrect('');
-      await loadEntries();
+      // Reset form and reload words
+      setNewWord('');
+      await loadWords();
       setSuccess(true);
     } catch (error) {
-      console.error('Error adding dictionary entry:', error);
-      setError(error.message);
+      console.error('Error adding word:', error);
+      setError(error.message || 'Failed to add word');
     }
   };
 
-  const handleRemoveEntry = async (incorrect) => {
+  const handleRemoveWord = async (word) => {
+    console.log('Removing word from dictionary:', word);
     try {
       const ipcRenderer = getIpcRenderer();
-      await ipcRenderer.invoke('remove-dictionary-entry', incorrect);
-      await loadEntries();
+      if (!ipcRenderer) {
+        throw new Error('IPC renderer not available');
+      }
+      await ipcRenderer.invoke('remove-dictionary-word', word);
+      console.log('Word removed successfully:', word);
+      await loadWords();
       setSuccess(true);
     } catch (error) {
-      console.error('Error removing dictionary entry:', error);
-      setError(error.message);
+      console.error('Error removing word:', error);
+      setError(error.message || 'Failed to remove word');
     }
   };
 
   return (
-    <div className="setting-group">
-      <h3>Custom Dictionary</h3>
+    <div className="dictionary-container">
+      <h2>Your dictionary</h2>
+      <p className="subtitle">Add words that you want Flow to remember</p>
       
       {error && (
         <div className="error-message">
           {error}
         </div>
       )}
-      
-      {success && (
-        <div className="success-message">
-          Dictionary updated successfully!
-        </div>
-      )}
 
-      <form onSubmit={handleAddEntry} className="dictionary-form">
-        <div className="form-row">
-          <input
-            type="text"
-            value={newIncorrect}
-            onChange={(e) => setNewIncorrect(e.target.value)}
-            placeholder="Incorrect word"
-            className="dictionary-input"
-          />
-          <span className="arrow">→</span>
-          <input
-            type="text"
-            value={newCorrect}
-            onChange={(e) => setNewCorrect(e.target.value)}
-            placeholder="Correct word"
-            className="dictionary-input"
-          />
-          <button type="submit" className="add-button">
-            Add
-          </button>
-        </div>
-      </form>
+      <div className="add-word-container">
+        <input
+          type="text"
+          value={newWord}
+          onChange={(e) => setNewWord(e.target.value)}
+          placeholder="Add a new word"
+          className="word-input"
+        />
+        <button 
+          onClick={handleAddWord}
+          className="add-button"
+          disabled={!newWord.trim()}
+        >
+          Add to dictionary
+        </button>
+      </div>
 
-      <div className="dictionary-entries">
-        {Object.entries(entries).length > 0 ? (
-          <table>
-            <thead>
-              <tr>
-                <th>Incorrect</th>
-                <th>Correct</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {Object.entries(entries).map(([incorrect, correct]) => (
-                <tr key={incorrect}>
-                  <td>{incorrect}</td>
-                  <td>{correct}</td>
-                  <td>
-                    <button
-                      onClick={() => handleRemoveEntry(incorrect)}
-                      className="remove-button"
-                    >
-                      Remove
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <p className="no-entries">No dictionary entries yet</p>
-        )}
+      <div className="words-section">
+        <h3>Your words ({words.length})</h3>
+        <div className="words-list">
+          {words.map((word) => (
+            <div key={word} className="word-item">
+              <span className="word-text">{word}</span>
+              <div className="word-actions">
+                <button
+                  className="action-button edit"
+                  onClick={() => {
+                    setNewWord(word);
+                    handleRemoveWord(word);
+                  }}
+                >
+                  <span role="img" aria-label="edit">✏️</span>
+                </button>
+                <button
+                  className="action-button delete"
+                  onClick={() => handleRemoveWord(word)}
+                >
+                  <span role="img" aria-label="delete">🗑️</span>
+                </button>
+              </div>
+            </div>
+          ))}
+          {words.length === 0 && (
+            <p className="no-words">No words in your dictionary yet</p>
+          )}
+        </div>
       </div>
 
       <style jsx>{`
-        .dictionary-form {
-          margin-bottom: 20px;
+        .dictionary-container {
+          padding: 20px;
+          max-width: 800px;
+          margin: 0 auto;
         }
 
-        .form-row {
-          display: flex;
-          align-items: center;
-          gap: 10px;
+        h2 {
+          font-size: 24px;
+          margin-bottom: 8px;
+          color: #333;
         }
 
-        .dictionary-input {
-          flex: 1;
-          padding: 8px;
-          border: 1px solid #ddd;
-          border-radius: 4px;
-        }
-
-        .arrow {
+        .subtitle {
           color: #666;
-          font-weight: bold;
+          margin-bottom: 24px;
+        }
+
+        .add-word-container {
+          display: flex;
+          gap: 12px;
+          margin-bottom: 32px;
+        }
+
+        .word-input {
+          flex: 1;
+          padding: 12px;
+          border: 1px solid #ddd;
+          border-radius: 8px;
+          font-size: 16px;
         }
 
         .add-button {
-          padding: 8px 16px;
-          background-color: #4caf50;
+          padding: 12px 24px;
+          background-color: #6b7280;
           color: white;
           border: none;
-          border-radius: 4px;
+          border-radius: 8px;
           cursor: pointer;
+          font-size: 16px;
         }
 
         .add-button:hover {
-          background-color: #45a049;
+          background-color: #4b5563;
         }
 
-        .dictionary-entries {
-          margin-top: 20px;
+        .add-button:disabled {
+          background-color: #d1d5db;
+          cursor: not-allowed;
         }
 
-        table {
-          width: 100%;
-          border-collapse: collapse;
+        .words-section {
+          background-color: #f9fafb;
+          border-radius: 12px;
+          padding: 24px;
         }
 
-        th, td {
-          padding: 12px;
-          text-align: left;
-          border-bottom: 1px solid #ddd;
+        h3 {
+          font-size: 18px;
+          color: #374151;
+          margin-bottom: 16px;
         }
 
-        th {
-          background-color: #f5f5f5;
+        .words-list {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
         }
 
-        .remove-button {
-          padding: 6px 12px;
-          background-color: #f44336;
-          color: white;
+        .word-item {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 12px 16px;
+          background-color: white;
+          border-radius: 8px;
+          border: 1px solid #e5e7eb;
+        }
+
+        .word-text {
+          font-size: 16px;
+          color: #111827;
+        }
+
+        .word-actions {
+          display: flex;
+          gap: 8px;
+        }
+
+        .action-button {
+          background: none;
           border: none;
-          border-radius: 4px;
           cursor: pointer;
+          padding: 4px;
+          opacity: 0.6;
+          transition: opacity 0.2s;
         }
 
-        .remove-button:hover {
-          background-color: #d32f2f;
+        .action-button:hover {
+          opacity: 1;
         }
 
-        .no-entries {
+        .no-words {
           text-align: center;
-          color: #666;
+          color: #6b7280;
           font-style: italic;
+          padding: 24px;
         }
 
         .error-message {
-          color: #d32f2f;
-          margin-bottom: 10px;
-        }
-
-        .success-message {
-          color: #4caf50;
-          margin-bottom: 10px;
+          background-color: #fee2e2;
+          color: #991b1b;
+          padding: 12px 16px;
+          border-radius: 8px;
+          margin-bottom: 16px;
         }
       `}</style>
     </div>

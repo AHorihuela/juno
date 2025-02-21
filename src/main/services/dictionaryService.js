@@ -4,114 +4,105 @@ const { app } = require('electron');
 
 class DictionaryService {
   constructor() {
+    this.words = new Set();
     this.dictionaryPath = path.join(app.getPath('userData'), 'userDictionary.json');
-    this.dictionary = new Map();
-    this.loadDictionary();
+    this.initializeDictionary();
   }
 
-  /**
-   * Load dictionary from disk
-   * @private
-   */
-  loadDictionary() {
+  initializeDictionary() {
+    console.log('Initializing dictionary at:', this.dictionaryPath);
     try {
-      if (fs.existsSync(this.dictionaryPath)) {
-        const data = fs.readFileSync(this.dictionaryPath, 'utf8');
-        const entries = JSON.parse(data);
-        this.dictionary.clear();
-        Object.entries(entries).forEach(([incorrect, correct]) => {
-          this.dictionary.set(incorrect, correct);
-        });
+      if (!fs.existsSync(this.dictionaryPath)) {
+        console.log('Dictionary file does not exist, creating...');
+        fs.writeFileSync(this.dictionaryPath, JSON.stringify([], null, 2), 'utf8');
       }
+      this.loadDictionary();
+    } catch (error) {
+      console.error('Error initializing dictionary:', error);
+      // Create an empty dictionary if there's an error
+      this.words = new Set();
+    }
+  }
+
+  loadDictionary() {
+    console.log('Loading dictionary from:', this.dictionaryPath);
+    try {
+      const data = fs.readFileSync(this.dictionaryPath, 'utf8');
+      const words = JSON.parse(data);
+      this.words = new Set(words);
+      console.log('Dictionary loaded successfully with', this.words.size, 'words');
     } catch (error) {
       console.error('Error loading dictionary:', error);
-      // If loading fails, we'll start with an empty dictionary
-      this.dictionary.clear();
+      this.words = new Set();
     }
   }
 
-  /**
-   * Save dictionary to disk
-   * @private
-   */
   saveDictionary() {
+    console.log('Saving dictionary...');
     try {
-      const entries = Object.fromEntries(this.dictionary);
-      fs.writeFileSync(this.dictionaryPath, JSON.stringify(entries, null, 2));
+      const words = Array.from(this.words);
+      fs.writeFileSync(this.dictionaryPath, JSON.stringify(words, null, 2), 'utf8');
+      console.log('Dictionary saved successfully');
+      return true;
     } catch (error) {
       console.error('Error saving dictionary:', error);
-      throw new Error('Failed to save dictionary');
+      return false;
     }
   }
 
-  /**
-   * Add a new dictionary entry
-   * @param {string} incorrect - The incorrect word
-   * @param {string} correct - The correct replacement
-   * @returns {boolean} - Whether the entry was added successfully
-   */
-  addEntry(incorrect, correct) {
-    if (!incorrect || !correct) {
-      throw new Error('Both incorrect and correct words must be provided');
-    }
-
-    // Check for case-insensitive duplicates
-    const hasDuplicate = Array.from(this.dictionary.keys()).some(
-      key => key.toLowerCase() === incorrect.toLowerCase() && key !== incorrect
-    );
-
-    if (hasDuplicate) {
-      throw new Error('A case-insensitive duplicate entry already exists');
-    }
-
-    this.dictionary.set(incorrect, correct);
-    this.saveDictionary();
-    return true;
+  async getAllWords() {
+    return Array.from(this.words).sort();
   }
 
-  /**
-   * Remove a dictionary entry
-   * @param {string} incorrect - The incorrect word to remove
-   * @returns {boolean} - Whether the entry was removed
-   */
-  removeEntry(incorrect) {
-    const removed = this.dictionary.delete(incorrect);
-    if (removed) {
-      this.saveDictionary();
+  async addWord(word) {
+    if (!word || typeof word !== 'string') {
+      throw new Error('Invalid word');
     }
-    return removed;
+
+    const trimmedWord = word.trim();
+    if (!trimmedWord) {
+      throw new Error('Word cannot be empty');
+    }
+
+    console.log('Adding word to dictionary:', trimmedWord);
+    this.words.add(trimmedWord);
+    return this.saveDictionary();
   }
 
-  /**
-   * Get all dictionary entries
-   * @returns {Object} - Dictionary entries as key-value pairs
-   */
-  getAllEntries() {
-    return Object.fromEntries(this.dictionary);
+  async removeWord(word) {
+    if (!word || typeof word !== 'string') {
+      throw new Error('Invalid word');
+    }
+
+    console.log('Removing word from dictionary:', word);
+    const result = this.words.delete(word);
+    if (result) {
+      return this.saveDictionary();
+    }
+    return false;
   }
 
-  /**
-   * Replace words in text according to dictionary
-   * @param {string} text - Input text
-   * @returns {string} - Text with replacements applied
-   */
   processText(text) {
-    if (!text || this.dictionary.size === 0) return text;
-
-    // Split text into words while preserving punctuation and spacing
-    const words = text.split(/(\s+|[.,!?;])/);
+    if (!text) return '';
     
-    return words.map(word => {
-      // Skip empty strings, whitespace, and punctuation
-      if (!word.trim() || /^[\s.,!?;]+$/.test(word)) return word;
-      
-      // Check for exact match (case-sensitive)
-      const replacement = this.dictionary.get(word);
-      return replacement || word;
+    let processed = text;
+    // Split text into words while preserving punctuation and spacing
+    const words = processed.split(/(\b\w+\b)/);
+    
+    // Process each word
+    processed = words.map(part => {
+      // If it's not a word (punctuation/space), preserve it
+      if (!/^\w+$/.test(part)) {
+        return part;
+      }
+      // Check if the word is in our dictionary
+      return this.words.has(part) ? part : part;
     }).join('');
+    
+    return processed;
   }
 }
 
-// Export singleton instance
+// Create and export a singleton instance
 const dictionaryService = new DictionaryService();
 module.exports = dictionaryService; 

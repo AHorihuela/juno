@@ -4,6 +4,7 @@ const recorder = require('./src/main/services/recorder');
 const configService = require('./src/main/services/configService');
 const trayService = require('./src/main/services/trayService');
 const transcriptionHistoryService = require('./src/main/services/transcriptionHistoryService');
+const setupDictionaryIpcHandlers = require('./src/main/services/dictionaryIpcHandlers');
 
 console.log('Main process starting...');
 
@@ -26,6 +27,7 @@ function createWindow() {
       webPreferences: {
         nodeIntegration: true,
         contextIsolation: false,
+        devTools: true
       },
       show: false, // Don't show window initially
     });
@@ -37,15 +39,16 @@ function createWindow() {
     mainWindow.once('ready-to-show', () => {
       console.log('Window ready to show');
       mainWindow.show();
+      
+      // Open DevTools in development
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Opening DevTools in development mode');
+        mainWindow.webContents.openDevTools({ mode: 'detach' });
+      }
     });
 
     // Initialize tray after window creation
     trayService.initialize(mainWindow);
-
-    // Open DevTools in development
-    if (process.env.NODE_ENV === 'development') {
-      mainWindow.webContents.openDevTools();
-    }
 
     // Setup recording event handlers
     const onRecordingStart = () => {
@@ -191,7 +194,17 @@ app.whenReady().then(async () => {
   await configService.initializeStore();
   
   console.log('Registering IPC handlers...');
-  // Register IPC handlers before creating window
+  
+  // Setup dictionary handlers first
+  try {
+    console.log('Setting up dictionary IPC handlers...');
+    setupDictionaryIpcHandlers();
+    console.log('Dictionary handlers setup complete');
+  } catch (error) {
+    console.error('Error setting up dictionary handlers:', error);
+  }
+  
+  // Register settings IPC handlers
   ipcMain.handle('get-settings', async () => {
     console.log('Handling get-settings request...');
     try {
