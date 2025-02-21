@@ -14,29 +14,24 @@ class SelectionService {
     try {
       const script = `
         tell application "System Events"
-          set activeApp to name of first application process whose frontmost is true
+          set frontApp to first application process whose frontmost is true
+          set frontAppName to name of frontApp
           
-          if activeApp is "TextEdit" then
-            tell application "TextEdit"
-              if (count of windows) > 0 then
-                return selection of front document
-              end if
-            end tell
-          else if activeApp is "Notes" then
-            tell application "Notes"
-              if (count of windows) > 0 then
-                return selected text of front document
-              end if
-            end tell
-          else
-            -- Get selected text via clipboard
-            set prevClipboard to the clipboard
+          -- Save current clipboard
+          set prevClipboard to the clipboard
+          
+          -- Use clipboard method for all apps
+          tell process frontAppName
             keystroke "c" using command down
-            delay 0.1
-            set selectedText to the clipboard
-            set the clipboard to prevClipboard
-            return selectedText
-          end if
+          end tell
+          
+          delay 0.1
+          set selectedText to the clipboard
+          
+          -- Restore clipboard
+          set the clipboard to prevClipboard
+          
+          return selectedText
         end tell
       `;
 
