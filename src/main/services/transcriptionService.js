@@ -160,6 +160,131 @@ class TranscriptionService {
   }
 
   /**
+   * Validate and retrieve OpenAI API key
+   * @returns {Promise<string>} API key
+   * @throws {Error} If API key is not configured
+   */
+  async validateAndGetApiKey() {
+    const apiKey = await configService.getOpenAIApiKey();
+    console.log('[Transcription] Retrieved OpenAI API key');
+    
+    if (!apiKey) {
+      throw new Error('OpenAI API key not configured');
+    }
+    return apiKey;
+  }
+
+  /**
+   * Prepare audio data for transcription
+   * @param {Buffer} audioBuffer - Raw audio buffer
+   * @returns {Promise<Buffer>} WAV formatted audio data
+   */
+  async prepareAudioData(audioBuffer) {
+    console.log('[Transcription] Converting PCM to WAV format...');
+    return this.convertPcmToWav(audioBuffer);
+  }
+
+  /**
+   * Create and write temporary WAV file
+   * @param {Buffer} wavData - WAV formatted audio data
+   * @returns {Promise<string>} Path to temporary file
+   */
+  async createTempFile(wavData) {
+    const tempFile = path.join(os.tmpdir(), `whisper-${Date.now()}.wav`);
+    console.log('[Transcription] Creating temp WAV file:', tempFile);
+    
+    await fs.promises.writeFile(tempFile, wavData);
+    const fileSize = fs.statSync(tempFile).size;
+    console.log('[Transcription] WAV file written, size:', fileSize);
+    
+    return tempFile;
+  }
+
+  /**
+   * Prepare form data for API request
+   * @param {string} tempFile - Path to temporary WAV file
+   * @returns {Promise<FormData>} Prepared form data
+   */
+  async prepareFormData(tempFile) {
+    const prompt = await dictionaryService.generateWhisperPrompt();
+    const form = new FormData();
+    
+    form.append('file', fs.createReadStream(tempFile), {
+      filename: 'audio.wav',
+      contentType: 'audio/wav'
+    });
+    form.append('model', 'whisper-1');
+    form.append('language', 'en');
+    
+    if (prompt) {
+      console.log('[Transcription] Using dictionary-enhanced prompt');
+      form.append('prompt', prompt);
+    } else {
+      console.log('[Transcription] No dictionary prompt available');
+    }
+    
+    return form;
+  }
+
+  /**
+   * Make request to Whisper API
+   * @param {FormData} form - Prepared form data
+   * @param {string} apiKey - OpenAI API key
+   * @returns {Promise<Object>} API response data
+   */
+  async callWhisperAPI(form, apiKey) {
+    console.log('[Transcription] Sending request to Whisper API...');
+    
+    const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        ...form.getHeaders()
+      },
+      body: form
+    });
+
+    console.log('[Transcription] Response received:', {
+      ok: response.ok,
+      status: response.status
+    });
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      console.error('[Transcription] Error details:', errorData);
+      throw new Error(`Whisper API error: ${response.status}\nDetails: ${errorData}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Log transcription metrics and changes
+   * @param {string} originalText - Raw transcribed text
+   * @param {string} processedText - Processed text
+   */
+  async logTranscriptionMetrics(originalText, processedText) {
+    // Get dictionary stats
+    const dictStats = dictionaryService.getStats();
+    
+    // Log effectiveness summary
+    console.log('\n[Transcription] Dictionary effectiveness summary:');
+    console.log('  - Dictionary size:', dictStats.dictionarySize, 'words');
+    console.log('  - Exact match rate:', dictStats.effectiveness.exactMatchRate);
+    console.log('  - Fuzzy match rate:', dictStats.effectiveness.fuzzyMatchRate);
+    console.log('  - Unmatched rate:', dictStats.effectiveness.unmatchedRate);
+    
+    // Compare original vs processed
+    if (originalText !== processedText) {
+      console.log('\n[Transcription] Text changes:');
+      console.log('  Original:', originalText);
+      console.log('  Processed:', processedText);
+    } else {
+      console.log('\n[Transcription] No dictionary-based changes were made');
+    }
+  }
+
+  /**
    * Transcribe audio data to text using OpenAI Whisper
    * @param {Buffer} audioBuffer - The raw audio data to transcribe
    * @param {string} highlightedText - Currently highlighted text
@@ -167,71 +292,15 @@ class TranscriptionService {
    */
   async transcribeAudio(audioBuffer, highlightedText = '') {
     console.log('\n[Transcription] Starting transcription process...');
+    let tempFile = null;
     
     try {
-      // Get API key
-      const apiKey = await configService.getOpenAIApiKey();
-      console.log('[Transcription] Retrieved OpenAI API key');
+      const apiKey = await this.validateAndGetApiKey();
+      const wavData = await this.prepareAudioData(audioBuffer);
+      tempFile = await this.createTempFile(wavData);
       
-      if (!apiKey) {
-        throw new Error('OpenAI API key not configured');
-      }
-
-      // Get dictionary prompt
-      const prompt = await dictionaryService.generateWhisperPrompt();
-      if (prompt) {
-        console.log('[Transcription] Using dictionary-enhanced prompt');
-      } else {
-        console.log('[Transcription] No dictionary prompt available');
-      }
-
-      // Convert PCM to WAV
-      console.log('[Transcription] Converting PCM to WAV format...');
-      const wavData = this.convertPcmToWav(audioBuffer);
-
-      // Create temp WAV file
-      const tempFile = path.join(require('os').tmpdir(), `whisper-${Date.now()}.wav`);
-      console.log('[Transcription] Creating temp WAV file:', tempFile);
-      
-      // Write WAV data to file
-      fs.writeFileSync(tempFile, wavData);
-      const fileSize = fs.statSync(tempFile).size;
-      console.log('[Transcription] WAV file written, size:', fileSize);
-
-      // Create form data
-      const form = new FormData();
-      form.append('file', fs.createReadStream(tempFile), {
-        filename: 'audio.wav',
-        contentType: 'audio/wav'
-      });
-      form.append('model', 'whisper-1');
-      form.append('language', 'en');
-      if (prompt) {
-        form.append('prompt', prompt);
-      }
-
-      console.log('[Transcription] Sending request to Whisper API...');
-      const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          ...form.getHeaders()
-        },
-        body: form
-      });
-
-      console.log('[Transcription] Response received:', {
-        ok: response.ok,
-        status: response.status
-      });
-
-      if (!response.ok) {
-        const errorData = await response.text();
-        console.error('[Transcription] Error details:', errorData);
-        throw new Error(`Whisper API error: ${response.status}\nDetails: ${errorData}`);
-      }
-
-      const data = await response.json();
+      const form = await this.prepareFormData(tempFile);
+      const data = await this.callWhisperAPI(form, apiKey);
       
       // Log the raw transcription before dictionary processing
       console.log('\n[Transcription] Raw transcription:', data.text);
@@ -239,34 +308,21 @@ class TranscriptionService {
       // Process and insert the transcribed text
       const processedText = await this.processAndInsertText(data.text);
       
-      // Get dictionary stats
-      const dictStats = dictionaryService.getStats();
-      
-      // Log effectiveness summary
-      console.log('\n[Transcription] Dictionary effectiveness summary:');
-      console.log('  - Dictionary size:', dictStats.dictionarySize, 'words');
-      console.log('  - Exact match rate:', dictStats.effectiveness.exactMatchRate);
-      console.log('  - Fuzzy match rate:', dictStats.effectiveness.fuzzyMatchRate);
-      console.log('  - Unmatched rate:', dictStats.effectiveness.unmatchedRate);
-      
-      // Compare original vs processed
-      if (data.text !== processedText) {
-        console.log('\n[Transcription] Text changes:');
-        console.log('  Original:', data.text);
-        console.log('  Processed:', processedText);
-      } else {
-        console.log('\n[Transcription] No dictionary-based changes were made');
-      }
-
-      // Clean up temp file
-      fs.unlinkSync(tempFile);
-      console.log('[Transcription] Temporary file cleaned up');
-      
+      await this.logTranscriptionMetrics(data.text, processedText);
       return processedText;
 
     } catch (error) {
       console.error('[Transcription] Error:', error);
       throw error;
+    } finally {
+      if (tempFile) {
+        try {
+          fs.unlinkSync(tempFile);
+          console.log('[Transcription] Temporary file cleaned up');
+        } catch (error) {
+          console.error('[Transcription] Error cleaning up temp file:', error);
+        }
+      }
     }
   }
 }
