@@ -181,31 +181,6 @@ function registerShortcuts() {
   console.log('Command+Shift+Space registration success:', success);
 }
 
-// Handle recording state changes
-recorder.on('start', () => {
-  console.log('Recording started, registering Escape key');
-  // Register Escape key when recording starts
-  const escSuccess = globalShortcut.register('Escape', () => {
-    console.log('Escape pressed, stopping recording');
-    recorder.stop();
-  });
-  console.log('Escape key registration success:', escSuccess);
-  
-  if (mainWindow) {
-    mainWindow.webContents.send('recording-status', true);
-  }
-});
-
-recorder.on('stop', () => {
-  console.log('Recording stopped, unregistering Escape key');
-  // Unregister Escape key when recording stops
-  globalShortcut.unregister('Escape');
-  
-  if (mainWindow) {
-    mainWindow.webContents.send('recording-status', false);
-  }
-});
-
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 app.whenReady().then(async () => {
