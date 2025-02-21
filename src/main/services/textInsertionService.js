@@ -44,6 +44,14 @@ class TextInsertionService {
       return false;
     }
 
+    if (!text) {
+      text = '';
+    }
+
+    if (process.platform !== 'darwin') {
+      throw new Error('Text insertion is only supported on macOS');
+    }
+
     console.log('[TextInsertion] Starting text insertion');
     console.log('[TextInsertion] Text to insert length:', text?.length || 0);
     console.log('[TextInsertion] Replace highlight:', replaceHighlight);
