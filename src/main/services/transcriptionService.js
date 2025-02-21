@@ -8,6 +8,7 @@ const textProcessing = require('./textProcessing');
 const aiService = require('./aiService');
 const textInsertionService = require('./textInsertionService');
 const notificationService = require('./notificationService');
+const selectionService = require('./selectionService');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -117,12 +118,15 @@ class TranscriptionService {
   /**
    * Process transcribed text and insert it into the active text field
    * @param {string} text - Raw transcribed text
-   * @param {string} highlightedText - Currently highlighted text
    * @returns {Promise<void>}
    */
-  async processAndInsertText(text, highlightedText = '') {
+  async processAndInsertText(text) {
     console.log('[TranscriptionService] Starting text processing pipeline');
     console.log('[TranscriptionService] Raw text:', text);
+
+    // Get selected text if any
+    const highlightedText = await selectionService.getSelectedText();
+    console.log('[TranscriptionService] Selected text:', highlightedText);
 
     // First check if this is an AI command
     const isAICommand = await aiService.isAICommand(text);
@@ -233,7 +237,7 @@ class TranscriptionService {
       console.log('\n[Transcription] Raw transcription:', data.text);
       
       // Process and insert the transcribed text
-      const processedText = await this.processAndInsertText(data.text, highlightedText);
+      const processedText = await this.processAndInsertText(data.text);
       
       // Get dictionary stats
       const dictStats = dictionaryService.getStats();

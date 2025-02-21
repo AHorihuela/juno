@@ -149,10 +149,7 @@ class AIService {
           messages: [
             {
               role: 'system',
-              content: 'You are a helpful AI assistant integrated into a dictation tool. ' +
-                       'Respond directly and concisely. Do not use any markdown formatting, ' +
-                       'code blocks, or quotation marks around your responses. Provide your ' +
-                       'response as plain text that can be directly inserted into the user\'s document.'
+              content: 'You are a text processing tool. Output ONLY the processed text without any explanations, greetings, or commentary. Never say things like "here\'s the text" or "I can help". Just output the transformed text directly.'
             },
             { role: 'user', content: prompt }
           ],
