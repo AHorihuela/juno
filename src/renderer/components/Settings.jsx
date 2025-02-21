@@ -16,50 +16,37 @@ const Settings = () => {
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(true);
   const [microphones, setMicrophones] = useState([]);
+  const [activeTab, setActiveTab] = useState('general');
 
   useEffect(() => {
-    console.log('Settings component mounted');
     const ipcRenderer = getIpcRenderer();
     if (!ipcRenderer) {
-      console.error('IPC renderer not available');
+      setError('IPC not available');
       return;
     }
-    console.log('IPC renderer available');
 
-    // Load initial settings
     const loadSettings = async () => {
-      console.log('Loading settings...');
       try {
-        console.log('Invoking get-settings...');
         const loadedSettings = await ipcRenderer.invoke('get-settings');
-        console.log('Settings loaded:', loadedSettings);
         setSettings(loadedSettings);
         setLoading(false);
       } catch (error) {
-        console.error('Error loading settings:', error);
         setError(error.message);
         setLoading(false);
       }
     };
-    loadSettings();
 
-    // Load available microphones
     const loadMicrophones = async () => {
-      console.log('Loading microphones...');
       try {
         const devices = await ipcRenderer.invoke('get-microphones');
-        console.log('Microphones loaded:', devices);
         setMicrophones(devices);
       } catch (error) {
-        console.error('Error loading microphones:', error);
         setError(error.message);
       }
     };
-    loadMicrophones();
 
-    return () => {
-      // No need to remove listeners since we're using invoke
-    };
+    loadSettings();
+    loadMicrophones();
   }, []);
 
   const handleChange = (key, value) => {
@@ -79,179 +66,218 @@ const Settings = () => {
     }
 
     try {
-      console.log('Saving settings...', {
-        ...settings,
-        openaiApiKey: settings.openaiApiKey ? '[KEY LENGTH: ' + settings.openaiApiKey.length + ']' : 'none'
-      });
       await ipcRenderer.invoke('save-settings', settings);
-      console.log('Settings saved successfully');
       setSuccess(true);
     } catch (error) {
-      console.error('Error saving settings:', error);
       setError(error.message);
     }
   };
 
   if (loading) {
-    return <div className="p-4 text-gray-600">Loading settings...</div>;
+    return (
+      <div className="text-center py-8 text-gray-600">
+        Loading settings...
+      </div>
+    );
   }
 
   return (
-    <div className="max-w-3xl mx-auto p-5">
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">Settings</h2>
-      
-      {error && (
-        <div className="error-message">
-          {error}
-        </div>
-      )}
-      
-      {success && (
-        <div className="success-message">
-          Settings saved successfully!
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="form-group">
-          <h3 className="form-section-title">OpenAI Configuration</h3>
-          
-          <div className="space-y-4">
-            <div>
-              <label className="form-label">
-                API Key
-                <input
-                  type="password"
-                  value={settings.openaiApiKey}
-                  onChange={(e) => handleChange('openaiApiKey', e.target.value)}
-                  placeholder="sk-..."
-                  className="input mt-1"
-                />
-              </label>
-            </div>
-
-            <div>
-              <label className="form-label">
-                AI Model
-                <select
-                  value={settings.aiModel}
-                  onChange={(e) => handleChange('aiModel', e.target.value)}
-                  className="select mt-1"
-                >
-                  <option value="gpt-4">GPT-4</option>
-                  <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
-                </select>
-              </label>
-            </div>
-
-            <div>
-              <label className="form-label">
-                Temperature
-                <div className="flex items-center gap-4 mt-1">
-                  <input
-                    type="range"
-                    min="0"
-                    max="2"
-                    step="0.1"
-                    value={settings.aiTemperature}
-                    onChange={(e) => handleChange('aiTemperature', parseFloat(e.target.value))}
-                    className="range flex-1"
-                  />
-                  <span className="text-sm text-gray-600 w-12 text-right">{settings.aiTemperature}</span>
-                </div>
-              </label>
-            </div>
-          </div>
-        </div>
-
-        <div className="form-group">
-          <h3 className="form-section-title">Voice Commands</h3>
-          
-          <div>
-            <label className="form-label">
-              Trigger Word
-              <input
-                type="text"
-                value={settings.aiTriggerWord}
-                onChange={(e) => handleChange('aiTriggerWord', e.target.value)}
-                placeholder="juno"
-                className="input mt-1"
-              />
-            </label>
-          </div>
-        </div>
-
-        <div className="form-group">
-          <h3 className="form-section-title">Application Settings</h3>
-          
-          <div className="space-y-4">
-            <div>
-              <label className="form-label">
-                Startup Behavior
-                <select
-                  value={settings.startupBehavior}
-                  onChange={(e) => handleChange('startupBehavior', e.target.value)}
-                  className="select mt-1"
-                >
-                  <option value="minimized">Start Minimized</option>
-                  <option value="normal">Show Window</option>
-                </select>
-              </label>
-            </div>
-
-            <div>
-              <label className="form-label">
-                Default Microphone
-                <select
-                  value={settings.defaultMicrophone}
-                  onChange={(e) => handleChange('defaultMicrophone', e.target.value)}
-                  className="select mt-1"
-                >
-                  <option value="">System Default</option>
-                  {microphones.map(device => (
-                    <option key={device.id} value={device.id}>
-                      {device.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex justify-end gap-3">
-          <button type="submit" className="btn btn-primary">
-            Save Settings
-          </button>
-          <button 
-            type="button" 
-            className="btn btn-danger"
-            onClick={async () => {
-              try {
-                const ipcRenderer = getIpcRenderer();
-                if (!ipcRenderer) {
-                  setError('IPC not available');
-                  return;
-                }
-                
-                if (window.confirm('Are you sure you want to reset all settings to defaults?')) {
-                  await ipcRenderer.invoke('reset-settings');
-                  const loadedSettings = await ipcRenderer.invoke('get-settings');
-                  setSettings(loadedSettings);
-                  setSuccess(true);
-                }
-              } catch (error) {
-                console.error('Error resetting settings:', error);
-                setError(error.message);
-              }
-            }}
+    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      {/* Tabs */}
+      <div className="border-b border-gray-200">
+        <div className="flex">
+          <button
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'general'
+                ? 'border-indigo-500 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+            onClick={() => setActiveTab('general')}
           >
-            Reset to Defaults
+            General Settings
+          </button>
+          <button
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'dictionary'
+                ? 'border-indigo-500 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+            onClick={() => setActiveTab('dictionary')}
+          >
+            Dictionary
           </button>
         </div>
-      </form>
+      </div>
 
-      <DictionaryManager />
+      <div className="p-6">
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">
+            {error}
+          </div>
+        )}
+        
+        {success && (
+          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-md text-sm text-green-700">
+            Settings saved successfully!
+          </div>
+        )}
+
+        {activeTab === 'general' ? (
+          <form onSubmit={handleSubmit} className="space-y-8">
+            {/* OpenAI Configuration */}
+            <div>
+              <h3 className="text-base font-medium text-gray-900 mb-4">OpenAI Configuration</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    API Key
+                  </label>
+                  <input
+                    type="password"
+                    value={settings.openaiApiKey}
+                    onChange={(e) => handleChange('openaiApiKey', e.target.value)}
+                    placeholder="sk-..."
+                    className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm
+                      focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    AI Model
+                  </label>
+                  <select
+                    value={settings.aiModel}
+                    onChange={(e) => handleChange('aiModel', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-white
+                      focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  >
+                    <option value="gpt-4">GPT-4</option>
+                    <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Temperature
+                  </label>
+                  <div className="flex items-center gap-4">
+                    <input
+                      type="range"
+                      min="0"
+                      max="2"
+                      step="0.1"
+                      value={settings.aiTemperature}
+                      onChange={(e) => handleChange('aiTemperature', parseFloat(e.target.value))}
+                      className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                    />
+                    <span className="text-sm text-gray-600 w-12 text-right tabular-nums">
+                      {settings.aiTemperature}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Voice Commands */}
+            <div>
+              <h3 className="text-base font-medium text-gray-900 mb-4">Voice Commands</h3>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Trigger Word
+                </label>
+                <input
+                  type="text"
+                  value={settings.aiTriggerWord}
+                  onChange={(e) => handleChange('aiTriggerWord', e.target.value)}
+                  placeholder="juno"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm
+                    focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                />
+              </div>
+            </div>
+
+            {/* Application Settings */}
+            <div>
+              <h3 className="text-base font-medium text-gray-900 mb-4">Application Settings</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Startup Behavior
+                  </label>
+                  <select
+                    value={settings.startupBehavior}
+                    onChange={(e) => handleChange('startupBehavior', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-white
+                      focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  >
+                    <option value="minimized">Start Minimized</option>
+                    <option value="normal">Show Window</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Default Microphone
+                  </label>
+                  <select
+                    value={settings.defaultMicrophone}
+                    onChange={(e) => handleChange('defaultMicrophone', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-white
+                      focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  >
+                    <option value="">System Default</option>
+                    {microphones.map(device => (
+                      <option key={device.id} value={device.id}>
+                        {device.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="submit"
+                className="px-4 py-2 text-sm font-medium rounded-md bg-indigo-600 text-white
+                  hover:bg-indigo-700 transition-colors focus:outline-none focus:ring-2
+                  focus:ring-offset-1 focus:ring-indigo-500"
+              >
+                Save Settings
+              </button>
+              <button 
+                type="button"
+                onClick={async () => {
+                  try {
+                    const ipcRenderer = getIpcRenderer();
+                    if (!ipcRenderer) {
+                      setError('IPC not available');
+                      return;
+                    }
+                    
+                    if (window.confirm('Are you sure you want to reset all settings to defaults?')) {
+                      await ipcRenderer.invoke('reset-settings');
+                      const loadedSettings = await ipcRenderer.invoke('get-settings');
+                      setSettings(loadedSettings);
+                      setSuccess(true);
+                    }
+                  } catch (error) {
+                    setError(error.message);
+                  }
+                }}
+                className="px-4 py-2 text-sm font-medium rounded-md bg-red-600 text-white
+                  hover:bg-red-700 transition-colors focus:outline-none focus:ring-2
+                  focus:ring-offset-1 focus:ring-red-500"
+              >
+                Reset to Defaults
+              </button>
+            </div>
+          </form>
+        ) : (
+          <DictionaryManager />
+        )}
+      </div>
     </div>
   );
 };
