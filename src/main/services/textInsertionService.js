@@ -54,14 +54,17 @@ class TextInsertionService {
       // Save current clipboard
       this.saveClipboard();
 
+      // Add a space after the text to prevent sentences from running together
+      const textWithSpace = text ? `${text} ` : '';
+
       // Copy new text to clipboard
       console.log('[TextInsertion] Writing new text to clipboard');
-      clipboard.writeText(text);
+      clipboard.writeText(textWithSpace);
       
       // Verify clipboard content
       const verifyClipboard = clipboard.readText();
       console.log('[TextInsertion] Verified clipboard content length:', verifyClipboard?.length || 0);
-      console.log('[TextInsertion] Clipboard content matches:', verifyClipboard === text);
+      console.log('[TextInsertion] Clipboard content matches:', verifyClipboard === textWithSpace);
 
       if (process.platform === 'darwin') {
         // On macOS, use AppleScript to simulate cmd+v
@@ -111,8 +114,9 @@ class TextInsertionService {
         'info'
       );
 
-      // Keep text in clipboard for manual pasting
-      clipboard.writeText(text);
+      // Keep text in clipboard for manual pasting (including space)
+      const textWithSpace = text ? `${text} ` : '';
+      clipboard.writeText(textWithSpace);
       console.log('[TextInsertion] Text kept in clipboard for manual pasting');
       
       return false;
@@ -132,7 +136,9 @@ class TextInsertionService {
       'Click here to copy the text to clipboard',
       'info'
     );
-    clipboard.writeText(text);
+    // Add space when copying to clipboard via popup as well
+    const textWithSpace = text ? `${text} ` : '';
+    clipboard.writeText(textWithSpace);
     console.log('[TextInsertion] Text copied to clipboard via popup');
   }
 }
