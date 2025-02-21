@@ -6,6 +6,13 @@ class DictionaryService {
   constructor() {
     this.words = new Set();
     this.dictionaryPath = path.join(app.getPath('userData'), 'userDictionary.json');
+    this.stats = {
+      promptsGenerated: 0,
+      exactMatches: 0,
+      fuzzyMatches: 0,
+      unmatchedWords: 0,
+      totalProcessed: 0
+    };
     this.initializeDictionary();
   }
 
@@ -100,6 +107,156 @@ class DictionaryService {
     }).join('');
     
     return processed;
+  }
+
+  async generateWhisperPrompt() {
+    console.log('[Dictionary] Generating Whisper prompt...');
+    const words = Array.from(this.words);
+    
+    if (words.length === 0) {
+      console.log('[Dictionary] No words in dictionary, skipping prompt');
+      return '';
+    }
+
+    this.stats.promptsGenerated++;
+    const prompt = `The following special terms may appear in the audio: ${words.join(', ')}. Please ensure these terms are transcribed exactly as shown.`;
+    
+    console.log('[Dictionary] Generated prompt with', words.length, 'words');
+    console.log('[Dictionary] Prompt:', prompt);
+    console.log('[Dictionary] Total prompts generated:', this.stats.promptsGenerated);
+    
+    return prompt;
+  }
+
+  fuzzyMatch(str1, str2) {
+    // Simple Levenshtein distance implementation
+    const matrix = Array(str1.length + 1).fill().map(() => Array(str2.length + 1).fill(0));
+    
+    for (let i = 0; i <= str1.length; i++) matrix[i][0] = i;
+    for (let j = 0; j <= str2.length; j++) matrix[0][j] = j;
+    
+    for (let i = 1; i <= str1.length; i++) {
+      for (let j = 1; j <= str2.length; j++) {
+        const cost = str1[i - 1].toLowerCase() === str2[j - 1].toLowerCase() ? 0 : 1;
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j - 1] + cost
+        );
+      }
+    }
+    
+    return matrix[str1.length][str2.length];
+  }
+
+  findClosestMatch(word) {
+    let bestMatch = null;
+    let bestDistance = Infinity;
+    
+    for (const dictWord of this.words) {
+      const distance = this.fuzzyMatch(word, dictWord);
+      if (distance < bestDistance && distance <= Math.min(word.length / 3, 3)) {
+        bestDistance = distance;
+        bestMatch = dictWord;
+      }
+    }
+    
+    return bestMatch;
+  }
+
+  processTranscribedText(text) {
+    console.log('\n[Dictionary] Starting text processing...');
+    console.log('[Dictionary] Input text:', text);
+    if (!text) return '';
+
+    // Reset word-level stats for this processing run
+    const runStats = {
+      exactMatches: 0,
+      fuzzyMatches: 0,
+      unmatchedWords: 0,
+      totalWords: 0,
+      replacements: []
+    };
+
+    // Split text into words while preserving punctuation and spacing
+    const words = text.split(/(\b\w+\b)/);
+    
+    // Process each word
+    const processed = words.map(part => {
+      // If it's not a word (punctuation/space), preserve it
+      if (!/^\w+\b/.test(part)) {
+        return part;
+      }
+
+      runStats.totalWords++;
+      
+      // Check for exact match first
+      if (this.words.has(part)) {
+        console.log(`[Dictionary] ✓ Exact match found for "${part}"`);
+        runStats.exactMatches++;
+        this.stats.exactMatches++;
+        return part;
+      }
+
+      // Try fuzzy matching for potential corrections
+      const closestMatch = this.findClosestMatch(part);
+      if (closestMatch) {
+        console.log(`[Dictionary] ~ Fuzzy match: "${part}" -> "${closestMatch}"`);
+        runStats.fuzzyMatches++;
+        this.stats.fuzzyMatches++;
+        runStats.replacements.push({ original: part, replacement: closestMatch });
+        return closestMatch;
+      }
+
+      console.log(`[Dictionary] × No match for "${part}"`);
+      runStats.unmatchedWords++;
+      this.stats.unmatchedWords++;
+      return part;
+    });
+
+    const result = processed.join('');
+    
+    // Log detailed statistics for this processing run
+    console.log('\n[Dictionary] Processing complete:');
+    console.log('  - Total words processed:', runStats.totalWords);
+    console.log('  - Exact matches:', runStats.exactMatches);
+    console.log('  - Fuzzy matches:', runStats.fuzzyMatches);
+    console.log('  - Unmatched words:', runStats.unmatchedWords);
+    
+    if (runStats.replacements.length > 0) {
+      console.log('\n[Dictionary] Replacements made:');
+      runStats.replacements.forEach(({ original, replacement }) => {
+        console.log(`  "${original}" → "${replacement}"`);
+      });
+    }
+
+    // Log cumulative statistics
+    console.log('\n[Dictionary] Cumulative statistics:');
+    console.log('  - Total prompts generated:', this.stats.promptsGenerated);
+    console.log('  - Total exact matches:', this.stats.exactMatches);
+    console.log('  - Total fuzzy matches:', this.stats.fuzzyMatches);
+    console.log('  - Total unmatched words:', this.stats.unmatchedWords);
+    
+    console.log('\n[Dictionary] Output text:', result);
+    return result;
+  }
+
+  getStats() {
+    return {
+      ...this.stats,
+      dictionarySize: this.words.size,
+      effectiveness: {
+        exactMatchRate: this.stats.totalProcessed > 0 
+          ? (this.stats.exactMatches / this.stats.totalProcessed * 100).toFixed(2) + '%'
+          : '0%',
+        fuzzyMatchRate: this.stats.totalProcessed > 0
+          ? (this.stats.fuzzyMatches / this.stats.totalProcessed * 100).toFixed(2) + '%'
+          : '0%',
+        unmatchedRate: this.stats.totalProcessed > 0
+          ? (this.stats.unmatchedWords / this.stats.totalProcessed * 100).toFixed(2) + '%'
+          : '0%'
+      }
+    };
   }
 }
 
