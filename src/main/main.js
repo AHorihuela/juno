@@ -30,7 +30,7 @@ function createWindow() {
       contextIsolation: false,
       enableRemoteModule: true,
       webSecurity: process.env.NODE_ENV === 'production',
-      devTools: true
+      devTools: process.env.NODE_ENV === 'development'
     }
   });
 
@@ -64,13 +64,15 @@ function createWindow() {
     console.error('[Main] Error loading index.html:', error);
   }
 
-  // Open DevTools before showing window
-  console.log('[Main] Opening DevTools...');
-  try {
-    mainWindow.webContents.openDevTools({ mode: 'detach' });
-    console.log('[Main] DevTools requested to open');
-  } catch (error) {
-    console.error('[Main] Error opening DevTools:', error);
+  // Only open DevTools in development mode
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[Main] Opening DevTools in development mode...');
+    try {
+      mainWindow.webContents.openDevTools({ mode: 'detach' });
+      console.log('[Main] DevTools requested to open');
+    } catch (error) {
+      console.error('[Main] Error opening DevTools:', error);
+    }
   }
 
   // Wait for window to be ready
@@ -111,13 +113,15 @@ app.whenReady().then(() => {
   console.log('[Main] App ready, initializing...');
   createWindow();
 
-  // Try opening DevTools again after a short delay if not opened
-  setTimeout(() => {
-    if (mainWindow && !mainWindow.webContents.isDevToolsOpened()) {
-      console.log('[Main] Retrying DevTools open...');
-      mainWindow.webContents.openDevTools({ mode: 'detach' });
-    }
-  }, 2000);
+  // Only retry DevTools in development mode
+  if (process.env.NODE_ENV === 'development') {
+    setTimeout(() => {
+      if (mainWindow && !mainWindow.webContents.isDevToolsOpened()) {
+        console.log('[Main] Retrying DevTools open...');
+        mainWindow.webContents.openDevTools({ mode: 'detach' });
+      }
+    }, 2000);
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
