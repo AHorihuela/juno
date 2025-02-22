@@ -25,6 +25,7 @@ function createWindow() {
     width: 1200,
     height: 800,
     show: false,
+    icon: path.join(process.cwd(), 'assets/icons/icon.png'),
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,

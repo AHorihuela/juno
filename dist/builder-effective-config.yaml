@@ -1,0 +1,22 @@
+directories:
+  output: dist
+  buildResources: build
+appId: com.dictation.tool
+productName: Dictation Tool
+mac:
+  icon: assets/icons/icon.png
+  target:
+    - dmg
+    - zip
+win:
+  icon: assets/icons/icon.png
+  target:
+    - nsis
+    - portable
+linux:
+  icon: assets/icons/icon.png
+  target:
+    - AppImage
+    - deb
+files: []
+electronVersion: 28.3.3
