@@ -3,6 +3,7 @@ const record = require('node-record-lpcm16');
 const transcriptionService = require('./transcriptionService');
 const notificationService = require('./notificationService');
 const contextService = require('./contextService');
+const audioFeedback = require('./audioFeedbackService');
 const { systemPreferences } = require('electron');
 
 class AudioRecorder extends EventEmitter {
@@ -62,6 +63,9 @@ class AudioRecorder extends EventEmitter {
 
       // Start tracking recording session in context service
       contextService.startRecording();
+
+      // Play start sound
+      audioFeedback.playStartSound();
 
       // Log audio data for testing
       this.recorder.stream()
@@ -174,6 +178,9 @@ class AudioRecorder extends EventEmitter {
 
       // Stop tracking recording session in context service
       contextService.stopRecording();
+
+      // Play stop sound
+      audioFeedback.playStopSound();
 
       // Calculate final audio metrics
       const totalSamples = this.audioData.reduce((sum, chunk) => sum + chunk.length, 0);

@@ -8,6 +8,7 @@ module.exports = {
   output: {
     filename: 'renderer.js',
     path: path.resolve(__dirname, 'dist'),
+    publicPath: './'
   },
   module: {
     rules: [
@@ -48,6 +49,13 @@ module.exports = {
             },
           }
         ]
+      },
+      {
+        test: /\.(wav|mp3)$/i,
+        type: 'asset/resource',
+        generator: {
+          filename: 'assets/sounds/[name][ext]'
+        }
       }
     ]
   },
