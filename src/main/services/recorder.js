@@ -10,12 +10,14 @@ const { systemPreferences } = require('electron');
 class AudioRecorder extends EventEmitter {
   constructor() {
     super();
+    console.log('Initializing AudioRecorder...');
     this.recording = false;
     this.recorder = null;
     this.audioData = [];
     this.hasAudioContent = false;
     this.silenceThreshold = 100;
     this.currentDeviceId = null;
+    console.log('AudioRecorder initialized successfully');
   }
 
   async checkMicrophonePermission(deviceId = null) {
@@ -336,4 +338,5 @@ class AudioRecorder extends EventEmitter {
   }
 }
 
-module.exports = new AudioRecorder(); 
+const recorder = new AudioRecorder();
+module.exports = recorder; 

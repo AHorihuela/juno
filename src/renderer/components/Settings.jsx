@@ -20,6 +20,24 @@ const Settings = () => {
   const [isChangingDevice, setIsChangingDevice] = useState(false);
   const [permissionDenied, setPermissionDenied] = useState(false);
 
+  const loadMicrophones = async () => {
+    try {
+      console.log('Requesting microphones from main process...');
+      const devices = await ipcRenderer.invoke('get-microphones');
+      console.log('Received microphones:', devices);
+      setMicrophones(devices);
+      setPermissionDenied(false);
+      setError(null);
+    } catch (error) {
+      console.error('Failed to load microphones:', error);
+      if (error.message.includes('Permission denied') || 
+          error.message.includes('NotAllowedError')) {
+        setPermissionDenied(true);
+      }
+      setError('Failed to load microphones: ' + error.message);
+    }
+  };
+
   useEffect(() => {
     const ipcRenderer = getIpcRenderer();
     if (!ipcRenderer) {
@@ -35,24 +53,6 @@ const Settings = () => {
       } catch (error) {
         setError(error.message);
         setLoading(false);
-      }
-    };
-
-    const loadMicrophones = async () => {
-      try {
-        console.log('Requesting microphones from main process...');
-        const devices = await ipcRenderer.invoke('get-microphones');
-        console.log('Received microphones:', devices);
-        setMicrophones(devices);
-        setPermissionDenied(false);
-        setError(null);
-      } catch (error) {
-        console.error('Failed to load microphones:', error);
-        if (error.message.includes('Permission denied') || 
-            error.message.includes('NotAllowedError')) {
-          setPermissionDenied(true);
-        }
-        setError('Failed to load microphones: ' + error.message);
       }
     };
 
@@ -268,66 +268,68 @@ const Settings = () => {
                     <option value="normal">Show Window</option>
                   </select>
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label 
+                    htmlFor="default-microphone"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
                     Default Microphone
                   </label>
                   <div className="relative">
-                    {permissionDenied ? (
-                      <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-md">
-                        <p className="text-sm text-yellow-800">
-                          Microphone access is required to use this feature. 
-                          Please grant microphone permissions in your system settings.
-                        </p>
-                        <button
-                          onClick={loadMicrophones}
-                          className="mt-2 px-3 py-1 text-sm font-medium rounded-md bg-yellow-100 
-                            text-yellow-800 hover:bg-yellow-200 transition-colors"
-                        >
-                          Retry Access
-                        </button>
+                    <select
+                      id="default-microphone"
+                      value={settings.defaultMicrophone}
+                      onChange={(e) => handleChange('defaultMicrophone', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-white
+                        focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500
+                        disabled:bg-gray-100 disabled:cursor-not-allowed"
+                      disabled={isChangingDevice}
+                    >
+                      {microphones.length === 0 ? (
+                        <option value="">No microphones found</option>
+                      ) : (
+                        microphones.map(device => (
+                          <option key={device.id} value={device.id}>
+                            {device.label}
+                          </option>
+                        ))
+                      )}
+                    </select>
+                    {isChangingDevice && (
+                      <div data-testid="loading-spinner" className="absolute right-2 top-2">
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-500"></div>
                       </div>
-                    ) : (
-                      <>
-                        <select
-                          value={settings.defaultMicrophone}
-                          onChange={(e) => handleChange('defaultMicrophone', e.target.value)}
-                          disabled={isChangingDevice}
-                          className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-white
-                            focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500
-                            disabled:bg-gray-100 disabled:cursor-not-allowed"
-                        >
-                          {microphones.length === 0 ? (
-                            <option value="">No microphones found</option>
-                          ) : (
-                            microphones.map(device => (
-                              <option key={device.id} value={device.id}>
-                                {device.label || 'Unnamed Device'}
-                              </option>
-                            ))
-                          )}
-                        </select>
-                        {isChangingDevice && (
-                          <div className="absolute right-2 top-2">
-                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-500"></div>
-                          </div>
-                        )}
-                        {error && (
-                          <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
-                            {error}
-                          </div>
-                        )}
-                      </>
+                    )}
+                    {error && (
+                      <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+                        {error}
+                      </div>
                     )}
                   </div>
-                  <p className="mt-1 text-sm text-gray-500">
-                    {permissionDenied 
-                      ? "Microphone access is needed to select input devices."
-                      : microphones.length === 0 
-                        ? "No microphones detected. Please check your system settings and permissions."
-                        : "Select which microphone to use for recording. Changes take effect immediately."}
-                  </p>
+                  {microphones.length === 0 ? (
+                    <p className="mt-1 text-sm text-gray-500">
+                      No microphones detected. Please check your system settings and permissions.
+                    </p>
+                  ) : (
+                    <div className="mt-2">
+                      <p className="text-sm text-gray-500">Choose your recording microphone</p>
+                      <p className="mt-1 text-sm text-gray-500">
+                        <span className="font-medium">💡 Tip:</span> Use "Default" if you frequently switch between microphones
+                      </p>
+                    </div>
+                  )}
+                  {permissionDenied && (
+                    <div className="mt-2">
+                      <p className="text-sm text-red-600">Microphone access is required</p>
+                      <button
+                        type="button"
+                        onClick={loadMicrophones}
+                        className="mt-1 text-sm text-indigo-600 hover:text-indigo-500"
+                      >
+                        Retry access
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

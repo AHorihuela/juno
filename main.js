@@ -249,7 +249,7 @@ app.on('before-quit', () => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
-  if (recorder.isRecording()) {
+  if (recorder && typeof recorder.isRecording === 'function' && recorder.isRecording()) {
     recorder.stop();
   }
   trayService.destroy();

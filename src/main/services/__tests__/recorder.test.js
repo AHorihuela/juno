@@ -1,17 +1,16 @@
 // Add OpenAI shim for Node environment
 require('openai/shims/node');
 
-const { systemPreferences } = require('electron');
-const AudioRecorder = require('../recorder');
-const transcriptionService = require('../transcriptionService');
-const notificationService = require('../notificationService');
-const contextService = require('../contextService');
-
 // Mock dependencies
 jest.mock('electron', () => ({
   systemPreferences: {
     getMediaAccessStatus: jest.fn(),
     askForMediaAccess: jest.fn()
+  },
+  app: {
+    isReady: jest.fn().mockReturnValue(true),
+    on: jest.fn(),
+    getPath: jest.fn().mockReturnValue('/mock/user/data/path')
   }
 }));
 
@@ -31,26 +30,41 @@ jest.mock('../contextService', () => ({
   stopRecording: jest.fn()
 }));
 
-jest.mock('node-record-lpcm16', () => ({
-  record: jest.fn().mockReturnValue({
-    stream: jest.fn().mockReturnValue({
-      on: jest.fn().mockReturnThis()
-    }),
-    stop: jest.fn()
-  })
-}));
+jest.mock('node-record-lpcm16');
+
+// Import dependencies after mocks
+const { systemPreferences } = require('electron');
+const recorder = require('../recorder');
+const transcriptionService = require('../transcriptionService');
+const notificationService = require('../notificationService');
+const contextService = require('../contextService');
+const { EventEmitter } = require('events');
+const record = require('node-record-lpcm16');
 
 describe('AudioRecorder', () => {
-  let recorder;
+  let mockRecorder;
+  let mockStream;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    recorder = new AudioRecorder();
     // Reset recorder state
     recorder.recording = false;
     recorder.recorder = null;
     recorder.audioData = [];
     recorder.hasAudioContent = false;
+    recorder.currentDeviceId = null;
+
+    // Setup mock stream
+    mockStream = new EventEmitter();
+    mockStream.stop = jest.fn();
+
+    // Setup mock recorder
+    mockRecorder = {
+      stream: jest.fn().mockReturnValue(mockStream),
+      stop: jest.fn(),
+    };
+
+    record.record.mockReturnValue(mockRecorder);
   });
 
   describe('Microphone Permission Handling', () => {
@@ -271,6 +285,190 @@ describe('AudioRecorder', () => {
       await recorder.stop();
       
       expect(contextService.stopRecording).toHaveBeenCalled();
+    });
+  });
+
+  describe('checkMicrophonePermission', () => {
+    it('handles already granted permission', async () => {
+      systemPreferences.getMediaAccessStatus.mockReturnValue('granted');
+      
+      const result = await recorder.checkMicrophonePermission();
+      
+      expect(result).toBe(true);
+      expect(systemPreferences.askForMediaAccess).not.toHaveBeenCalled();
+    });
+
+    it('requests permission when not determined', async () => {
+      systemPreferences.getMediaAccessStatus.mockReturnValue('not-determined');
+      systemPreferences.askForMediaAccess.mockResolvedValue(true);
+      
+      const result = await recorder.checkMicrophonePermission();
+      
+      expect(result).toBe(true);
+      expect(systemPreferences.askForMediaAccess).toHaveBeenCalledWith('microphone');
+    });
+
+    it('throws error when permission denied', async () => {
+      systemPreferences.getMediaAccessStatus.mockReturnValue('denied');
+      
+      await expect(recorder.checkMicrophonePermission()).rejects.toThrow('Microphone access denied');
+    });
+  });
+
+  describe('setDevice', () => {
+    beforeEach(() => {
+      systemPreferences.getMediaAccessStatus.mockReturnValue('granted');
+    });
+
+    it('successfully sets a new device', async () => {
+      const result = await recorder.setDevice('test-device');
+      
+      expect(result).toBe(true);
+      expect(recorder.currentDeviceId).toBe('test-device');
+      expect(record.record).toHaveBeenCalledWith(expect.objectContaining({
+        device: 'test-device'
+      }));
+    });
+
+    it('uses null device for default selection', async () => {
+      const result = await recorder.setDevice('default');
+      
+      expect(result).toBe(true);
+      expect(recorder.currentDeviceId).toBe('default');
+      expect(record.record).toHaveBeenCalledWith(expect.objectContaining({
+        device: null
+      }));
+    });
+
+    it('handles device test failure', async () => {
+      record.record.mockImplementation(() => {
+        throw new Error('Device not available');
+      });
+
+      const result = await recorder.setDevice('test-device');
+      
+      expect(result).toBe(false);
+      expect(recorder.currentDeviceId).toBe('default');
+    });
+
+    it('maintains recording state when switching devices', async () => {
+      // Start recording
+      await recorder.start();
+      expect(recorder.isRecording()).toBe(true);
+
+      // Switch device
+      await recorder.setDevice('new-device');
+      
+      // Should still be recording
+      expect(recorder.isRecording()).toBe(true);
+      expect(recorder.currentDeviceId).toBe('new-device');
+    });
+  });
+
+  describe('start', () => {
+    beforeEach(() => {
+      systemPreferences.getMediaAccessStatus.mockReturnValue('granted');
+    });
+
+    it('starts recording with default device', async () => {
+      await recorder.start();
+      
+      expect(recorder.isRecording()).toBe(true);
+      expect(record.record).toHaveBeenCalledWith(expect.objectContaining({
+        sampleRate: 16000,
+        channels: 1,
+        audioType: 'raw'
+      }));
+    });
+
+    it('starts recording with specific device', async () => {
+      await recorder.setDevice('test-device');
+      await recorder.start();
+      
+      expect(recorder.isRecording()).toBe(true);
+      expect(record.record).toHaveBeenCalledWith(expect.objectContaining({
+        device: 'test-device'
+      }));
+    });
+
+    it('handles recording errors', async () => {
+      const errorHandler = jest.fn();
+      recorder.on('error', errorHandler);
+
+      record.record.mockImplementation(() => {
+        throw new Error('Recording failed');
+      });
+
+      await recorder.start();
+      
+      expect(errorHandler).toHaveBeenCalled();
+      expect(recorder.isRecording()).toBe(false);
+    });
+  });
+
+  describe('stop', () => {
+    beforeEach(async () => {
+      systemPreferences.getMediaAccessStatus.mockReturnValue('granted');
+      await recorder.start();
+    });
+
+    it('stops recording', async () => {
+      await recorder.stop();
+      
+      expect(recorder.isRecording()).toBe(false);
+      expect(mockRecorder.stop).toHaveBeenCalled();
+    });
+
+    it('handles no audio content', async () => {
+      recorder.hasAudioContent = false;
+      const transcriptionHandler = jest.fn();
+      recorder.on('transcription', transcriptionHandler);
+
+      await recorder.stop();
+      
+      expect(transcriptionHandler).not.toHaveBeenCalled();
+      expect(notificationService.showNoAudioDetected).toHaveBeenCalled();
+    });
+
+    it('processes audio content when present', async () => {
+      recorder.hasAudioContent = true;
+      recorder.audioData = [Buffer.from('test audio data')];
+      transcriptionService.transcribeAudio.mockResolvedValue('test transcription');
+      const transcriptionHandler = jest.fn();
+      recorder.on('transcription', transcriptionHandler);
+
+      await recorder.stop();
+      
+      expect(transcriptionService.transcribeAudio).toHaveBeenCalled();
+      expect(transcriptionHandler).toHaveBeenCalledWith('test transcription');
+    });
+
+    it('handles transcription errors', async () => {
+      recorder.hasAudioContent = true;
+      recorder.audioData = [Buffer.from('test audio data')];
+      const error = new Error('Transcription failed');
+      transcriptionService.transcribeAudio.mockRejectedValue(error);
+
+      await recorder.stop();
+      
+      expect(notificationService.showTranscriptionError).toHaveBeenCalledWith(error);
+    });
+  });
+
+  describe('audio level detection', () => {
+    it('detects silence', () => {
+      const silentBuffer = Buffer.alloc(8192);
+      mockStream.emit('data', silentBuffer);
+      expect(recorder.hasAudioContent).toBe(false);
+    });
+
+    it('detects sound', () => {
+      const buffer = Buffer.alloc(8192);
+      for (let i = 0; i < buffer.length; i += 2) {
+        buffer.writeInt16LE(1000, i); // Write values above threshold
+      }
+      mockStream.emit('data', buffer);
+      expect(recorder.hasAudioContent).toBe(true);
     });
   });
 }); 
