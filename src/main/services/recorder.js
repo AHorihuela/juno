@@ -4,6 +4,7 @@ const transcriptionService = require('./transcriptionService');
 const notificationService = require('./notificationService');
 const contextService = require('./contextService');
 const audioFeedback = require('./audioFeedbackService');
+const configService = require('./configService');
 const { systemPreferences } = require('electron');
 
 class AudioRecorder extends EventEmitter {
@@ -13,24 +14,102 @@ class AudioRecorder extends EventEmitter {
     this.recorder = null;
     this.audioData = [];
     this.hasAudioContent = false;
-    this.silenceThreshold = 100; // Adjust this value based on testing
+    this.silenceThreshold = 100;
+    this.currentDeviceId = null;
   }
 
-  async checkMicrophonePermission() {
+  async checkMicrophonePermission(deviceId = null) {
     if (process.platform === 'darwin') {
       const status = systemPreferences.getMediaAccessStatus('microphone');
       
       if (status === 'not-determined') {
         const granted = await systemPreferences.askForMediaAccess('microphone');
-        return granted;
+        if (!granted) {
+          throw new Error('Microphone access denied');
+        }
+        return true;
       }
       
-      return status === 'granted';
+      if (status !== 'granted') {
+        throw new Error('Microphone access denied');
+      }
+
+      // For macOS, we need to check if this specific device is accessible
+      if (deviceId && deviceId !== 'default') {
+        try {
+          const { desktopCapturer } = require('electron');
+          const sources = await desktopCapturer.getSources({
+            types: ['audio'],
+            thumbnailSize: { width: 0, height: 0 }
+          });
+          
+          const deviceExists = sources.some(source => source.id === deviceId);
+          if (!deviceExists) {
+            throw new Error('Selected microphone is no longer available');
+          }
+        } catch (error) {
+          console.error('Error checking device availability:', error);
+          throw new Error('Failed to verify microphone access');
+        }
+      }
+      
+      return true;
     }
     
-    // For non-macOS platforms, we'll assume permission is granted
-    // and handle any errors during recording
     return true;
+  }
+
+  async setDevice(deviceId) {
+    try {
+      console.log('Setting device:', deviceId);
+      
+      // Check if we're currently recording
+      const wasRecording = this.recording;
+      if (wasRecording) {
+        await this.stop();
+      }
+
+      // Validate device access
+      await this.checkMicrophonePermission(deviceId);
+      
+      // Store the device ID
+      this.currentDeviceId = deviceId;
+      
+      // Test the device by trying to open it
+      try {
+        const testRecorder = record.record({
+          sampleRate: 16000,
+          channels: 1,
+          audioType: 'raw',
+          device: deviceId === 'default' ? null : deviceId
+        });
+        
+        // If we can start recording, the device is valid
+        testRecorder.stream();
+        testRecorder.stop();
+        
+        console.log('Successfully tested device:', deviceId);
+      } catch (error) {
+        console.error('Failed to test device:', error);
+        this.currentDeviceId = 'default'; // Reset to default
+        throw new Error('Failed to access the selected microphone. Please try another device.');
+      }
+      
+      // If we were recording, restart with new device
+      if (wasRecording) {
+        await this.start();
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error setting device:', error);
+      notificationService.showNotification(
+        'Microphone Error',
+        error.message,
+        'error'
+      );
+      return false;
+    }
   }
 
   async start() {
@@ -38,24 +117,30 @@ class AudioRecorder extends EventEmitter {
     
     try {
       // Check microphone permission
-      const hasPermission = await this.checkMicrophonePermission();
-      if (!hasPermission) {
-        notificationService.showMicrophoneError();
-        this.emit('error', new Error('Microphone access denied'));
-        return;
+      await this.checkMicrophonePermission(this.currentDeviceId);
+
+      // Get the configured device ID
+      if (!this.currentDeviceId) {
+        this.currentDeviceId = await configService.getDefaultMicrophone() || 'default';
       }
 
-      console.log('Starting recording with settings:', {
+      const recordingOptions = {
         sampleRate: 16000,
         channels: 1,
         audioType: 'raw'
-      });
+      };
+
+      // Add device selection if not using default
+      if (this.currentDeviceId && this.currentDeviceId !== 'default') {
+        recordingOptions.device = this.currentDeviceId;
+        console.log('Using specific device for recording:', this.currentDeviceId);
+      } else {
+        console.log('Using system default device for recording');
+      }
+
+      console.log('Starting recording with settings:', recordingOptions);
       
-      this.recorder = record.record({
-        sampleRate: 16000,
-        channels: 1,
-        audioType: 'raw',
-      });
+      this.recorder = record.record(recordingOptions);
 
       // Reset audio data buffer and flags
       this.audioData = [];
@@ -100,7 +185,7 @@ class AudioRecorder extends EventEmitter {
       this.emit('start');
       console.log('Recording started');
     } catch (error) {
-      console.error('Failed to start recording:', error);
+      console.error('Error starting recording:', error);
       notificationService.showNotification(
         'Recording Error',
         error.message || 'Failed to start recording',

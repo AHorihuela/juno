@@ -5,6 +5,7 @@ const configService = require('./src/main/services/configService');
 const trayService = require('./src/main/services/trayService');
 const transcriptionHistoryService = require('./src/main/services/transcriptionHistoryService');
 const setupDictionaryIpcHandlers = require('./src/main/services/dictionaryIpcHandlers');
+const notificationService = require('./src/main/services/notificationService');
 
 console.log('Main process starting...');
 
@@ -307,17 +308,95 @@ ipcMain.handle('save-settings', async (_, settings) => {
 // Update microphone handling
 ipcMain.handle('get-microphones', async () => {
   try {
-    // Use electron's desktopCapturer to get audio sources
-    const sources = await require('electron').desktopCapturer.getSources({
-      types: ['audio'],
-      thumbnailSize: { width: 0, height: 0 }
-    });
-    
-    return sources.map(source => ({
-      id: source.id,
-      label: source.name
-    }));
+    console.log('Enumerating audio devices...');
+    // Forward the request to the renderer process since mediaDevices API
+    // is only available in the renderer context
+    if (mainWindow) {
+      return await mainWindow.webContents.executeJavaScript(`
+        (async () => {
+          try {
+            // Request microphone permission first
+            await navigator.mediaDevices.getUserMedia({ audio: true });
+            
+            // Then enumerate devices
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const audioInputs = devices
+              .filter(device => {
+                const label = device.label.toLowerCase();
+                // Only include physical microphones, exclude virtual and mobile devices
+                const isAudioInput = device.kind === 'audioinput';
+                const isNotVirtual = !label.includes('virtual') && 
+                                   !label.includes('webex') && 
+                                   !label.includes('zoom') &&
+                                   !label.includes('iphone') &&
+                                   !label.includes('continuity');
+                console.log('Device:', {
+                  label,
+                  isAudioInput,
+                  isNotVirtual,
+                  included: isAudioInput && isNotVirtual
+                });
+                return isAudioInput && isNotVirtual;
+              })
+              .map(device => ({
+                id: device.deviceId,
+                label: device.label || 'Microphone ' + (device.deviceId || ''),
+                isDefault: device.deviceId === 'default'
+              }));
+
+            // Always ensure we have a default option
+            if (!audioInputs.some(mic => mic.id === 'default')) {
+              audioInputs.unshift({
+                id: 'default',
+                label: 'System Default',
+                isDefault: true
+              });
+            }
+
+            console.log('Available microphones:', audioInputs);
+            return audioInputs;
+          } catch (error) {
+            console.error('Error enumerating devices:', error);
+            throw error;
+          }
+        })();
+      `);
+    }
+    throw new Error('Window not available');
   } catch (error) {
+    console.error('Failed to enumerate microphones:', error);
     throw new Error('Failed to load microphones: ' + error.message);
+  }
+});
+
+// Update microphone handling
+ipcMain.handle('change-microphone', async (_, deviceId) => {
+  try {
+    // Update the recorder's device
+    const success = await recorder.setDevice(deviceId);
+    if (!success) {
+      throw new Error('Failed to switch to selected microphone');
+    }
+
+    // Save the selection to config
+    await configService.setDefaultMicrophone(deviceId);
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Error changing microphone:', error);
+    throw new Error(`Failed to change microphone: ${error.message}`);
+  }
+});
+
+// Add notification handler
+ipcMain.on('show-notification', (_, notification) => {
+  try {
+    notificationService.showNotification(
+      notification.title,
+      notification.message,
+      notification.type
+    );
+  } catch (error) {
+    console.error('Error showing notification:', error);
   }
 }); 
