@@ -2,6 +2,9 @@ const { app } = require('electron');
 const path = require('path');
 const player = require('node-wav-player');
 
+// Change this number (1-4) to test different variations
+const CURRENT_VARIATION = 1;
+
 class AudioFeedbackService {
   constructor() {
     // Track initialization state
