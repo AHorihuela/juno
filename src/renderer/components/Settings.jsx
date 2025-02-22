@@ -23,6 +23,10 @@ const Settings = () => {
   const loadMicrophones = async () => {
     try {
       console.log('Requesting microphones from main process...');
+      const ipcRenderer = getIpcRenderer();
+      if (!ipcRenderer) {
+        throw new Error('IPC not available');
+      }
       const devices = await ipcRenderer.invoke('get-microphones');
       console.log('Received microphones:', devices);
       setMicrophones(devices);

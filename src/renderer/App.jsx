@@ -8,7 +8,7 @@ const App = () => {
   const [error, setError] = useState(null);
   const [transcription, setTranscription] = useState('');
   const [showSettings, setShowSettings] = useState(false);
-  const [showHistory, setShowHistory] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
 
   useEffect(() => {
     const ipcRenderer = getIpcRenderer();
