@@ -1,14 +1,18 @@
 const { app, BrowserWindow, globalShortcut, ipcMain } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const recorder = require('./src/main/services/recorder');
 const configService = require('./src/main/services/configService');
 const trayService = require('./src/main/services/trayService');
 const transcriptionHistoryService = require('./src/main/services/transcriptionHistoryService');
-const setupDictionaryIpcHandlers = require('./src/main/services/dictionaryIpcHandlers');
 const notificationService = require('./src/main/services/notificationService');
 const overlayService = require('./src/main/services/overlayService');
+const setupDictionaryIpcHandlers = require('./src/main/services/dictionaryIpcHandlers');
 
-console.log('Main process starting...');
+// First log to verify process start
+console.log('[Main] Main process starting...');
+console.log('[Main] Environment:', process.env.NODE_ENV);
+console.log('[Main] Current working directory:', process.cwd());
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling
 if (require('electron-squirrel-startup')) {
@@ -218,14 +222,9 @@ app.whenReady().then(async () => {
   
   console.log('Registering IPC handlers...');
   
-  // Setup dictionary handlers first
-  try {
-    console.log('Setting up dictionary IPC handlers...');
-    setupDictionaryIpcHandlers();
-    console.log('Dictionary handlers setup complete');
-  } catch (error) {
-    console.error('Error setting up dictionary handlers:', error);
-  }
+  // Initialize dictionary IPC handlers
+  console.log('Initializing dictionary IPC handlers...');
+  setupDictionaryIpcHandlers();
   
   // Register settings IPC handlers
   ipcMain.handle('get-settings', async () => {
@@ -293,12 +292,51 @@ app.on('activate', () => {
   }
 });
 
-// Handle any uncaught exceptions
+// Handle renderer process crashes
+app.on('render-process-crashed', (event, webContents, killed) => {
+  console.error('Renderer process crashed:', { killed });
+  
+  notificationService.showNotification(
+    'Application Error',
+    'A window crashed and will be restarted.',
+    'error'
+  );
+
+  // Recreate the window
+  createWindow();
+});
+
+// Handle GPU process crashes
+app.on('gpu-process-crashed', (event, killed) => {
+  console.error('GPU process crashed:', { killed });
+  
+  notificationService.showNotification(
+    'Application Error',
+    'The GPU process crashed. The application will restart.',
+    'error'
+  );
+
+  // Restart the app
+  setTimeout(() => {
+    app.relaunch();
+    app.exit(0);
+  }, 2000);
+});
+
+// Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
-  console.error('Uncaught exception:', error);
-  if (mainWindow && mainWindow.webContents) {
-    mainWindow.webContents.send('error', error.message);
+  console.error('[Main] Uncaught exception:', error);
+  if (mainWindow) {
+    mainWindow.webContents.send('error', {
+      message: 'An unexpected error occurred',
+      error: error.message
+    });
   }
+});
+
+// Log when app is quitting
+app.on('quit', () => {
+  console.log('[Main] Application quitting...');
 });
 
 // Update settings handlers to use handle/invoke

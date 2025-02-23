@@ -121,19 +121,6 @@ function setupDictionaryIpcHandlers() {
       }
     });
 
-    // Verify registration
-    const registeredHandlers = ipcMain.eventNames();
-    console.log('[DictionaryIpcHandlers] Registered handlers after setup:', registeredHandlers);
-    
-    // Verify each handler specifically
-    Object.values(CHANNELS).forEach(channel => {
-      const isRegistered = registeredHandlers.includes(channel);
-      console.log(`[DictionaryIpcHandlers] Handler ${channel} registered:`, isRegistered);
-      if (!isRegistered) {
-        throw new Error(`Failed to register handler for ${channel}`);
-      }
-    });
-
     console.log('[DictionaryIpcHandlers] Setup completed successfully');
   } catch (error) {
     console.error('[DictionaryIpcHandlers] Critical error during setup:', error);

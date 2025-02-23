@@ -294,4 +294,5 @@ class TranscriptionService {
   }
 }
 
-module.exports = new TranscriptionService(); Turn it on. 
+// Export a singleton instance
+module.exports = new TranscriptionService(); 

@@ -75,24 +75,48 @@ class TextInsertionService {
       console.log('[TextInsertion] Clipboard content matches:', verifyClipboard === textWithSpace);
 
       if (process.platform === 'darwin') {
-        // On macOS, use AppleScript to simulate cmd+v
-        console.log('[TextInsertion] Using AppleScript for paste simulation');
-        const script = `
-          tell application "System Events"
-            keystroke "v" using command down
-          end tell
-        `;
+        // On macOS, use AppleScript to handle text insertion
+        console.log('[TextInsertion] Using AppleScript for text insertion');
         
-        await new Promise((resolve, reject) => {
-          exec(`osascript -e '${script}'`, (error, stdout, stderr) => {
-            if (error) {
-              console.error('[TextInsertion] AppleScript error:', error);
-              reject(error);
-            } else {
-              resolve();
-            }
+        // If text is selected, we need to handle it differently
+        if (replaceHighlight) {
+          const script = `
+            tell application "System Events"
+              key code 51 -- Delete key to remove selected text
+              delay 0.1
+              keystroke "v" using command down
+            end tell
+          `;
+          
+          await new Promise((resolve, reject) => {
+            exec(`osascript -e '${script}'`, (error, stdout, stderr) => {
+              if (error) {
+                console.error('[TextInsertion] AppleScript error:', error);
+                reject(error);
+              } else {
+                resolve();
+              }
+            });
           });
-        });
+        } else {
+          // No text selected, just paste normally
+          const script = `
+            tell application "System Events"
+              keystroke "v" using command down
+            end tell
+          `;
+          
+          await new Promise((resolve, reject) => {
+            exec(`osascript -e '${script}'`, (error, stdout, stderr) => {
+              if (error) {
+                console.error('[TextInsertion] AppleScript error:', error);
+                reject(error);
+              } else {
+                resolve();
+              }
+            });
+          });
+        }
         
         console.log('[TextInsertion] AppleScript paste command executed');
       } else {
