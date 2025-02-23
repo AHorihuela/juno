@@ -82,7 +82,7 @@ class OverlayService {
             // Update loop for smooth animations
             function animate() {
               const bars = document.querySelectorAll('.bar');
-              const smoothingFactor = 0.6; // Even snappier response
+              const smoothingFactor = 0.6; // Snappy response
               
               // Update each bar
               previousLevels = previousLevels.map((prev, i) => {
@@ -105,17 +105,30 @@ class OverlayService {
             animate();
 
             function updateLevels(levels) {
-              // Get the main level from the first value and amplify it more
+              // Get the main level from the first value and amplify it
               const mainLevel = Math.min(1, levels[0] * 2.0); // Double the input but cap at 1
               
-              // Create a ripple effect with higher energy retention
-              targetLevels = [
-                mainLevel,                    // First bar gets amplified intensity
-                targetLevels[0] * 0.95,      // Second bar gets 95% of previous bar
-                targetLevels[1] * 0.9,       // Third bar gets 90% of previous bar
-                targetLevels[2] * 0.85,      // Fourth bar gets 85% of previous bar
-                targetLevels[3] * 0.8        // Fifth bar gets 80% of previous bar
-              ];
+              // Center bar (index 2) gets the main intensity
+              const centerIdx = 2;
+              targetLevels[centerIdx] = mainLevel;
+              
+              // Propagate outwards with decreasing intensity
+              const decayFactor = 0.7; // Sharper decay for more contrast
+              
+              // Propagate left
+              for (let i = centerIdx - 1; i >= 0; i--) {
+                targetLevels[i] = targetLevels[i + 1] * decayFactor;
+              }
+              
+              // Propagate right
+              for (let i = centerIdx + 1; i < 5; i++) {
+                targetLevels[i] = targetLevels[i - 1] * decayFactor;
+              }
+              
+              // Add slight randomization for more natural look
+              targetLevels = targetLevels.map(level => 
+                level * (0.9 + Math.random() * 0.2)
+              );
             }
           </script>
         </head>
