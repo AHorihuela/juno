@@ -13,9 +13,9 @@ class OverlayService {
     const { workArea } = screen.getPrimaryDisplay();
 
     this.window = new BrowserWindow({
-      width: 110,
-      height: 28,
-      x: Math.floor(workArea.x + (workArea.width - 110) / 2),
+      width: 96,
+      height: 22,
+      x: Math.floor(workArea.x + (workArea.width - 96) / 2),
       y: workArea.height - 100,
       frame: false,
       transparent: true,
@@ -56,22 +56,23 @@ class OverlayService {
             }
             .container {
               background: rgba(0, 0, 0, 0.75);
-              border-radius: 999px;
-              padding: 6px 12px;
+              border-radius: 11px;
+              padding: 0 10px;
               display: flex;
               justify-content: center;
               align-items: center;
-              gap: 4px;
-              height: 20px;
+              gap: 3px;
+              height: 22px;
+              overflow: hidden;
             }
             .bar {
               width: 2.5px;
-              height: 12px;
+              height: 16px;
               border-radius: 1px;
               background: white;
-              transition: transform 0.08s ease-out;
+              transition: transform 0.06s ease-out;
               transform-origin: center;
-              transform: scaleY(0.2);
+              transform: scaleY(0.15);
             }
           </style>
           <script>
@@ -81,7 +82,7 @@ class OverlayService {
             // Update loop for smooth animations
             function animate() {
               const bars = document.querySelectorAll('.bar');
-              const smoothingFactor = 0.4; // Faster response to changes
+              const smoothingFactor = 0.6; // Even snappier response
               
               // Update each bar
               previousLevels = previousLevels.map((prev, i) => {
@@ -89,8 +90,8 @@ class OverlayService {
                 const next = prev + (target - prev) * smoothingFactor;
                 
                 if (bars[i]) {
-                  // More dramatic scaling: 0.2 to 4.0 range
-                  const scale = 0.2 + (next * 3.8);
+                  // Scale to fit within container (0.15 to 1.2 range)
+                  const scale = 0.15 + (next * 1.05);
                   bars[i].style.transform = 'scaleY(' + scale + ')';
                 }
                 
@@ -104,16 +105,16 @@ class OverlayService {
             animate();
 
             function updateLevels(levels) {
-              // Get the main level from the first value
-              const mainLevel = levels[0];
+              // Get the main level from the first value and amplify it more
+              const mainLevel = Math.min(1, levels[0] * 2.0); // Double the input but cap at 1
               
               // Create a ripple effect with higher energy retention
               targetLevels = [
-                mainLevel,                    // First bar gets full intensity
-                targetLevels[0] * 0.9,       // Second bar gets 90% of previous bar
-                targetLevels[1] * 0.85,      // Third bar gets 85% of previous bar
-                targetLevels[2] * 0.8,       // Fourth bar gets 80% of previous bar
-                targetLevels[3] * 0.75       // Fifth bar gets 75% of previous bar
+                mainLevel,                    // First bar gets amplified intensity
+                targetLevels[0] * 0.95,      // Second bar gets 95% of previous bar
+                targetLevels[1] * 0.9,       // Third bar gets 90% of previous bar
+                targetLevels[2] * 0.85,      // Fourth bar gets 85% of previous bar
+                targetLevels[3] * 0.8        // Fifth bar gets 80% of previous bar
               ];
             }
           </script>
