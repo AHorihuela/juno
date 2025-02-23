@@ -35,18 +35,22 @@ const Home = ({ isRecording, error, transcription }) => (
         </h2>
       </div>
 
-      <div className="space-y-6">
+      <div className="space-y-4">
         <div className="flex items-center">
-          <span className="text-gray-600 w-24">Start/Stop:</span>
-          <span className="px-3 py-1.5 bg-gray-50 rounded text-sm text-gray-900">
-            Space
-          </span>
+          <span className="text-gray-600 w-32">Start/Stop:</span>
+          <div className="flex items-center gap-1">
+            <kbd className="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-md">⌘</kbd>
+            <span className="text-gray-400">+</span>
+            <kbd className="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-md">⇧</kbd>
+            <span className="text-gray-400">+</span>
+            <kbd className="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-md">Space</kbd>
+          </div>
         </div>
         <div className="flex items-center">
-          <span className="text-gray-600 w-24">Cancel:</span>
-          <span className="px-3 py-1.5 bg-gray-50 rounded text-sm text-gray-900">
-            Esc
-          </span>
+          <span className="text-gray-600 w-32">Cancel:</span>
+          <div className="flex items-center">
+            <kbd className="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-md">Esc</kbd>
+          </div>
         </div>
       </div>
     </div>
