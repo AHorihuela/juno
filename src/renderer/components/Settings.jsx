@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getIpcRenderer } from '../utils/electron';
 import ActionVerbManager from './ActionVerbManager';
+import AIRulesManager from './AIRulesManager';
 
 const Settings = () => {
   const [settings, setSettings] = useState({
@@ -267,9 +268,9 @@ const Settings = () => {
             </form>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-8">
-              {/* AI Settings */}
+              {/* OpenAI Settings */}
               <div>
-                <h3 className="text-base font-medium text-gray-900 mb-4">AI Configuration</h3>
+                <h3 className="text-base font-medium text-gray-900 mb-4">OpenAI Settings</h3>
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -343,6 +344,11 @@ const Settings = () => {
               {/* Action Verbs Section */}
               <div className="mb-8 pb-8 border-b border-gray-200">
                 <ActionVerbManager />
+              </div>
+
+              {/* AI Rules Section */}
+              <div className="mb-8 pb-8 border-b border-gray-200">
+                <AIRulesManager />
               </div>
 
               <div className="flex justify-end gap-3 pt-2">

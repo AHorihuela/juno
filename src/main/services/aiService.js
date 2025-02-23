@@ -3,14 +3,6 @@ const configService = require('./configService');
 const notificationService = require('./notificationService');
 const contextService = require('./contextService');
 
-// Verbs that benefit from both primary and secondary context
-const DUAL_CONTEXT_VERBS = new Set([
-  'compare',
-  'contrast',
-  'differentiate',
-  'merge',
-]);
-
 class AIService {
   constructor() {
     this.openai = null;
@@ -117,8 +109,11 @@ class AIService {
       // Get context using the context service
       const context = contextService.getContext(highlightedText);
 
-      // Build the prompt
-      const prompt = this.buildPrompt(command, context);
+      // Get AI rules
+      const aiRules = await configService.getAIRules();
+      const rulesText = aiRules.length > 0 
+        ? `\n\nUser context:\n${aiRules.join('\n')}`
+        : '';
 
       // Create completion request
       this.currentRequest = {
@@ -128,9 +123,9 @@ class AIService {
           messages: [
             {
               role: 'system',
-              content: 'You are a text processing tool. Output ONLY the processed text without any explanations, greetings, or commentary. Never say things like "here\'s the text" or "I can help". Just output the transformed text directly.'
+              content: 'You are a text processing tool. Output ONLY the processed text without any explanations, greetings, or commentary. Never say things like "here\'s the text" or "I can help". Just output the transformed text directly.' + rulesText
             },
-            { role: 'user', content: prompt }
+            { role: 'user', content: this.buildPrompt(command, context) }
           ],
           temperature: await configService.getAITemperature() || 0.7,
         }, { signal: controller.signal })
@@ -184,30 +179,17 @@ class AIService {
    */
   buildPrompt(command, context) {
     const parts = [];
-    const commandLower = command.toLowerCase();
-    const isDualContextCommand = DUAL_CONTEXT_VERBS.has(commandLower.split(/\s+/)[0]);
     
     // Add the command
     parts.push(command);
 
-    // For dual context commands, treat both contexts as equally important
-    if (isDualContextCommand) {
-      if (context.primaryContext) {
-        parts.push(`\nFirst text:\n"""\n${context.primaryContext.content}\n"""`);
-      }
-      if (context.secondaryContext) {
-        parts.push(`\nSecond text:\n"""\n${context.secondaryContext.content}\n"""`);
-      }
+    // Add context with clear hierarchy
+    if (context.primaryContext) {
+      const label = context.primaryContext.type === 'highlight' ? 'Selected text' : 'Recent clipboard content';
+      parts.push(`\n${label}:\n"""\n${context.primaryContext.content}\n"""`);
     }
-    // For normal commands, maintain hierarchy
-    else {
-      if (context.primaryContext) {
-        const label = context.primaryContext.type === 'highlight' ? 'Selected text' : 'Recent clipboard content';
-        parts.push(`\n${label}:\n"""\n${context.primaryContext.content}\n"""`);
-      }
-      if (context.secondaryContext) {
-        parts.push(`\nAdditional context:\n"""\n${context.secondaryContext.content}\n"""`);
-      }
+    if (context.secondaryContext) {
+      parts.push(`\nAdditional context:\n"""\n${context.secondaryContext.content}\n"""`);
     }
 
     return parts.join('\n');

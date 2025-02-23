@@ -233,6 +233,8 @@ app.whenReady().then(async () => {
         aiTemperature: await configService.getAITemperature(),
         startupBehavior: await configService.getStartupBehavior(),
         defaultMicrophone: await configService.getDefaultMicrophone(),
+        actionVerbs: await configService.getActionVerbs(),
+        aiRules: await configService.getAIRules(),
       };
     } catch (error) {
       console.error('Error getting settings:', error);
@@ -314,6 +316,12 @@ ipcMain.handle('save-settings', async (_, settings) => {
     }
     if (settings.defaultMicrophone !== undefined) {
       await configService.setDefaultMicrophone(settings.defaultMicrophone || '');
+    }
+    if (settings.actionVerbs !== undefined) {
+      await configService.setActionVerbs(settings.actionVerbs);
+    }
+    if (settings.aiRules !== undefined) {
+      await configService.setAIRules(settings.aiRules);
     }
     return { success: true };
   } catch (error) {

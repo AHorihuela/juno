@@ -99,6 +99,13 @@ class ConfigService {
                 'revise',
                 'make'
               ]
+            },
+            aiRules: {
+              type: 'array',
+              items: {
+                type: 'string'
+              },
+              default: []
             }
           },
         });
@@ -177,6 +184,13 @@ class ConfigService {
                   'revise',
                   'make'
                 ]
+              },
+              aiRules: {
+                type: 'array',
+                items: {
+                  type: 'string'
+                },
+                default: []
               }
             },
           });
@@ -334,6 +348,36 @@ class ConfigService {
     const verbs = store.get('actionVerbs');
     const updatedVerbs = verbs.filter(v => v !== verb);
     store.set('actionVerbs', updatedVerbs);
+  }
+
+  // AI Rules
+  async getAIRules() {
+    const store = await this.initializeStore();
+    return store.get('aiRules');
+  }
+
+  async setAIRules(rules) {
+    const store = await this.initializeStore();
+    store.set('aiRules', rules);
+  }
+
+  async addAIRule(rule) {
+    const store = await this.initializeStore();
+    const rules = await this.getAIRules();
+    if (!rules.includes(rule)) {
+      rules.push(rule);
+      await this.setAIRules(rules);
+    }
+  }
+
+  async removeAIRule(rule) {
+    const store = await this.initializeStore();
+    const rules = await this.getAIRules();
+    const index = rules.indexOf(rule);
+    if (index !== -1) {
+      rules.splice(index, 1);
+      await this.setAIRules(rules);
+    }
   }
 }
 
