@@ -55,47 +55,45 @@ const App = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Fixed Header */}
-      <header className="fixed top-0 left-0 right-0 bg-white border-b border-gray-200 shadow-sm z-50">
-        <div className="max-w-7xl mx-auto flex justify-between items-center px-6 py-3">
+      {/* Header */}
+      <header className="bg-white border-b border-gray-200 px-6 py-4">
+        <div className="max-w-7xl mx-auto flex justify-between items-center">
           <div className="flex items-center gap-3">
             <img 
               src={birdIcon} 
               alt="Juno" 
-              className="w-10 h-10" 
+              className="w-12 h-12" 
             />
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Juno</h1>
               <p className="text-sm text-gray-600">AI-Powered Dictation Tool</p>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-3">
             <button
               onClick={() => setShowHistory(!showHistory)}
-              className="px-4 py-2 text-sm font-medium rounded-md transition-all duration-200
-                bg-white text-gray-700 border border-gray-200 hover:border-gray-300 hover:bg-gray-50
-                focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-[#FF6B4A]"
+              className="px-4 py-2 text-sm font-medium rounded-lg transition-colors
+                bg-white text-gray-700 border border-gray-200 hover:bg-gray-50"
             >
-              {showHistory ? 'Hide History' : 'Show History'}
+              Show History
             </button>
             <button
               onClick={() => setShowSettings(!showSettings)}
-              className="px-4 py-2 text-sm font-medium rounded-md transition-all duration-200
-                bg-white text-gray-700 border border-gray-200 hover:border-gray-300 hover:bg-gray-50
-                focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-[#FF6B4A]"
+              className="px-4 py-2 text-sm font-medium rounded-lg transition-colors
+                bg-white text-gray-700 border border-gray-200 hover:bg-gray-50"
             >
-              {showSettings ? 'Hide Settings' : 'Settings'}
+              Settings
             </button>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="pt-20 px-6 pb-6">
-        <div className="max-w-2xl mx-auto space-y-6">
+      <main className="px-6 py-4">
+        <div className="max-w-2xl mx-auto">
           {/* Error Display */}
           {error && (
-            <div className="p-4 bg-red-50 border border-red-200 rounded-lg animate-fade-in">
+            <div className="p-4 mb-4 bg-red-50 border border-red-200 rounded-lg">
               <div className="flex items-center gap-2 text-red-700">
                 <svg className="w-5 h-5 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -105,37 +103,38 @@ const App = () => {
             </div>
           )}
 
-          {/* Recording Status */}
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <div className="flex items-center gap-3 mb-5">
-              <div className={`w-3 h-3 rounded-full transition-colors ${
+          {/* Recording Status Card */}
+          <div className="bg-white rounded-lg border border-gray-200 p-8">
+            <div className="flex items-center gap-3 mb-8">
+              <div className={`w-4 h-4 rounded-full ${
                 isRecording 
                   ? 'bg-red-500 animate-pulse' 
                   : 'bg-green-500'
               }`} />
-              <h2 className="text-xl font-semibold text-gray-900">
+              <h2 className="text-2xl font-semibold text-gray-900">
                 {isRecording ? 'Recording...' : 'Ready to Record'}
               </h2>
             </div>
-            <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <span className="w-[5.5rem] text-sm text-gray-600">Start/Stop:</span>
-                <code className="px-2.5 py-1.5 bg-gray-50 rounded-md font-mono text-sm text-gray-700 border border-gray-200">
-                  {shortcutText}
-                </code>
+
+            <div className="space-y-6">
+              <div className="flex items-center">
+                <span className="text-gray-600 w-24">Start/Stop:</span>
+                <span className="px-3 py-1.5 bg-gray-50 rounded text-sm text-gray-900">
+                  Space
+                </span>
               </div>
-              <div className="flex items-center gap-3">
-                <span className="w-[5.5rem] text-sm text-gray-600">Cancel:</span>
-                <code className="px-2.5 py-1.5 bg-gray-50 rounded-md font-mono text-sm text-gray-700 border border-gray-200">
+              <div className="flex items-center">
+                <span className="text-gray-600 w-24">Cancel:</span>
+                <span className="px-3 py-1.5 bg-gray-50 rounded text-sm text-gray-900">
                   Esc
-                </code>
+                </span>
               </div>
             </div>
           </div>
 
           {/* Latest Transcription */}
           {transcription && (
-            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            <div className="mt-6 bg-white rounded-lg border border-gray-200">
               <div className="border-b border-gray-100 bg-gray-50/50 px-4 py-2">
                 <h3 className="text-sm font-medium text-gray-700">Latest Transcription</h3>
               </div>
