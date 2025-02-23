@@ -41,11 +41,11 @@ class RecordingService {
       // Initialize context with highlighted text
       await contextService.startRecording(highlightedText);
 
+      // Play start sound first
+      await audioFeedback.playStartSound();
+
       // Show minimal recording indicator without stealing focus
       windowService.showRecordingIndicator();
-
-      // Play start sound
-      audioFeedback.playStartSound();
 
       console.log('Recording started');
       return true;
@@ -67,18 +67,18 @@ class RecordingService {
     try {
       console.log('Stopping recording...');
       
+      // Immediately hide the recording indicator
+      windowService.hideWindow();
+      
+      // Play stop sound (don't await, let it play in background)
+      audioFeedback.playStopSound();
+      
       // Stop recording first
       this.audioRecorder.stop();
       this.isRecording = false;
       
       // Stop context tracking
       contextService.stopRecording();
-      
-      // Play stop sound
-      audioFeedback.playStopSound();
-      
-      // Hide the recording indicator
-      windowService.hideWindow();
 
       // Analyze final audio
       const totalDuration = (this.audioData.length * 8192) / 16000;
