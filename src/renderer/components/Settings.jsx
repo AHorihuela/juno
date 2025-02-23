@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { getIpcRenderer } from '../utils/electron';
-import DictionaryManager from './DictionaryManager';
 import ActionVerbManager from './ActionVerbManager';
 
 const Settings = () => {
@@ -143,7 +142,7 @@ const Settings = () => {
     <div className="container mx-auto px-4 py-8 max-w-4xl">
       <h2 className="text-2xl font-bold text-gray-900 mb-8">Settings</h2>
 
-      {/* API Settings Section */}
+      {/* Settings Section */}
       <div className="bg-white rounded-lg shadow p-6 mb-8">
         {/* Tabs */}
         <div className="border-b border-gray-200">
@@ -157,16 +156,6 @@ const Settings = () => {
               onClick={() => setActiveTab('general')}
             >
               General Settings
-            </button>
-            <button
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'dictionary'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-              onClick={() => setActiveTab('dictionary')}
-            >
-              Dictionary
             </button>
             <button
               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
@@ -246,36 +235,21 @@ const Settings = () => {
                           <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-500"></div>
                         </div>
                       )}
-                      {error && (
-                        <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
-                          {error}
-                        </div>
-                      )}
                     </div>
-                    {microphones.length === 0 ? (
-                      <p className="mt-1 text-sm text-gray-500">
-                        No microphones detected. Please check your system settings and permissions.
-                      </p>
-                    ) : (
-                      <div className="mt-2">
-                        <p className="text-sm text-gray-500">Choose your recording microphone</p>
-                        <p className="mt-1 text-sm text-gray-500">
-                          <span className="font-medium">💡 Tip:</span> Use "Default" if you frequently switch between microphones
-                        </p>
-                      </div>
-                    )}
                     {permissionDenied && (
-                      <div className="mt-2">
-                        <p className="text-sm text-red-600">Microphone access is required</p>
+                      <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+                        Microphone access is required. Please grant permission and click "Retry Access".
                         <button
-                          type="button"
                           onClick={loadMicrophones}
-                          className="mt-1 text-sm text-indigo-600 hover:text-indigo-500"
+                          className="ml-2 underline hover:text-red-800"
                         >
-                          Retry access
+                          Retry Access
                         </button>
                       </div>
                     )}
+                    <p className="mt-2 text-sm text-gray-500">
+                      💡 Use "Default" if you frequently switch between microphones
+                    </p>
                   </div>
                 </div>
               </div>
@@ -289,45 +263,17 @@ const Settings = () => {
                 >
                   Save Settings
                 </button>
-                <button 
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      const ipcRenderer = getIpcRenderer();
-                      if (!ipcRenderer) {
-                        setError('IPC not available');
-                        return;
-                      }
-                      
-                      if (window.confirm('Are you sure you want to reset all settings to defaults?')) {
-                        await ipcRenderer.invoke('reset-settings');
-                        const loadedSettings = await ipcRenderer.invoke('get-settings');
-                        setSettings(loadedSettings);
-                        setSuccess(true);
-                      }
-                    } catch (error) {
-                      setError(error.message);
-                    }
-                  }}
-                  className="px-4 py-2 text-sm font-medium rounded-md bg-red-600 text-white
-                    hover:bg-red-700 transition-colors focus:outline-none focus:ring-2
-                    focus:ring-offset-1 focus:ring-red-500"
-                >
-                  Reset to Defaults
-                </button>
               </div>
             </form>
-          ) : activeTab === 'dictionary' ? (
-            <DictionaryManager />
           ) : (
             <form onSubmit={handleSubmit} className="space-y-8">
-              {/* OpenAI Configuration */}
+              {/* AI Settings */}
               <div>
-                <h3 className="text-base font-medium text-gray-900 mb-4">OpenAI Configuration</h3>
+                <h3 className="text-base font-medium text-gray-900 mb-4">AI Configuration</h3>
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      API Key
+                      OpenAI API Key
                     </label>
                     <input
                       type="password"
@@ -349,8 +295,8 @@ const Settings = () => {
                       className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-white
                         focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                     >
-                      <option value="gpt-4">GPT-4</option>
-                      <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                      <option value="gpt-4">GPT-4 (Recommended)</option>
+                      <option value="gpt-3.5-turbo">GPT-3.5 Turbo (Faster)</option>
                     </select>
                   </div>
 
