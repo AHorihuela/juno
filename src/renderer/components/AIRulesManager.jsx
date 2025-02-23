@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { getIpcRenderer } from '../utils/electron';
 
 const AIRulesManager = () => {
@@ -6,8 +6,8 @@ const AIRulesManager = () => {
   const [rules, setRules] = useState([]);
   const [error, setError] = useState(null);
 
-  // Load rules on component mount
-  React.useEffect(() => {
+  // Load rules on component mount and keep them in sync
+  useEffect(() => {
     const loadRules = async () => {
       try {
         const ipcRenderer = getIpcRenderer();
@@ -19,7 +19,7 @@ const AIRulesManager = () => {
       }
     };
     loadRules();
-  }, []);
+  }, []); // Only run on mount
 
   const handleAddRule = async (e) => {
     e.preventDefault();
