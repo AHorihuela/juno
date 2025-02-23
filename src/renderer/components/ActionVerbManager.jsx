@@ -27,7 +27,9 @@ const ActionVerbManager = () => {
   };
 
   const handleAddVerb = async (e) => {
-    e.preventDefault();
+    if (e) {
+      e.preventDefault();
+    }
     setError(null);
     setSuccess(false);
 
@@ -84,7 +86,7 @@ const ActionVerbManager = () => {
         <p className="text-sm text-gray-500 mb-4">
           Add verbs that will trigger AI processing when used at the start of a command.
         </p>
-        <form onSubmit={handleAddVerb} className="flex gap-3">
+        <div className="flex gap-3">
           <input
             type="text"
             value={newVerb}
@@ -94,7 +96,7 @@ const ActionVerbManager = () => {
               focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
           />
           <button 
-            type="submit"
+            onClick={handleAddVerb}
             disabled={!newVerb.trim()}
             className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
               newVerb.trim()
@@ -104,7 +106,7 @@ const ActionVerbManager = () => {
           >
             Add Verb
           </button>
-        </form>
+        </div>
       </div>
 
       <div>

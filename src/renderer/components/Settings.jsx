@@ -168,6 +168,16 @@ const Settings = () => {
             >
               Dictionary
             </button>
+            <button
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'ai'
+                  ? 'border-indigo-500 text-indigo-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+              onClick={() => setActiveTab('ai')}
+            >
+              AI Settings
+            </button>
           </div>
         </div>
 
@@ -186,79 +196,6 @@ const Settings = () => {
 
           {activeTab === 'general' ? (
             <form onSubmit={handleSubmit} className="space-y-8">
-              {/* OpenAI Configuration */}
-              <div>
-                <h3 className="text-base font-medium text-gray-900 mb-4">OpenAI Configuration</h3>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      API Key
-                    </label>
-                    <input
-                      type="password"
-                      value={settings.openaiApiKey}
-                      onChange={(e) => handleChange('openaiApiKey', e.target.value)}
-                      placeholder="sk-..."
-                      className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm
-                        focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      AI Model
-                    </label>
-                    <select
-                      value={settings.aiModel}
-                      onChange={(e) => handleChange('aiModel', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-white
-                        focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                    >
-                      <option value="gpt-4">GPT-4</option>
-                      <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Temperature
-                    </label>
-                    <div className="flex items-center gap-4">
-                      <input
-                        type="range"
-                        min="0"
-                        max="2"
-                        step="0.1"
-                        value={settings.aiTemperature}
-                        onChange={(e) => handleChange('aiTemperature', parseFloat(e.target.value))}
-                        className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                      />
-                      <span className="text-sm text-gray-600 w-12 text-right tabular-nums">
-                        {settings.aiTemperature}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Voice Commands */}
-              <div>
-                <h3 className="text-base font-medium text-gray-900 mb-4">Voice Commands</h3>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Trigger Word
-                  </label>
-                  <input
-                    type="text"
-                    value={settings.aiTriggerWord}
-                    onChange={(e) => handleChange('aiTriggerWord', e.target.value)}
-                    placeholder="juno"
-                    className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm
-                      focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                  />
-                </div>
-              </div>
-
               {/* Application Settings */}
               <div>
                 <h3 className="text-base font-medium text-gray-900 mb-4">Application Settings</h3>
@@ -380,26 +317,101 @@ const Settings = () => {
                 </button>
               </div>
             </form>
-          ) : (
+          ) : activeTab === 'dictionary' ? (
             <DictionaryManager />
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-8">
+              {/* OpenAI Configuration */}
+              <div>
+                <h3 className="text-base font-medium text-gray-900 mb-4">OpenAI Configuration</h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      API Key
+                    </label>
+                    <input
+                      type="password"
+                      value={settings.openaiApiKey}
+                      onChange={(e) => handleChange('openaiApiKey', e.target.value)}
+                      placeholder="sk-..."
+                      className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm
+                        focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      AI Model
+                    </label>
+                    <select
+                      value={settings.aiModel}
+                      onChange={(e) => handleChange('aiModel', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-white
+                        focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    >
+                      <option value="gpt-4">GPT-4</option>
+                      <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Temperature
+                    </label>
+                    <div className="flex items-center gap-4">
+                      <input
+                        type="range"
+                        min="0"
+                        max="2"
+                        step="0.1"
+                        value={settings.aiTemperature}
+                        onChange={(e) => handleChange('aiTemperature', parseFloat(e.target.value))}
+                        className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                      />
+                      <span className="text-sm text-gray-600 w-12 text-right tabular-nums">
+                        {settings.aiTemperature}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Voice Commands */}
+              <div>
+                <h3 className="text-base font-medium text-gray-900 mb-4">Voice Commands</h3>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Trigger Word
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.aiTriggerWord}
+                    onChange={(e) => handleChange('aiTriggerWord', e.target.value)}
+                    placeholder="juno"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm
+                      focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              {/* Action Verbs Section */}
+              <div className="mb-8 pb-8 border-b border-gray-200">
+                <ActionVerbManager />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="submit"
+                  className="px-4 py-2 text-sm font-medium rounded-md bg-indigo-600 text-white
+                    hover:bg-indigo-700 transition-colors focus:outline-none focus:ring-2
+                    focus:ring-offset-1 focus:ring-indigo-500"
+                >
+                  Save Settings
+                </button>
+              </div>
+            </form>
           )}
         </div>
-      </div>
-
-      {/* AI Settings Section */}
-      <div className="bg-white rounded-lg shadow p-6 mb-8">
-        <h3 className="text-lg font-medium text-gray-900 mb-6">AI Settings</h3>
-        
-        {/* Action Verbs Section */}
-        <div className="mb-8 pb-8 border-b border-gray-200">
-          <ActionVerbManager />
-        </div>
-      </div>
-
-      {/* Dictionary Section */}
-      <div className="bg-white rounded-lg shadow p-6 mb-8">
-        <h3 className="text-lg font-medium text-gray-900 mb-6">Dictionary</h3>
-        <DictionaryManager />
       </div>
     </div>
   );
