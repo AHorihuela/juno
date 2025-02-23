@@ -15,8 +15,10 @@ class AudioRecorder extends EventEmitter {
     this.recorder = null;
     this.audioData = [];
     this.hasAudioContent = false;
-    this.silenceThreshold = 100;
+    this.silenceThreshold = 50;
     this.currentDeviceId = null;
+    this.levelSmoothingFactor = 0.3;
+    this.currentLevels = [0, 0, 0, 0, 0];
     console.log('AudioRecorder initialized successfully');
   }
 
@@ -229,27 +231,25 @@ class AudioRecorder extends EventEmitter {
     }
     
     const rms = Math.sqrt(sum / samples.length);
+    const normalizedLevel = Math.min(1, rms / 5000);
+    
+    // Update smoothed levels with some randomization for visual interest
+    for (let i = 0; i < this.currentLevels.length; i++) {
+      const targetLevel = normalizedLevel * (0.8 + Math.random() * 0.4);
+      this.currentLevels[i] = this.currentLevels[i] * (1 - this.levelSmoothingFactor) +
+                           targetLevel * this.levelSmoothingFactor;
+    }
+
+    // Send levels to overlay
+    const overlayService = require('./overlayService');
+    overlayService.updateAudioLevels(this.currentLevels);
     
     // Calculate percentage of samples above threshold
     const percentageAboveThreshold = (samplesAboveThreshold / samples.length) * 100;
     
-    // Log detailed audio metrics
-    console.log('Enhanced Audio metrics:', {
-      rms: Math.round(rms),
-      peakToPeak: max - min,
-      max: max,
-      min: min,
-      samplesAboveThreshold,
-      totalSamples: samples.length,
-      threshold: this.silenceThreshold,
-      percentageAboveThreshold: Math.round(percentageAboveThreshold),
-      maxConsecutiveSamplesAboveThreshold,
-      isLikelySpeech: percentageAboveThreshold > 30 && maxConsecutiveSamplesAboveThreshold > 100
-    });
-    
     // Consider it real audio only if we have a significant percentage of samples above threshold
     // AND we have some consecutive samples above threshold (indicating sustained sound)
-    return percentageAboveThreshold > 30 && maxConsecutiveSamplesAboveThreshold > 100;
+    return percentageAboveThreshold > 20 && maxConsecutiveSamplesAboveThreshold > 50;
   }
 
   async stop() {
