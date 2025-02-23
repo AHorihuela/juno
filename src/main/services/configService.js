@@ -106,6 +106,10 @@ class ConfigService {
                 type: 'string'
               },
               default: []
+            },
+            keyboardShortcut: {
+              type: 'string',
+              default: 'CommandOrControl+Shift+Space'
             }
           },
         });
@@ -191,6 +195,10 @@ class ConfigService {
                   type: 'string'
                 },
                 default: []
+              },
+              keyboardShortcut: {
+                type: 'string',
+                default: 'CommandOrControl+Shift+Space'
               }
             },
           });
@@ -382,6 +390,21 @@ class ConfigService {
       rules.splice(index, 1);
       console.log('[ConfigService] Removing AI rule:', rule);
       await this.setAIRules(rules);
+    }
+  }
+
+  // Keyboard Shortcut
+  async getKeyboardShortcut() {
+    const store = await this.initializeStore();
+    return store.get('keyboardShortcut');
+  }
+
+  async setKeyboardShortcut(shortcut) {
+    const store = await this.initializeStore();
+    if (!shortcut) {
+      store.set('keyboardShortcut', 'CommandOrControl+Shift+Space'); // Use default
+    } else {
+      store.set('keyboardShortcut', shortcut);
     }
   }
 }

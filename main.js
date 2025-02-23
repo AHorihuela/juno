@@ -179,11 +179,15 @@ function createWindow() {
   }
 }
 
-function registerShortcuts() {
+async function registerShortcuts() {
   console.log('Registering shortcuts...');
   
-  // Register Command+Shift+Space for toggle (instead of F6)
-  const success = globalShortcut.register('CommandOrControl+Shift+Space', () => {
+  // Get configured shortcut
+  const shortcut = await configService.getKeyboardShortcut();
+  console.log('Using keyboard shortcut:', shortcut);
+  
+  // Register configured shortcut for toggle
+  const success = globalShortcut.register(shortcut, () => {
     console.log('Shortcut triggered');
     const now = Date.now();
     
@@ -208,7 +212,7 @@ function registerShortcuts() {
     lastFnKeyPress = now;
   });
 
-  console.log('Command+Shift+Space registration success:', success);
+  console.log('Keyboard shortcut registration success:', success);
 }
 
 // This method will be called when Electron has finished
@@ -239,6 +243,7 @@ app.whenReady().then(async () => {
         defaultMicrophone: await configService.getDefaultMicrophone(),
         actionVerbs: await configService.getActionVerbs(),
         aiRules: await configService.getAIRules(),
+        keyboardShortcut: await configService.getKeyboardShortcut(),
       };
     } catch (error) {
       console.error('Error getting settings:', error);
@@ -366,6 +371,12 @@ ipcMain.handle('save-settings', async (_, settings) => {
     }
     if (settings.aiRules !== undefined) {
       await configService.setAIRules(settings.aiRules);
+    }
+    if (settings.keyboardShortcut !== undefined) {
+      await configService.setKeyboardShortcut(settings.keyboardShortcut);
+      // Re-register shortcuts when the keyboard shortcut changes
+      globalShortcut.unregisterAll();
+      await registerShortcuts();
     }
     return { success: true };
   } catch (error) {

@@ -9,7 +9,22 @@ import AIRules from './components/AIRules';
 // Import the bird icon
 import birdIcon from '../../assets/icon.png';
 
-const Home = ({ isRecording, error, transcription }) => (
+// Helper function to format keyboard shortcut for display
+const formatShortcut = (shortcut) => {
+  if (!shortcut) return '';
+  return shortcut
+    .replace('CommandOrControl', '⌘')
+    .replace('Command', '⌘')
+    .replace('Control', 'Ctrl')
+    .replace('Shift', '⇧')
+    .replace('Alt', '⌥')
+    .replace('Option', '⌥')
+    .split('+')
+    .map(key => `<kbd class="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-md">${key}</kbd>`)
+    .join('<span class="text-gray-400 mx-1">+</span>');
+};
+
+const Home = ({ isRecording, error, transcription, formattedShortcut }) => (
   <>
     {/* Error Display */}
     {error && (
@@ -39,13 +54,8 @@ const Home = ({ isRecording, error, transcription }) => (
       <div className="space-y-4">
         <div className="flex items-center">
           <span className="text-gray-600 w-32">Start/Stop:</span>
-          <div className="flex items-center gap-1">
-            <kbd className="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-md">⌘</kbd>
-            <span className="text-gray-400">+</span>
-            <kbd className="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-md">⇧</kbd>
-            <span className="text-gray-400">+</span>
-            <kbd className="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-md">Space</kbd>
-          </div>
+          <div className="flex items-center gap-1" 
+            dangerouslySetInnerHTML={{ __html: formattedShortcut }} />
         </div>
         <div className="flex items-center">
           <span className="text-gray-600 w-32">Cancel:</span>
@@ -74,11 +84,15 @@ const App = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [error, setError] = useState(null);
   const [transcription, setTranscription] = useState('');
+  const [settings, setSettings] = useState({});
   const location = useLocation();
 
   useEffect(() => {
     const ipcRenderer = getIpcRenderer();
     if (!ipcRenderer) return;
+
+    // Load settings
+    ipcRenderer.invoke('get-settings').then(setSettings);
 
     // Listen for recording status changes
     ipcRenderer.on('recording-status', (_, status) => {
@@ -200,7 +214,14 @@ const App = () => {
       <main className="flex-1 ml-64 p-8">
         <div className="max-w-3xl mx-auto">
           <Routes>
-            <Route path="/" element={<Home isRecording={isRecording} error={error} transcription={transcription} />} />
+            <Route path="/" element={
+              <Home 
+                isRecording={isRecording} 
+                error={error} 
+                transcription={transcription}
+                formattedShortcut={formatShortcut(settings.keyboardShortcut)}
+              />
+            } />
             <Route path="/dictionary" element={<DictionaryManager />} />
             <Route path="/ai-rules" element={<AIRules />} />
             <Route path="/history" element={<TranscriptionHistory />} />
