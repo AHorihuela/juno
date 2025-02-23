@@ -6,6 +6,7 @@ const trayService = require('./src/main/services/trayService');
 const transcriptionHistoryService = require('./src/main/services/transcriptionHistoryService');
 const setupDictionaryIpcHandlers = require('./src/main/services/dictionaryIpcHandlers');
 const notificationService = require('./src/main/services/notificationService');
+const overlayService = require('./src/main/services/overlayService');
 
 console.log('Main process starting...');
 
@@ -78,10 +79,12 @@ function createWindow() {
       });
       console.log('Escape key registration success:', escSuccess);
       
-      if (mainWindow) {
+      // Only send status update if window exists, but don't activate it
+      if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('recording-status', true);
       }
       trayService.updateRecordingStatus(true);
+      overlayService.show();
     };
 
     const onRecordingStop = () => {
@@ -89,20 +92,22 @@ function createWindow() {
       // Unregister Escape key when recording stops
       globalShortcut.unregister('Escape');
       
-      if (mainWindow) {
+      // Only send status update if window exists, but don't activate it
+      if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('recording-status', false);
       }
       trayService.updateRecordingStatus(false);
+      overlayService.hide();
     };
 
     const onRecordingError = (error) => {
-      if (mainWindow) {
+      if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('recording-error', error.message);
       }
     };
 
     const onTranscription = (text) => {
-      if (mainWindow) {
+      if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('transcription', text);
         // Add transcription to history
         try {
@@ -272,6 +277,7 @@ app.on('will-quit', () => {
     recorder.stop();
   }
   trayService.destroy();
+  overlayService.destroy();
 });
 
 app.on('window-all-closed', () => {
