@@ -11,6 +11,7 @@ class ContextService {
     this.recordingStartTime = null;
     this.isRecording = false;
     this.isInternalClipboardOperation = false;
+    this.highlightedText = ''; // Add storage for highlighted text
     
     // Set up clipboard monitoring
     this.checkInterval = setInterval(() => this.checkClipboardChange(), 1000);
@@ -65,12 +66,14 @@ class ContextService {
   }
 
   /**
-   * Start a new recording session
+   * Start a new recording session and capture highlighted text
+   * @param {string} highlightedText - Text highlighted when recording starts
    */
-  startRecording() {
+  async startRecording(highlightedText) {
     this.recordingStartTime = Date.now();
     this.isRecording = true;
-    console.log('[ContextService] Recording started at:', this.recordingStartTime);
+    this.highlightedText = highlightedText || '';
+    console.log('[ContextService] Recording started at:', this.recordingStartTime, 'with highlighted text:', this.highlightedText);
   }
 
   /**
@@ -79,6 +82,7 @@ class ContextService {
   stopRecording() {
     this.recordingStartTime = null;
     this.isRecording = false;
+    this.highlightedText = ''; // Clear highlighted text
     console.log('[ContextService] Recording stopped');
   }
 
@@ -106,14 +110,15 @@ class ContextService {
 
   /**
    * Get the current context for AI processing
-   * @param {string} highlightedText - Currently highlighted text
+   * @param {string} currentHighlightedText - Currently highlighted text (optional)
    * @returns {Object} Context object with primary and secondary contexts
    */
-  getContext(highlightedText = '') {
+  getContext(currentHighlightedText = '') {
     this.updateClipboardContext();
 
     console.log('[ContextService] Getting context with inputs:', {
-      highlightedText,
+      recordingHighlightedText: this.highlightedText,
+      currentHighlightedText,
       clipboardContent: this.clipboardContent,
       clipboardTimestamp: this.clipboardTimestamp,
       isRecording: this.isRecording,
@@ -125,24 +130,23 @@ class ContextService {
       secondaryContext: null
     };
 
-    // If there's highlighted text, it becomes the primary context
-    if (highlightedText) {
-      console.log('[ContextService] Using highlighted text as primary context:', highlightedText);
+    // First try the text that was highlighted when recording started
+    if (this.highlightedText) {
+      console.log('[ContextService] Using recording-start highlighted text as primary context:', this.highlightedText);
       context.primaryContext = {
         type: 'highlight',
-        content: highlightedText
+        content: this.highlightedText
       };
-
-      // Fresh clipboard content becomes secondary context if different from highlight
-      if (this.isClipboardFresh() && this.clipboardContent !== highlightedText) {
-        console.log('[ContextService] Adding clipboard as secondary context:', this.clipboardContent);
-        context.secondaryContext = {
-          type: 'clipboard',
-          content: this.clipboardContent
-        };
-      }
     }
-    // If no highlight but fresh clipboard, clipboard becomes primary context
+    // Then try currently highlighted text if different
+    else if (currentHighlightedText && currentHighlightedText !== this.highlightedText) {
+      console.log('[ContextService] Using current highlighted text as primary context:', currentHighlightedText);
+      context.primaryContext = {
+        type: 'highlight',
+        content: currentHighlightedText
+      };
+    }
+    // Finally try clipboard if it's fresh
     else if (this.isClipboardFresh()) {
       console.log('[ContextService] Using clipboard as primary context:', this.clipboardContent);
       context.primaryContext = {
