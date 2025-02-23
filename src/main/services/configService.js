@@ -353,11 +353,14 @@ class ConfigService {
   // AI Rules
   async getAIRules() {
     const store = await this.initializeStore();
-    return store.get('aiRules');
+    const rules = store.get('aiRules');
+    console.log('[ConfigService] Retrieved AI rules:', rules);
+    return rules;
   }
 
   async setAIRules(rules) {
     const store = await this.initializeStore();
+    console.log('[ConfigService] Saving AI rules:', rules);
     store.set('aiRules', rules);
   }
 
@@ -366,6 +369,7 @@ class ConfigService {
     const rules = await this.getAIRules();
     if (!rules.includes(rule)) {
       rules.push(rule);
+      console.log('[ConfigService] Adding new AI rule:', rule);
       await this.setAIRules(rules);
     }
   }
@@ -376,6 +380,7 @@ class ConfigService {
     const index = rules.indexOf(rule);
     if (index !== -1) {
       rules.splice(index, 1);
+      console.log('[ConfigService] Removing AI rule:', rule);
       await this.setAIRules(rules);
     }
   }

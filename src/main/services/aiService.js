@@ -111,9 +111,12 @@ class AIService {
 
       // Get AI rules
       const aiRules = await configService.getAIRules();
+      console.log('[AIService] Retrieved AI rules:', aiRules);
+      
       const rulesText = aiRules.length > 0 
         ? `\n\nUser context:\n${aiRules.join('\n')}`
         : '';
+      console.log('[AIService] Rules text being added to prompt:', rulesText);
 
       // Create completion request
       this.currentRequest = {
