@@ -1,7 +1,6 @@
 import React from 'react';
 import { useSettings } from '../../hooks/useSettings';
 import ActionVerbManager from '../ActionVerbManager';
-import AIRulesManager from '../AIRulesManager';
 
 const OpenAISection = ({ settings, updateSetting }) => (
   <div>
@@ -96,11 +95,6 @@ const AISettings = () => {
       {/* Action Verbs Section */}
       <div className="mb-8 pb-8 border-b border-gray-200">
         <ActionVerbManager />
-      </div>
-
-      {/* AI Rules Section */}
-      <div className="mb-8 pb-8 border-b border-gray-200">
-        <AIRulesManager />
       </div>
 
       {error && (
