@@ -24,17 +24,34 @@ function createWindow() {
     console.log('Creating window...');
     mainWindow = new BrowserWindow({
       width: 800,
-      height: 600,
+      height: 800,
       webPreferences: {
         nodeIntegration: true,
         contextIsolation: false,
-        devTools: true
+        webSecurity: true,
       },
       show: false, // Don't show window initially
     });
 
+    // Set Content Security Policy
+    mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+      callback({
+        responseHeaders: {
+          ...details.responseHeaders,
+          'Content-Security-Policy': [
+            "default-src 'self';",
+            `script-src 'self' ${process.env.NODE_ENV === 'development' ? "'unsafe-eval' 'unsafe-inline'" : ''};`,
+            "style-src 'self' 'unsafe-inline';", // Allow inline styles for Tailwind
+            "font-src 'self' data:;",
+            "img-src 'self' data:;",
+            "connect-src 'self';",
+          ].join(' ')
+        }
+      });
+    });
+
     console.log('Loading index.html...');
-    mainWindow.loadFile('index.html');
+    mainWindow.loadFile('dist/index.html');
 
     // Show window when ready to show
     mainWindow.once('ready-to-show', () => {

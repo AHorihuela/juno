@@ -3,31 +3,6 @@ const configService = require('./configService');
 const notificationService = require('./notificationService');
 const contextService = require('./contextService');
 
-// Action verbs that trigger AI processing
-const ACTION_VERBS = new Set([
-  'summarize',
-  'explain',
-  'analyze',
-  'rewrite',
-  'translate',
-  'improve',
-  'simplify',
-  'elaborate',
-  'fix',
-  'check',
-  'shorten',
-  'expand',
-  'clarify',
-  'lengthen',
-  'shorten',
-  'write',
-  'update',
-  'modify',
-  'edit',
-  'revise',
-  'make',
-]);
-
 // Verbs that benefit from both primary and secondary context
 const DUAL_CONTEXT_VERBS = new Set([
   'compare',
@@ -99,6 +74,10 @@ class AIService {
         }
       }
     }
+
+    // Get action verbs from config
+    const actionVerbs = await configService.getActionVerbs();
+    const ACTION_VERBS = new Set(actionVerbs);
 
     // Check for action verbs in first two words (per spec)
     if (words.length >= 2) {
@@ -235,6 +214,24 @@ class AIService {
   }
 
   /**
+   * Build prompt text from context
+   * @param {Object} context - Context object with primary and secondary context
+   * @returns {string} Full prompt text
+   */
+  buildPromptText(context) {
+    const parts = [];
+
+    if (context.primaryContext) {
+      parts.push(`Primary context:\n"""\n${context.primaryContext.content}\n"""`);
+      if (context.secondaryContext) {
+        parts.push(`\nAdditional context:\n"""\n${context.secondaryContext.content}\n"""`);
+      }
+    }
+
+    return parts.join('\n');
+  }
+
+  /**
    * Clean response text by removing markdown and unwanted formatting
    * @param {string} text - Raw response text
    * @returns {string} Cleaned text
@@ -264,4 +261,4 @@ class AIService {
   }
 }
 
-module.exports = new AIService(); 
+module.exports = new AIService();

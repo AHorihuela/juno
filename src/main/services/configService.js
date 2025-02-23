@@ -12,6 +12,7 @@ class ConfigService {
   constructor() {
     this.store = null;
     this.encryptionKey = null;
+    this.initializeStore();
   }
 
   async getEncryptionKey() {
@@ -71,6 +72,34 @@ class ConfigService {
             defaultMicrophone: {
               type: 'string',
             },
+            actionVerbs: {
+              type: 'array',
+              items: {
+                type: 'string'
+              },
+              default: [
+                'summarize',
+                'explain',
+                'analyze',
+                'rewrite',
+                'translate',
+                'improve',
+                'simplify',
+                'elaborate',
+                'fix',
+                'check',
+                'shorten',
+                'expand',
+                'clarify',
+                'lengthen',
+                'write',
+                'update',
+                'modify',
+                'edit',
+                'revise',
+                'make'
+              ]
+            }
           },
         });
       }
@@ -121,6 +150,34 @@ class ConfigService {
               defaultMicrophone: {
                 type: 'string',
               },
+              actionVerbs: {
+                type: 'array',
+                items: {
+                  type: 'string'
+                },
+                default: [
+                  'summarize',
+                  'explain',
+                  'analyze',
+                  'rewrite',
+                  'translate',
+                  'improve',
+                  'simplify',
+                  'elaborate',
+                  'fix',
+                  'check',
+                  'shorten',
+                  'expand',
+                  'clarify',
+                  'lengthen',
+                  'write',
+                  'update',
+                  'modify',
+                  'edit',
+                  'revise',
+                  'make'
+                ]
+              }
             },
           });
         } catch (recoveryError) {
@@ -241,6 +298,42 @@ class ConfigService {
     const store = await this.initializeStore();
     store.clear();
     return store.store;
+  }
+
+  // Action Verbs
+  async getActionVerbs() {
+    const store = await this.initializeStore();
+    return store.get('actionVerbs');
+  }
+
+  async setActionVerbs(verbs) {
+    if (!Array.isArray(verbs)) {
+      throw new Error('Action verbs must be an array of strings');
+    }
+    if (!verbs.every(verb => typeof verb === 'string')) {
+      throw new Error('All action verbs must be strings');
+    }
+    const store = await this.initializeStore();
+    store.set('actionVerbs', verbs);
+  }
+
+  async addActionVerb(verb) {
+    if (typeof verb !== 'string') {
+      throw new Error('Action verb must be a string');
+    }
+    const store = await this.initializeStore();
+    const verbs = store.get('actionVerbs');
+    if (!verbs.includes(verb)) {
+      verbs.push(verb);
+      store.set('actionVerbs', verbs);
+    }
+  }
+
+  async removeActionVerb(verb) {
+    const store = await this.initializeStore();
+    const verbs = store.get('actionVerbs');
+    const updatedVerbs = verbs.filter(v => v !== verb);
+    store.set('actionVerbs', updatedVerbs);
   }
 }
 

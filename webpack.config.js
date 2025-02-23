@@ -1,4 +1,6 @@
 const path = require('path');
+const HtmlWebpackPlugin = require('html-webpack-plugin');
+const fs = require('fs');
 
 module.exports = {
   mode: process.env.NODE_ENV === 'production' ? 'production' : 'development',
@@ -62,5 +64,23 @@ module.exports = {
   resolve: {
     extensions: ['.js', '.jsx']
   },
+  plugins: [
+    new HtmlWebpackPlugin({
+      template: path.resolve(__dirname, 'src/renderer/index.html'),
+      filename: 'index.html'
+    }),
+    {
+      apply: (compiler) => {
+        compiler.hooks.emit.tapAsync('CopyInitLogging', (compilation, callback) => {
+          const source = fs.readFileSync(path.resolve(__dirname, 'src/renderer/init-logging.js'), 'utf8');
+          compilation.assets['init-logging.js'] = {
+            source: () => source,
+            size: () => source.length
+          };
+          callback();
+        });
+      }
+    }
+  ],
   watch: process.env.NODE_ENV === 'development'
 } 

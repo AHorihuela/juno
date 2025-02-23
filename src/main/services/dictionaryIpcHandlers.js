@@ -1,11 +1,15 @@
 const { ipcMain } = require('electron');
 const dictionaryService = require('./dictionaryService');
+const configService = require('./configService');
 
 // Define our channel names at module level
 const CHANNELS = {
   GET_WORDS: 'get-dictionary-words',
   ADD_WORD: 'add-dictionary-word',
-  REMOVE_WORD: 'remove-dictionary-word'
+  REMOVE_WORD: 'remove-dictionary-word',
+  GET_ACTION_VERBS: 'get-action-verbs',
+  ADD_ACTION_VERB: 'add-action-verb',
+  REMOVE_ACTION_VERB: 'remove-action-verb'
 };
 
 function setupDictionaryIpcHandlers() {
@@ -71,6 +75,48 @@ function setupDictionaryIpcHandlers() {
         return result;
       } catch (error) {
         console.error('[DictionaryIpcHandlers] Error removing dictionary word:', error);
+        throw error;
+      }
+    });
+
+    // Register get-action-verbs handler
+    console.log(`[DictionaryIpcHandlers] Registering handler for ${CHANNELS.GET_ACTION_VERBS}`);
+    ipcMain.handle(CHANNELS.GET_ACTION_VERBS, async () => {
+      console.log('[DictionaryIpcHandlers] Handling get-action-verbs request');
+      try {
+        const verbs = await configService.getActionVerbs();
+        console.log('[DictionaryIpcHandlers] Retrieved action verbs:', verbs);
+        return verbs;
+      } catch (error) {
+        console.error('[DictionaryIpcHandlers] Error getting action verbs:', error);
+        throw error;
+      }
+    });
+
+    // Register add-action-verb handler
+    console.log(`[DictionaryIpcHandlers] Registering handler for ${CHANNELS.ADD_ACTION_VERB}`);
+    ipcMain.handle(CHANNELS.ADD_ACTION_VERB, async (event, verb) => {
+      console.log('[DictionaryIpcHandlers] Handling add-action-verb request:', verb);
+      try {
+        const result = await configService.addActionVerb(verb);
+        console.log('[DictionaryIpcHandlers] Action verb added successfully:', verb);
+        return result;
+      } catch (error) {
+        console.error('[DictionaryIpcHandlers] Error adding action verb:', error);
+        throw error;
+      }
+    });
+
+    // Register remove-action-verb handler
+    console.log(`[DictionaryIpcHandlers] Registering handler for ${CHANNELS.REMOVE_ACTION_VERB}`);
+    ipcMain.handle(CHANNELS.REMOVE_ACTION_VERB, async (event, verb) => {
+      console.log('[DictionaryIpcHandlers] Handling remove-action-verb request:', verb);
+      try {
+        const result = await configService.removeActionVerb(verb);
+        console.log('[DictionaryIpcHandlers] Action verb removed successfully:', verb);
+        return result;
+      } catch (error) {
+        console.error('[DictionaryIpcHandlers] Error removing action verb:', error);
         throw error;
       }
     });
