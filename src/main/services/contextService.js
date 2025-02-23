@@ -112,6 +112,14 @@ class ContextService {
   getContext(highlightedText = '') {
     this.updateClipboardContext();
 
+    console.log('[ContextService] Getting context with inputs:', {
+      highlightedText,
+      clipboardContent: this.clipboardContent,
+      clipboardTimestamp: this.clipboardTimestamp,
+      isRecording: this.isRecording,
+      recordingStartTime: this.recordingStartTime
+    });
+
     const context = {
       primaryContext: null,
       secondaryContext: null
@@ -119,6 +127,7 @@ class ContextService {
 
     // If there's highlighted text, it becomes the primary context
     if (highlightedText) {
+      console.log('[ContextService] Using highlighted text as primary context:', highlightedText);
       context.primaryContext = {
         type: 'highlight',
         content: highlightedText
@@ -126,6 +135,7 @@ class ContextService {
 
       // Fresh clipboard content becomes secondary context if different from highlight
       if (this.isClipboardFresh() && this.clipboardContent !== highlightedText) {
+        console.log('[ContextService] Adding clipboard as secondary context:', this.clipboardContent);
         context.secondaryContext = {
           type: 'clipboard',
           content: this.clipboardContent
@@ -134,6 +144,7 @@ class ContextService {
     }
     // If no highlight but fresh clipboard, clipboard becomes primary context
     else if (this.isClipboardFresh()) {
+      console.log('[ContextService] Using clipboard as primary context:', this.clipboardContent);
       context.primaryContext = {
         type: 'clipboard',
         content: this.clipboardContent
@@ -143,8 +154,10 @@ class ContextService {
     console.log('[ContextService] Generated context:', {
       hasPrimaryContext: Boolean(context.primaryContext),
       primaryContextType: context.primaryContext?.type,
+      primaryContent: context.primaryContext?.content,
       hasSecondaryContext: Boolean(context.secondaryContext),
-      secondaryContextType: context.secondaryContext?.type
+      secondaryContextType: context.secondaryContext?.type,
+      secondaryContent: context.secondaryContext?.content
     });
 
     return context;

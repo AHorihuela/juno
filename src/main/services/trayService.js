@@ -2,11 +2,6 @@ const { Tray, Menu, app, nativeImage } = require('electron');
 const path = require('path');
 const recorder = require('./recorder');
 
-// Simple monochrome icon as base64
-const ICON_BASE64 = `
-iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAAdgAAAHYBTnsmCAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAABYSURBVDiNY2AYBaNgFDACIYLk/0yMDAyM/xkYGP6zMDIwMDEyMPxnYmJgYGZkYPjHxMTAwMLEwMDIxMTAwMrMwMDIzMzAwMbCwMDIxsrAwM7GwsA+GkQDDwAh8QaqUGYYYgAAAABJRU5ErkJggg==
-`;
-
 class TrayService {
   constructor() {
     this.tray = null;
@@ -20,8 +15,11 @@ class TrayService {
 
     this.mainWindow = mainWindow;
     
-    // Create tray icon from base64
-    const icon = nativeImage.createFromDataURL('data:image/png;base64,' + ICON_BASE64.trim());
+    // Create tray icon from the no-background icon
+    const iconPath = path.join(__dirname, '../../../assets/images/juno_nobg.png');
+    const icon = nativeImage.createFromPath(iconPath).resize({ width: 20, height: 20 });
+    
+    // Create the tray icon
     this.tray = new Tray(icon);
     this.tray.setToolTip('Juno - AI Dictation');
     
@@ -45,6 +43,8 @@ class TrayService {
               this.mainWindow.hide();
             } else {
               this.mainWindow.show();
+              // Ensure we're on the home page when showing via tray click
+              this.mainWindow.webContents.send('navigate', '/');
             }
           }
         });
@@ -52,12 +52,34 @@ class TrayService {
     }
   }
 
+  showAndNavigate(route) {
+    if (!this.mainWindow) return;
+    
+    // First show and focus the window
+    this.mainWindow.show();
+    this.mainWindow.focus();
+    
+    // Use a small delay to ensure the window is ready before navigation
+    setTimeout(() => {
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        console.log('Navigating to route:', route);
+        this.mainWindow.webContents.send('navigate', route);
+      }
+    }, 100);
+  }
+
   updateContextMenu() {
     if (!this.tray) return;
 
     const contextMenu = Menu.buildFromTemplate([
       {
+        label: 'Juno AI Dictation',
+        enabled: false
+      },
+      { type: 'separator' },
+      {
         label: recorder.isRecording() ? 'Stop Recording' : 'Start Recording',
+        accelerator: process.platform === 'darwin' ? '⌘⇧ Space' : 'CommandOrControl+Shift+Space',
         click: () => {
           if (recorder.isRecording()) {
             recorder.stop();
@@ -68,21 +90,34 @@ class TrayService {
       },
       { type: 'separator' },
       {
+        label: 'Home',
+        click: () => this.showAndNavigate('/')
+      },
+      {
+        label: 'Dictionary',
+        click: () => this.showAndNavigate('/dictionary')
+      },
+      {
+        label: 'AI Rules',
+        click: () => this.showAndNavigate('/ai-rules')
+      },
+      {
+        label: 'History',
+        click: () => this.showAndNavigate('/history')
+      },
+      {
         label: 'Settings',
-        click: () => {
-          if (this.mainWindow) {
-            this.mainWindow.show();
-            this.mainWindow.focus();
-          }
-        }
+        click: () => this.showAndNavigate('/settings')
       },
       { type: 'separator' },
       {
         label: 'Quit',
+        accelerator: process.platform === 'darwin' ? '⌘Q' : 'CommandOrControl+Q',
         click: () => {
           if (recorder.isRecording()) {
             recorder.stop();
           }
+          app.isQuitting = true;
           app.quit();
         }
       }

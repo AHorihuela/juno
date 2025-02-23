@@ -108,6 +108,13 @@ class AIService {
       
       // Get context using the context service
       const context = contextService.getContext(highlightedText);
+      
+      // Add diagnostic logging
+      console.log('[AIService] Input text being summarized:', {
+        command,
+        highlightedText,
+        contextObject: JSON.stringify(context, null, 2)
+      });
 
       // Get AI rules
       const aiRules = await configService.getAIRules();
@@ -119,6 +126,9 @@ class AIService {
       console.log('[AIService] Rules text being added to prompt:', rulesText);
 
       // Create completion request
+      const prompt = this.buildPrompt(command, context);
+      console.log('[AIService] Full prompt being sent to GPT:', prompt);
+
       this.currentRequest = {
         controller,
         promise: this.openai.chat.completions.create({
@@ -128,7 +138,7 @@ class AIService {
               role: 'system',
               content: 'You are a text processing tool. Output ONLY the processed text without any explanations, greetings, or commentary. Never say things like "here\'s the text" or "I can help". Just output the transformed text directly.' + rulesText
             },
-            { role: 'user', content: this.buildPrompt(command, context) }
+            { role: 'user', content: prompt }
           ],
           temperature: await configService.getAITemperature() || 0.7,
         }, { signal: controller.signal })
@@ -136,10 +146,13 @@ class AIService {
 
       // Wait for response
       const response = await this.currentRequest.promise;
+      console.log('[AIService] Raw GPT response:', response.choices[0].message.content);
+      
       this.currentRequest = null;
 
       // Clean the response text
       const cleanedText = this.cleanResponse(response.choices[0].message.content.trim());
+      console.log('[AIService] Cleaned response text:', cleanedText);
 
       return {
         text: cleanedText,

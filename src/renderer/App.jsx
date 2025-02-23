@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, Link, useLocation } from 'react-router-dom';
+import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { getIpcRenderer } from './utils/electron';
 import Settings from './components/Settings';
 import TranscriptionHistory from './components/TranscriptionHistory';
@@ -86,6 +86,7 @@ const App = () => {
   const [transcription, setTranscription] = useState('');
   const [settings, setSettings] = useState({});
   const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
     const ipcRenderer = getIpcRenderer();
@@ -118,14 +119,21 @@ const App = () => {
       setTranscription(text);
     });
 
+    // Listen for navigation events
+    ipcRenderer.on('navigate', (_, route) => {
+      console.log('Navigating to:', route);
+      navigate(route);
+    });
+
     // Cleanup listeners
     return () => {
       ipcRenderer.removeAllListeners('recording-status');
       ipcRenderer.removeAllListeners('recording-error');
       ipcRenderer.removeAllListeners('error');
       ipcRenderer.removeAllListeners('transcription');
+      ipcRenderer.removeAllListeners('navigate');
     };
-  }, []);
+  }, [navigate]);
 
   return (
     <div className="flex min-h-screen bg-gray-50">
