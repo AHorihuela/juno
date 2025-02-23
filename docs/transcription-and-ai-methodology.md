@@ -44,16 +44,9 @@ When an AI command is detected, the system gathers context in the following orde
 
 2. **Secondary Context**
    - If primary context is highlighted text, recent clipboard content becomes secondary context
-   - Secondary context is only included if different from primary context
+   - Secondary context is only included if different from primary context and can provide additional information
 
-### Special Context Handling
-Some commands ("dual context verbs") treat both contexts as equally important:
-- compare
-- contrast
-- differentiate
-- merge
-
-For these commands, both contexts are presented to the AI without hierarchy.
+All commands treat the contexts in this hierarchy, with primary context being the main focus of the operation and secondary context providing additional information if relevant.
 
 ## AI Response Processing
 
