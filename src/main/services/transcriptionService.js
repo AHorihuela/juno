@@ -294,4 +294,4 @@ class TranscriptionService {
   }
 }
 
-module.exports = new TranscriptionService(); 
+module.exports = new TranscriptionService(); Turn it on. 

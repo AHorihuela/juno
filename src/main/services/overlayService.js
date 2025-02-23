@@ -13,9 +13,9 @@ class OverlayService {
     const { workArea } = screen.getPrimaryDisplay();
 
     this.window = new BrowserWindow({
-      width: 96,
+      width: 120,
       height: 22,
-      x: Math.floor(workArea.x + (workArea.width - 96) / 2),
+      x: Math.floor(workArea.x + (workArea.width - 120) / 2),
       y: workArea.height - 100,
       frame: false,
       transparent: true,
@@ -57,7 +57,7 @@ class OverlayService {
             .container {
               background: rgba(0, 0, 0, 0.75);
               border-radius: 11px;
-              padding: 0 10px;
+              padding: 0 12px;
               display: flex;
               justify-content: center;
               align-items: center;
@@ -76,8 +76,8 @@ class OverlayService {
             }
           </style>
           <script>
-            let previousLevels = [0, 0, 0, 0, 0];
-            let targetLevels = [0, 0, 0, 0, 0];
+            let previousLevels = [0, 0, 0, 0, 0, 0, 0];
+            let targetLevels = [0, 0, 0, 0, 0, 0, 0];
             
             // Update loop for smooth animations
             function animate() {
@@ -108,8 +108,8 @@ class OverlayService {
               // Get the main level from the first value and amplify it
               const mainLevel = Math.min(1, levels[0] * 2.0); // Double the input but cap at 1
               
-              // Center bar (index 2) gets the main intensity
-              const centerIdx = 2;
+              // Center bar (index 3) gets the main intensity
+              const centerIdx = 3;
               targetLevels[centerIdx] = mainLevel;
               
               // Propagate outwards with decreasing intensity
@@ -121,7 +121,7 @@ class OverlayService {
               }
               
               // Propagate right
-              for (let i = centerIdx + 1; i < 5; i++) {
+              for (let i = centerIdx + 1; i < 7; i++) {
                 targetLevels[i] = targetLevels[i - 1] * decayFactor;
               }
               
@@ -134,6 +134,8 @@ class OverlayService {
         </head>
         <body>
           <div class="container">
+            <div class="bar"></div>
+            <div class="bar"></div>
             <div class="bar"></div>
             <div class="bar"></div>
             <div class="bar"></div>
