@@ -31,10 +31,10 @@ class OverlayService extends BaseService {
     try {
       const { workArea } = screen.getPrimaryDisplay();
       return new BrowserWindow({
-        width: 120,
-        height: 22,
-        x: Math.floor(workArea.x + (workArea.width - 120) / 2),
-        y: workArea.height - 100,
+        width: 200,
+        height: 40,
+        x: Math.floor(workArea.x + (workArea.width - 200) / 2),
+        y: workArea.height - 120,
         frame: false,
         transparent: true,
         alwaysOnTop: true,
@@ -103,23 +103,23 @@ class OverlayService extends BaseService {
         height: 100vh;
       }
       .container {
-        background: rgba(0, 0, 0, 0.75);
-        border-radius: 11px;
-        padding: 0 12px;
+        background: rgba(0, 0, 0, 0.85);
+        border-radius: 20px;
+        padding: 0 20px;
         display: flex;
         justify-content: center;
         align-items: center;
-        gap: 3px;
-        height: 22px;
+        gap: 4px;
+        height: 40px;
         overflow: hidden;
       }
       .bar {
-        width: 2.5px;
-        height: 16px;
-        border-radius: 1px;
+        width: 4px;
+        height: 30px;
+        border-radius: 2px;
         background: white;
-        transition: transform 0.06s ease-out;
-        transform-origin: center;
+        transition: transform 0.1s ease-out;
+        transform-origin: bottom;
         transform: scaleY(0.15);
       }
     `;
@@ -133,8 +133,8 @@ class OverlayService extends BaseService {
         idle: () => {
           const now = Date.now() / 1000;
           bars.forEach((bar, i) => {
-            const offset = i * 0.15;
-            const scale = 0.15 + Math.sin(now * 1.5 + offset) * 0.05;
+            const offset = i * 0.2;
+            const scale = 0.15 + Math.sin(now * 1.2 + offset) * 0.05;
             bar.style.transform = \`scaleY(\${scale})\`;
           });
         },

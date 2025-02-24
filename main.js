@@ -21,6 +21,7 @@ const aiService = require('./src/main/services/aiService');
 const transcriptionHistoryService = require('./src/main/services/transcriptionHistoryService');
 const windowService = require('./src/main/services/windowService');
 const textProcessingService = require('./src/main/services/textProcessing');
+const resourceManager = require('./src/main/services/resourceManager');
 
 // Import IPC handlers
 const setupIpcHandlers = require('./src/main/ipc/handlers');
@@ -46,6 +47,7 @@ async function initializeServices() {
   // Register all services
   serviceRegistry
     .register('config', configService())
+    .register('resource', resourceManager())
     .register('notification', notificationService())
     .register('dictionary', dictionaryService())
     .register('textProcessing', textProcessingService())

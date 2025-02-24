@@ -7,6 +7,7 @@ class ServiceRegistry extends EventEmitter {
     this.initialized = false;
     this.initOrder = [
       'config',
+      'resource',
       'notification',
       'dictionary',
       'textProcessing',

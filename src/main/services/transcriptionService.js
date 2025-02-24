@@ -2,7 +2,6 @@
  * A stub implementation of the transcription service.
  * This will be replaced with actual Whisper API integration later.
  */
-const OpenAI = require('openai');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -17,7 +16,6 @@ const BITS_PER_SAMPLE = 16;
 class TranscriptionService extends BaseService {
   constructor() {
     super('Transcription');
-    this.openai = null;
   }
 
   async _initialize() {
@@ -74,18 +72,6 @@ class TranscriptionService extends BaseService {
   convertPcmToWav(pcmData) {
     const header = this.createWavHeader(pcmData.length);
     return Buffer.concat([header, pcmData]);
-  }
-
-  /**
-   * Initialize OpenAI client with API key
-   * @throws {Error} If API key is not set
-   */
-  async initializeOpenAI() {
-    const apiKey = await this.getService('config').getOpenAIApiKey();
-    if (!apiKey) {
-      throw new Error('OpenAI API key not configured');
-    }
-    this.openai = new OpenAI({ apiKey });
   }
 
   /**
@@ -218,12 +204,10 @@ class TranscriptionService extends BaseService {
   async callWhisperAPI(tempFile) {
     console.log('[Transcription] Sending request to Whisper API...');
     
-    if (!this.openai) {
-      await this.initializeOpenAI();
-    }
+    const openai = await this.getService('resource').getOpenAIClient();
 
     try {
-      const response = await this.openai.audio.transcriptions.create({
+      const response = await openai.audio.transcriptions.create({
         file: fs.createReadStream(tempFile),
         model: 'whisper-1',
         language: 'en',

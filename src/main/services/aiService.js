@@ -1,4 +1,3 @@
-const OpenAI = require('openai');
 const BaseService = require('./BaseService');
 const configService = require('./configService');
 const notificationService = require('./notificationService');
@@ -7,7 +6,6 @@ const contextService = require('./contextService');
 class AIService extends BaseService {
   constructor() {
     super('AI');
-    this.openai = null;
     this.currentRequest = null;
   }
 
@@ -17,19 +15,6 @@ class AIService extends BaseService {
 
   async _shutdown() {
     this.cancelCurrentRequest();
-  }
-
-  async initializeOpenAI() {
-    try {
-      const apiKey = await this.getService('config').getOpenAIApiKey();
-      if (!apiKey) {
-        throw new Error('OpenAI API key not configured');
-      }
-      this.openai = new OpenAI({ apiKey });
-    } catch (error) {
-      this.getService('notification').showAPIError(error);
-      throw this.emitError(error);
-    }
   }
 
   /**
@@ -111,7 +96,7 @@ class AIService extends BaseService {
       // Cancel any existing request
       this.cancelCurrentRequest();
 
-      await this.initializeOpenAI();
+      const openai = await this.getService('resource').getOpenAIClient();
 
       // Create AbortController for this request
       const controller = new AbortController();
@@ -141,7 +126,7 @@ class AIService extends BaseService {
 
       this.currentRequest = {
         controller,
-        promise: this.openai.chat.completions.create({
+        promise: openai.chat.completions.create({
           model: await this.getService('config').getAIModel() || 'gpt-4',
           messages: [
             {
