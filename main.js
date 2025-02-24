@@ -79,7 +79,22 @@ function createWindow() {
         contextIsolation: false,
         webSecurity: true,
       },
-      show: false, // Don't show window initially
+      show: false,
+      frame: true,
+      transparent: false,
+      hasShadow: true,
+      type: 'normal',
+      skipTaskbar: false,
+      focusable: true,
+      alwaysOnTop: false,
+      titleBarStyle: 'default',
+      visualEffectState: 'active',
+      roundedCorners: true,
+      movable: true,
+      minimizable: true,
+      maximizable: false,
+      closable: true,
+      title: 'Juno - AI Dictation'
     });
 
     // Set Content Security Policy
@@ -105,7 +120,10 @@ function createWindow() {
     // Show window when ready to show
     mainWindow.once('ready-to-show', () => {
       console.log('Window ready to show');
-      mainWindow.show();
+      
+      // Initialize window service first
+      const windowService = serviceRegistry.get('window');
+      windowService.setMainWindow(mainWindow);
       
       // Open DevTools in development
       if (process.env.NODE_ENV === 'development') {

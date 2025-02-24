@@ -6,145 +6,158 @@ class WindowService extends BaseService {
     super('Window');
     this.mainWindow = null;
     this.isRecording = false;
-    this.isFirstShow = true;
     this.isDev = process.env.NODE_ENV === 'development';
+    console.log('[WindowService] Initialized with development mode:', this.isDev);
   }
 
   async _initialize() {
-    // Nothing to initialize yet - we wait for setMainWindow to be called
+    console.log('[WindowService] Waiting for main window to be set...');
   }
 
   async _shutdown() {
+    console.log('[WindowService] Shutting down...');
     if (this.mainWindow) {
-      this.hideWindow();
       this.mainWindow = null;
     }
+    console.log('[WindowService] Windows cleared');
   }
 
   setMainWindow(window) {
     try {
+      console.log('[WindowService] Setting main window with properties:', {
+        id: window.id,
+        type: window.type,
+      });
+      
       this.mainWindow = window;
       
-      console.log('[WindowService] Initializing main window properties');
-      
-      // Set window properties before showing anything
-      this.mainWindow.setVisibleOnAllWorkspaces(true);
-      this.mainWindow.setAlwaysOnTop(true, 'pop-up-menu');
+      // Set initial window properties for standard application window
+      console.log('[WindowService] Configuring window properties...');
       this.mainWindow.setFullScreenable(false);
-      this.mainWindow.setSkipTaskbar(true);  // Don't show in taskbar
-      this.mainWindow.setFocusable(false);   // Prevent window from being focusable
-      this.mainWindow.setIgnoreMouseEvents(true); // Make window non-interactive by default
       
-      // Start hidden
-      this.mainWindow.hide();
+      // Set specific window type for macOS
+      if (process.platform === 'darwin') {
+        console.log('[WindowService] Applying macOS-specific settings');
+        this.mainWindow.setWindowButtonVisibility(true);
+      }
+      
+      console.log('[WindowService] Window properties configured successfully');
+      
+      // Show window initially
+      this.mainWindow.show();
+      console.log('[WindowService] Window shown initially');
 
-      // Handle DevTools specifically in dev mode
+      // Handle DevTools in dev mode
       if (this.isDev) {
         this.mainWindow.webContents.on('devtools-opened', () => {
-          console.log('[WindowService] DevTools opened');
-          // Immediately detach DevTools to its own window
+          console.log('[WindowService] DevTools opened, detaching');
           this.mainWindow.webContents.openDevTools({ mode: 'detach' });
-          // Hide main window if it was shown
-          this.mainWindow.hide();
         });
       }
       
-      // Listen for window events
-      this.mainWindow.on('show', () => {
-        console.log('[WindowService] Window shown');
-        // Ensure window stays unfocusable when shown
-        this.mainWindow.setFocusable(false);
-        this.mainWindow.setIgnoreMouseEvents(true);
-        // If in dev mode, ensure DevTools doesn't bring main window to front
-        if (this.isDev && this.mainWindow.webContents.isDevToolsOpened()) {
-          this.mainWindow.hide();
-        }
-      });
-      
-      this.mainWindow.on('focus', () => {
-        console.log('[WindowService] Window focused');
-        if (!this.isRecording) {
-          // If we get focused while not recording, immediately hide
-          this.hideWindow();
-        }
-      });
-
-      // Handle window-all-closed to prevent app quit
-      app.on('window-all-closed', (e) => {
-        e.preventDefault();
-      });
+      console.log('[WindowService] Window setup completed successfully');
     } catch (error) {
+      console.error('[WindowService] Error in setMainWindow:', {
+        error: error.message,
+        stack: error.stack,
+        windowId: window?.id,
+      });
       this.emitError(error);
     }
   }
 
   showRecordingIndicator() {
     try {
-      if (!this.mainWindow) return;
-      
       console.log('[WindowService] Showing recording indicator');
-      
-      // Minimize the window to just show a small indicator
-      this.mainWindow.setSize(60, 60);
-      
-      // Position it in the top-right corner
-      const workArea = this.mainWindow.screen.getPrimaryDisplay().workArea;
-      this.mainWindow.setPosition(workArea.width - 80, 20);
-      
-      // Ensure window won't steal focus or be interactive
-      this.mainWindow.setFocusable(false);
-      this.mainWindow.setIgnoreMouseEvents(true);
-      this.mainWindow.setAlwaysOnTop(true, 'pop-up-menu');
-      
-      // Show window without activation
-      this.mainWindow.showInactive();
-      
       this.isRecording = true;
       
-      // In dev mode, ensure DevTools doesn't bring main window to front
-      if (this.isDev && this.mainWindow.webContents.isDevToolsOpened()) {
-        setImmediate(() => {
-          this.mainWindow.showInactive();
-          this.mainWindow.setFocusable(false);
-          this.mainWindow.setIgnoreMouseEvents(true);
-        });
-      }
+      // Use the overlay service for visualization
+      const overlayService = this.getService('overlay');
+      overlayService.createWindow();
+      overlayService.show();
+      
+      console.log('[WindowService] Recording indicator shown');
     } catch (error) {
+      console.error('[WindowService] Error showing recording indicator:', {
+        error: error.message,
+        stack: error.stack,
+      });
       this.emitError(error);
     }
   }
 
-  hideWindow() {
+  hideRecordingIndicator() {
     try {
-      if (this.mainWindow) {
-        this.mainWindow.hide();
-        this.isRecording = false;
-      }
+      console.log('[WindowService] Hiding recording indicator');
+      
+      // Hide the overlay
+      const overlayService = this.getService('overlay');
+      overlayService.hide();
+      
+      this.isRecording = false;
+      console.log('[WindowService] Recording indicator hidden');
     } catch (error) {
+      console.error('[WindowService] Error hiding recording indicator:', {
+        error: error.message,
+        stack: error.stack,
+      });
       this.emitError(error);
     }
   }
 
   showWindow() {
     try {
-      if (this.mainWindow) {
-        this.mainWindow.show();
-        this.mainWindow.focus();
+      if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+        console.log('[WindowService] Cannot show window - no valid window reference');
+        return;
       }
+      
+      console.log('[WindowService] Showing main window');
+      this.mainWindow.show();
+      this.mainWindow.focus();
     } catch (error) {
+      console.error('[WindowService] Error showing window:', {
+        error: error.message,
+        stack: error.stack,
+      });
+      this.emitError(error);
+    }
+  }
+
+  hideWindow() {
+    try {
+      if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+        console.log('[WindowService] Cannot hide window - no valid window reference');
+        return;
+      }
+      
+      console.log('[WindowService] Hiding main window');
+      this.mainWindow.hide();
+    } catch (error) {
+      console.error('[WindowService] Error hiding window:', {
+        error: error.message,
+        stack: error.stack,
+      });
       this.emitError(error);
     }
   }
 
   restoreWindow() {
     try {
-      if (this.mainWindow) {
-        // Reset window to default size and position
-        this.mainWindow.setSize(800, 600);
-        this.mainWindow.center();
-        this.mainWindow.show();
+      if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+        console.log('[WindowService] Cannot restore window - no valid window reference');
+        return;
       }
+      
+      console.log('[WindowService] Restoring window to default state');
+      this.mainWindow.setSize(800, 600);
+      this.mainWindow.center();
+      this.mainWindow.show();
     } catch (error) {
+      console.error('[WindowService] Error restoring window:', {
+        error: error.message,
+        stack: error.stack,
+      });
       this.emitError(error);
     }
   }
