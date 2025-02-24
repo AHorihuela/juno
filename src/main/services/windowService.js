@@ -29,10 +29,11 @@ class WindowService extends BaseService {
       
       // Set window properties before showing anything
       this.mainWindow.setVisibleOnAllWorkspaces(true);
-      this.mainWindow.setAlwaysOnTop(true, 'floating');
+      this.mainWindow.setAlwaysOnTop(true, 'pop-up-menu');
       this.mainWindow.setFullScreenable(false);
       this.mainWindow.setSkipTaskbar(true);  // Don't show in taskbar
-      this.mainWindow.setFocusable(false);    // Prevent window from being focusable
+      this.mainWindow.setFocusable(false);   // Prevent window from being focusable
+      this.mainWindow.setIgnoreMouseEvents(true); // Make window non-interactive by default
       
       // Start hidden
       this.mainWindow.hide();
@@ -53,6 +54,7 @@ class WindowService extends BaseService {
         console.log('[WindowService] Window shown');
         // Ensure window stays unfocusable when shown
         this.mainWindow.setFocusable(false);
+        this.mainWindow.setIgnoreMouseEvents(true);
         // If in dev mode, ensure DevTools doesn't bring main window to front
         if (this.isDev && this.mainWindow.webContents.isDevToolsOpened()) {
           this.mainWindow.hide();
@@ -89,26 +91,13 @@ class WindowService extends BaseService {
       const workArea = this.mainWindow.screen.getPrimaryDisplay().workArea;
       this.mainWindow.setPosition(workArea.width - 80, 20);
       
-      // Double ensure window won't steal focus
+      // Ensure window won't steal focus or be interactive
       this.mainWindow.setFocusable(false);
-      this.mainWindow.setAlwaysOnTop(true, 'floating');
+      this.mainWindow.setIgnoreMouseEvents(true);
+      this.mainWindow.setAlwaysOnTop(true, 'pop-up-menu');
       
-      // If this is the first show, handle it specially
-      if (this.isFirstShow) {
-        console.log('[WindowService] First time showing window');
-        // Wait for window to be ready
-        if (this.mainWindow.isReady()) {
-          this.mainWindow.showInactive();
-        } else {
-          this.mainWindow.once('ready-to-show', () => {
-            this.mainWindow.showInactive();
-          });
-        }
-        this.isFirstShow = false;
-      } else {
-        // For subsequent shows, just show without activation
-        this.mainWindow.showInactive();
-      }
+      // Show window without activation
+      this.mainWindow.showInactive();
       
       this.isRecording = true;
       
@@ -116,6 +105,8 @@ class WindowService extends BaseService {
       if (this.isDev && this.mainWindow.webContents.isDevToolsOpened()) {
         setImmediate(() => {
           this.mainWindow.showInactive();
+          this.mainWindow.setFocusable(false);
+          this.mainWindow.setIgnoreMouseEvents(true);
         });
       }
     } catch (error) {
