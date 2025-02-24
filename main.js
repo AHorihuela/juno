@@ -1,13 +1,28 @@
 const { app, BrowserWindow, globalShortcut, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const recorder = require('./src/main/services/recorder');
+
+// Import service registry
+const serviceRegistry = require('./src/main/services/ServiceRegistry');
+
+// Import service factories
 const configService = require('./src/main/services/configService');
-const trayService = require('./src/main/services/trayService');
-const transcriptionHistoryService = require('./src/main/services/transcriptionHistoryService');
+const recorderService = require('./src/main/services/recorder');
+const transcriptionService = require('./src/main/services/transcriptionService');
 const notificationService = require('./src/main/services/notificationService');
 const overlayService = require('./src/main/services/overlayService');
-const setupDictionaryIpcHandlers = require('./src/main/services/dictionaryIpcHandlers');
+const trayService = require('./src/main/services/trayService');
+const audioFeedbackService = require('./src/main/services/audioFeedbackService');
+const dictionaryService = require('./src/main/services/dictionaryService');
+const contextService = require('./src/main/services/contextService');
+const selectionService = require('./src/main/services/selectionService');
+const textInsertionService = require('./src/main/services/textInsertionService');
+const aiService = require('./src/main/services/aiService');
+const transcriptionHistoryService = require('./src/main/services/transcriptionHistoryService');
+const windowService = require('./src/main/services/windowService');
+
+// Import IPC handlers
+const setupIpcHandlers = require('./src/main/ipc/handlers');
 
 // First log to verify process start
 console.log('[Main] Main process starting...');
@@ -23,6 +38,31 @@ let mainWindow = null;
 let fnKeyTimeout = null;
 const FN_DOUBLE_TAP_DELAY = 300; // ms
 let lastFnKeyPress = 0;
+
+async function initializeServices() {
+  console.log('Initializing services...');
+  
+  // Register all services
+  serviceRegistry
+    .register('config', configService())
+    .register('notification', notificationService())
+    .register('dictionary', dictionaryService())
+    .register('audio', audioFeedbackService())
+    .register('recorder', recorderService())
+    .register('transcription', transcriptionService())
+    .register('ai', aiService())
+    .register('context', contextService())
+    .register('selection', selectionService())
+    .register('textInsertion', textInsertionService())
+    .register('tray', trayService())
+    .register('window', windowService())
+    .register('overlay', overlayService())
+    .register('transcriptionHistory', transcriptionHistoryService());
+
+  // Initialize all services
+  await serviceRegistry.initialize();
+  console.log('All services initialized');
+}
 
 function createWindow() {
   try {
@@ -70,106 +110,10 @@ function createWindow() {
       }
     });
 
-    // Initialize tray after window creation
-    trayService.initialize(mainWindow);
-
-    // Setup recording event handlers
-    const onRecordingStart = () => {
-      console.log('Recording started, registering Escape key');
-      // Register Escape key when recording starts
-      const escSuccess = globalShortcut.register('Escape', () => {
-        console.log('Escape pressed, stopping recording');
-        recorder.stop();
-      });
-      console.log('Escape key registration success:', escSuccess);
-      
-      // Only send status update if window exists, but don't activate it
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('recording-status', true);
-      }
-      trayService.updateRecordingStatus(true);
-      overlayService.show();
-    };
-
-    const onRecordingStop = () => {
-      console.log('Recording stopped, unregistering Escape key');
-      // Unregister Escape key when recording stops
-      globalShortcut.unregister('Escape');
-      
-      // Only send status update if window exists, but don't activate it
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('recording-status', false);
-      }
-      trayService.updateRecordingStatus(false);
-      overlayService.hide();
-    };
-
-    const onRecordingError = (error) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('recording-error', error.message);
-      }
-    };
-
-    const onTranscription = (text) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('transcription', text);
-        // Add transcription to history
-        try {
-          transcriptionHistoryService.addTranscription(text);
-        } catch (error) {
-          console.error('Failed to add transcription to history:', error);
-        }
-      }
-    };
-
-    // Register event handlers
-    recorder.on('start', onRecordingStart);
-    recorder.on('stop', onRecordingStop);
-    recorder.on('error', onRecordingError);
-    recorder.on('transcription', onTranscription);
-
-    // Register IPC handlers for transcription history
-    ipcMain.on('get-transcription-history', (event) => {
-      try {
-        const history = transcriptionHistoryService.getHistory();
-        event.reply('transcription-history', history);
-      } catch (error) {
-        console.error('Failed to get transcription history:', error);
-        event.reply('transcription-history-error', error.message);
-      }
-    });
-
-    ipcMain.on('delete-transcription', (event, id) => {
-      try {
-        transcriptionHistoryService.deleteTranscription(id);
-        const history = transcriptionHistoryService.getHistory();
-        event.reply('transcription-history', history);
-      } catch (error) {
-        console.error('Failed to delete transcription:', error);
-        event.reply('transcription-history-error', error.message);
-      }
-    });
-
-    ipcMain.on('clear-transcription-history', (event) => {
-      try {
-        transcriptionHistoryService.clearHistory();
-        event.reply('transcription-history', []);
-      } catch (error) {
-        console.error('Failed to clear transcription history:', error);
-        event.reply('transcription-history-error', error.message);
-      }
-    });
+    // Setup IPC handlers
+    setupIpcHandlers(mainWindow);
 
     mainWindow.on('closed', () => {
-      // Clean up event handlers
-      recorder.removeListener('start', onRecordingStart);
-      recorder.removeListener('stop', onRecordingStop);
-      recorder.removeListener('error', onRecordingError);
-      recorder.removeListener('transcription', onTranscription);
-      
-      // Ensure Escape key is unregistered
-      globalShortcut.unregister('Escape');
-      
       mainWindow = null;
     });
 
@@ -183,7 +127,7 @@ async function registerShortcuts() {
   console.log('Registering shortcuts...');
   
   // Get configured shortcut
-  const shortcut = await configService.getKeyboardShortcut();
+  const shortcut = await serviceRegistry.get('config').getKeyboardShortcut();
   console.log('Using keyboard shortcut:', shortcut);
   
   // Register configured shortcut for toggle
@@ -195,6 +139,7 @@ async function registerShortcuts() {
       // Double tap detected
       console.log('Double tap detected, starting recording');
       clearTimeout(fnKeyTimeout);
+      const recorder = serviceRegistry.get('recorder');
       if (!recorder.isRecording()) {
         recorder.start();
       }
@@ -202,6 +147,7 @@ async function registerShortcuts() {
       // Single tap - wait to see if it's a double tap
       console.log('Single tap detected, waiting for potential double tap');
       fnKeyTimeout = setTimeout(() => {
+        const recorder = serviceRegistry.get('recorder');
         if (recorder.isRecording()) {
           console.log('Single tap timeout reached, stopping recording');
           recorder.stop();
@@ -215,78 +161,30 @@ async function registerShortcuts() {
   console.log('Keyboard shortcut registration success:', success);
 }
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
+// This method will be called when Electron has finished initialization
 app.whenReady().then(async () => {
   console.log('App ready, initializing...');
   
-  // Initialize config service first
-  console.log('Initializing config service...');
-  await configService.initializeStore();
-  
-  console.log('Registering IPC handlers...');
-  
-  // Initialize dictionary IPC handlers
-  console.log('Initializing dictionary IPC handlers...');
-  setupDictionaryIpcHandlers();
-  
-  // Register settings IPC handlers
-  ipcMain.handle('get-settings', async () => {
-    console.log('Handling get-settings request...');
-    try {
-      return {
-        openaiApiKey: await configService.getOpenAIApiKey(),
-        aiTriggerWord: await configService.getAITriggerWord(),
-        aiModel: await configService.getAIModel(),
-        aiTemperature: await configService.getAITemperature(),
-        startupBehavior: await configService.getStartupBehavior(),
-        defaultMicrophone: await configService.getDefaultMicrophone(),
-        actionVerbs: await configService.getActionVerbs(),
-        aiRules: await configService.getAIRules(),
-        keyboardShortcut: await configService.getKeyboardShortcut(),
-      };
-    } catch (error) {
-      console.error('Error getting settings:', error);
-      throw new Error(`Failed to load settings: ${error.message}`);
-    }
-  });
-
-  // Add reset settings handler
-  ipcMain.handle('reset-settings', async () => {
-    console.log('Resetting settings to defaults...');
-    try {
-      await configService.resetToDefaults();
-      return { success: true };
-    } catch (error) {
-      console.error('Error resetting settings:', error);
-      throw new Error(`Failed to reset settings: ${error.message}`);
-    }
-  });
-
-  console.log('Creating window and registering shortcuts...');
-  createWindow();
-  registerShortcuts();
-}).catch(error => {
-  console.error('Error during app initialization:', error);
-  app.quit();
-});
-
-app.on('before-quit', () => {
-  app.isQuitting = true;
-});
-
-app.on('will-quit', () => {
-  globalShortcut.unregisterAll();
-  if (recorder && typeof recorder.isRecording === 'function' && recorder.isRecording()) {
-    recorder.stop();
+  try {
+    // Initialize all services first
+    await initializeServices();
+    
+    // Create the main window
+    createWindow();
+    
+    // Register keyboard shortcuts
+    await registerShortcuts();
+    
+    console.log('Application initialization completed');
+  } catch (error) {
+    console.error('Failed to initialize application:', error);
+    app.quit();
   }
-  trayService.destroy();
-  overlayService.destroy();
 });
 
-app.on('window-all-closed', () => {
+app.on('window-all-closed', async () => {
   if (process.platform !== 'darwin') {
-    app.isQuitting = true;
+    await serviceRegistry.shutdown();
     app.quit();
   }
 });
@@ -294,6 +192,34 @@ app.on('window-all-closed', () => {
 app.on('activate', () => {
   if (mainWindow === null) {
     createWindow();
+  }
+});
+
+app.on('before-quit', () => {
+  app.isQuitting = true;
+});
+
+app.on('will-quit', async () => {
+  globalShortcut.unregisterAll();
+  await serviceRegistry.shutdown();
+});
+
+// Handle microphone selection
+ipcMain.handle('set-microphone', async (event, deviceId) => {
+  try {
+    // Update the recorder's device
+    const success = await serviceRegistry.get('recorder').setDevice(deviceId);
+    if (!success) {
+      throw new Error('Failed to switch to selected microphone');
+    }
+    
+    // Update the config
+    await serviceRegistry.get('config').setDefaultMicrophone(deviceId);
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Error setting microphone:', error);
+    throw error;
   }
 });
 
@@ -446,25 +372,6 @@ ipcMain.handle('get-microphones', async () => {
   } catch (error) {
     console.error('Failed to enumerate microphones:', error);
     throw new Error('Failed to load microphones: ' + error.message);
-  }
-});
-
-// Update microphone handling
-ipcMain.handle('change-microphone', async (_, deviceId) => {
-  try {
-    // Update the recorder's device
-    const success = await recorder.setDevice(deviceId);
-    if (!success) {
-      throw new Error('Failed to switch to selected microphone');
-    }
-
-    // Save the selection to config
-    await configService.setDefaultMicrophone(deviceId);
-    
-    return { success: true };
-  } catch (error) {
-    console.error('Error changing microphone:', error);
-    throw new Error(`Failed to change microphone: ${error.message}`);
   }
 });
 
