@@ -246,7 +246,7 @@ class RecorderService extends BaseService {
     }
 
     // Send levels to overlay
-    const overlayService = require('./overlayService');
+    const overlayService = this.getService('overlay');
     overlayService.updateAudioLevels(this.currentLevels);
     
     // Calculate percentage of samples above threshold

@@ -9,6 +9,7 @@ class ServiceRegistry extends EventEmitter {
       'config',
       'notification',
       'dictionary',
+      'textProcessing',
       'audio',
       'recorder',
       'transcription',

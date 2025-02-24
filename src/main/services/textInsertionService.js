@@ -1,34 +1,54 @@
 const { clipboard } = require('electron');
-const notificationService = require('./notificationService');
 const { exec } = require('child_process');
 const path = require('path');
+const BaseService = require('./BaseService');
 
-class TextInsertionService {
+class TextInsertionService extends BaseService {
   constructor() {
+    super('TextInsertion');
     this.originalClipboard = null;
     this.isInserting = false;
+  }
+
+  async _initialize() {
+    // Nothing to initialize yet
+  }
+
+  async _shutdown() {
+    // Restore clipboard if we were in the middle of an operation
+    if (this.originalClipboard !== null) {
+      this.restoreClipboard();
+    }
   }
 
   /**
    * Save the current clipboard content
    */
   saveClipboard() {
-    console.log('[TextInsertion] Saving original clipboard content');
-    this.originalClipboard = clipboard.readText();
-    console.log('[TextInsertion] Original clipboard content length:', this.originalClipboard?.length || 0);
+    try {
+      console.log('[TextInsertion] Saving original clipboard content');
+      this.originalClipboard = clipboard.readText();
+      console.log('[TextInsertion] Original clipboard content length:', this.originalClipboard?.length || 0);
+    } catch (error) {
+      this.emitError(error);
+    }
   }
 
   /**
    * Restore the original clipboard content
    */
   restoreClipboard() {
-    console.log('[TextInsertion] Attempting to restore clipboard');
-    if (this.originalClipboard !== null) {
-      clipboard.writeText(this.originalClipboard);
-      console.log('[TextInsertion] Clipboard restored to original content');
-      this.originalClipboard = null;
-    } else {
-      console.log('[TextInsertion] No original clipboard content to restore');
+    try {
+      console.log('[TextInsertion] Attempting to restore clipboard');
+      if (this.originalClipboard !== null) {
+        clipboard.writeText(this.originalClipboard);
+        console.log('[TextInsertion] Clipboard restored to original content');
+        this.originalClipboard = null;
+      } else {
+        console.log('[TextInsertion] No original clipboard content to restore');
+      }
+    } catch (error) {
+      this.emitError(error);
     }
   }
 
@@ -36,9 +56,13 @@ class TextInsertionService {
    * Insert text into the active field
    * @param {string} text - Text to insert
    * @param {boolean} replaceHighlight - Whether to replace highlighted text
-   * @returns {boolean} - True if insertion was successful
+   * @returns {Promise<boolean>} - True if insertion was successful
    */
   async insertText(text, replaceHighlight = false) {
+    if (!this.initialized) {
+      throw this.emitError(new Error('TextInsertionService not initialized'));
+    }
+
     if (this.isInserting) {
       console.log('[TextInsertion] Text insertion already in progress, skipping');
       return false;
@@ -49,7 +73,7 @@ class TextInsertionService {
     }
 
     if (process.platform !== 'darwin') {
-      throw new Error('Text insertion is only supported on macOS');
+      throw this.emitError(new Error('Text insertion is only supported on macOS'));
     }
 
     console.log('[TextInsertion] Starting text insertion');
@@ -120,7 +144,7 @@ class TextInsertionService {
         
         console.log('[TextInsertion] AppleScript paste command executed');
       } else {
-        throw new Error('Platform not supported yet');
+        throw this.emitError(new Error('Platform not supported yet'));
       }
 
       // Wait a bit before restoring clipboard
@@ -140,7 +164,7 @@ class TextInsertionService {
       });
       
       // Show popup with copy button
-      notificationService.showNotification(
+      this.getService('notification').showNotification(
         'Text Insertion Failed',
         'Click here to copy the text to clipboard',
         'info'
@@ -151,6 +175,7 @@ class TextInsertionService {
       clipboard.writeText(textWithSpace);
       console.log('[TextInsertion] Text kept in clipboard for manual pasting');
       
+      this.emitError(error);
       return false;
     } finally {
       this.isInserting = false;
@@ -162,17 +187,22 @@ class TextInsertionService {
    * @param {string} text - Text to show in popup
    */
   showCopyPopup(text) {
-    console.log('[TextInsertion] Showing copy popup');
-    notificationService.showNotification(
-      'Text Available',
-      'Click here to copy the text to clipboard',
-      'info'
-    );
-    // Add space when copying to clipboard via popup as well
-    const textWithSpace = text ? `${text} ` : '';
-    clipboard.writeText(textWithSpace);
-    console.log('[TextInsertion] Text copied to clipboard via popup');
+    try {
+      console.log('[TextInsertion] Showing copy popup');
+      this.getService('notification').showNotification(
+        'Text Available',
+        'Click here to copy the text to clipboard',
+        'info'
+      );
+      // Add space when copying to clipboard via popup as well
+      const textWithSpace = text ? `${text} ` : '';
+      clipboard.writeText(textWithSpace);
+      console.log('[TextInsertion] Text copied to clipboard via popup');
+    } catch (error) {
+      this.emitError(error);
+    }
   }
 }
 
-module.exports = new TextInsertionService(); 
+// Export a factory function instead of a singleton
+module.exports = () => new TextInsertionService(); 

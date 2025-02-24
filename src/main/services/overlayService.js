@@ -1,51 +1,75 @@
 const { BrowserWindow, screen } = require('electron');
 const path = require('path');
+const BaseService = require('./BaseService');
 
-class OverlayService {
+class OverlayService extends BaseService {
   constructor() {
+    super('Overlay');
     this.window = null;
   }
 
+  async _initialize() {
+    // Nothing to initialize yet - we wait for createWindow to be called
+  }
+
+  async _shutdown() {
+    this.destroy();
+  }
+
   createWindow() {
-    if (this.window) return;
-    this.window = this._createBrowserWindow();
-    this.window.loadURL(`data:text/html;charset=utf-8,${this._getHTMLTemplate()}`);
-    this._setupWindowBehavior();
+    try {
+      if (this.window) return;
+      this.window = this._createBrowserWindow();
+      this.window.loadURL(`data:text/html;charset=utf-8,${this._getHTMLTemplate()}`);
+      this._setupWindowBehavior();
+    } catch (error) {
+      this.emitError(error);
+    }
   }
 
   _createBrowserWindow() {
-    const { workArea } = screen.getPrimaryDisplay();
-    return new BrowserWindow({
-      width: 120,
-      height: 22,
-      x: Math.floor(workArea.x + (workArea.width - 120) / 2),
-      y: workArea.height - 100,
-      frame: false,
-      transparent: true,
-      alwaysOnTop: true,
-      skipTaskbar: true,
-      resizable: false,
-      minimizable: false,
-      maximizable: false,
-      closable: false,
-      focusable: false,
-      webPreferences: {
-        nodeIntegration: true,
-        contextIsolation: false,
-      },
-      type: 'panel',
-      hasShadow: false,
-      backgroundColor: '#00000000',
-      titleBarStyle: 'hidden',
-      titleBarOverlay: false
-    });
+    try {
+      const { workArea } = screen.getPrimaryDisplay();
+      return new BrowserWindow({
+        width: 120,
+        height: 22,
+        x: Math.floor(workArea.x + (workArea.width - 120) / 2),
+        y: workArea.height - 100,
+        frame: false,
+        transparent: true,
+        alwaysOnTop: true,
+        skipTaskbar: true,
+        resizable: false,
+        minimizable: false,
+        maximizable: false,
+        closable: false,
+        focusable: false,
+        webPreferences: {
+          nodeIntegration: true,
+          contextIsolation: false,
+        },
+        type: 'panel',
+        hasShadow: false,
+        backgroundColor: '#00000000',
+        titleBarStyle: 'hidden',
+        titleBarOverlay: false
+      });
+    } catch (error) {
+      this.emitError(error);
+      return null;
+    }
   }
 
   _setupWindowBehavior() {
-    this.window.setIgnoreMouseEvents(true);
-    this.window.setAlwaysOnTop(true, 'screen-saver', 1);
-    this.window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-    this.window.hide();
+    try {
+      if (!this.window) return;
+      this.window.setIgnoreMouseEvents(true);
+      this.window.setAlwaysOnTop(true, 'screen-saver', 1);
+      this.window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+      this.window.hide();
+    } catch (error) {
+      this.emitError(error);
+    }
   }
 
   _getHTMLTemplate() {
@@ -98,102 +122,102 @@ class OverlayService {
         transform-origin: center;
         transform: scaleY(0.15);
       }
-      .container[data-state="processing"] .bar {
-        animation: pulse 1s ease-in-out infinite;
-      }
-      @keyframes pulse {
-        0%, 100% { opacity: 0.3; }
-        50% { opacity: 1; }
-      }
     `;
   }
 
   _getScript() {
     return `
-      let previousLevels = [0, 0, 0, 0, 0, 0, 0];
-      let targetLevels = [0, 0, 0, 0, 0, 0, 0];
-      
+      let bars = [];
+      let currentState = 'idle';
+      const states = {
+        idle: () => {
+          const now = Date.now() / 1000;
+          bars.forEach((bar, i) => {
+            const offset = i * 0.15;
+            const scale = 0.15 + Math.sin(now * 1.5 + offset) * 0.05;
+            bar.style.transform = \`scaleY(\${scale})\`;
+          });
+        },
+        active: (levels) => {
+          if (!levels) return;
+          bars.forEach((bar, i) => {
+            const scale = Math.max(0.15, Math.min(1, levels[i] || 0));
+            bar.style.transform = \`scaleY(\${scale})\`;
+          });
+        }
+      };
+
+      function updateState(state, levels) {
+        currentState = state;
+        if (states[state]) {
+          states[state](levels);
+        }
+      }
+
       function animate() {
-        const bars = document.querySelectorAll('.bar');
-        const smoothingFactor = 0.6;
-        
-        previousLevels = previousLevels.map((prev, i) => {
-          const target = targetLevels[i];
-          const next = prev + (target - prev) * smoothingFactor;
-          
-          if (bars[i]) {
-            const scale = 0.15 + (next * 1.05);
-            bars[i].style.transform = 'scaleY(' + scale + ')';
-          }
-          
-          return next;
-        });
-        
+        if (states[currentState]) {
+          states[currentState]();
+        }
         requestAnimationFrame(animate);
       }
-      
-      animate();
 
-      function updateLevels(levels) {
-        const mainLevel = Math.min(1, levels[0] * 2.0);
-        const centerIdx = 3;
-        targetLevels[centerIdx] = mainLevel;
-        
-        const decayFactor = 0.7;
-        
-        for (let i = centerIdx - 1; i >= 0; i--) {
-          targetLevels[i] = targetLevels[i + 1] * decayFactor;
-        }
-        
-        for (let i = centerIdx + 1; i < 7; i++) {
-          targetLevels[i] = targetLevels[i - 1] * decayFactor;
-        }
-        
-        targetLevels = targetLevels.map(level => 
-          level * (0.9 + Math.random() * 0.2)
-        );
-      }
-
-      function setState(state) {
-        document.querySelector('.container').dataset.state = state;
-      }
+      document.addEventListener('DOMContentLoaded', () => {
+        bars = Array.from(document.querySelectorAll('.bar'));
+        animate();
+      });
     `;
   }
 
   updateAudioLevels(levels) {
-    if (!this.window) return;
-    this.window.webContents.executeJavaScript(`updateLevels(${JSON.stringify(levels)})`).catch(err => {
-      console.error('Failed to update audio levels:', err);
-    });
+    try {
+      if (!this.window) return;
+      this.window.webContents.executeJavaScript(`updateState('active', ${JSON.stringify(levels)})`);
+    } catch (error) {
+      this.emitError(error);
+    }
   }
 
   setState(state) {
-    if (!this.window) return;
-    this.window.webContents.executeJavaScript(`setState("${state}")`).catch(err => {
-      console.error('Failed to update state:', err);
-    });
+    try {
+      if (!this.window) return;
+      this.window.webContents.executeJavaScript(`updateState('${state}')`);
+    } catch (error) {
+      this.emitError(error);
+    }
   }
 
   show() {
-    if (!this.window) {
-      this.createWindow();
+    try {
+      if (!this.window) {
+        this.createWindow();
+      }
+      this.window.show();
+    } catch (error) {
+      this.emitError(error);
     }
-    this.window.showInactive();
-    this.window.setAlwaysOnTop(true, 'screen-saver');
   }
 
   hide() {
-    if (this.window) {
-      this.window.hide();
+    try {
+      if (this.window) {
+        this.window.hide();
+      }
+    } catch (error) {
+      this.emitError(error);
     }
   }
 
   destroy() {
-    if (this.window) {
-      this.window.destroy();
-      this.window = null;
+    try {
+      if (this.window) {
+        this.window.destroy();
+        this.window = null;
+      }
+    } catch (error) {
+      this.emitError(error);
     }
   }
 }
 
-module.exports = new OverlayService(); 
+// Export a factory function instead of a singleton
+module.exports = () => new OverlayService(); 

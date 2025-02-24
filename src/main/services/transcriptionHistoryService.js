@@ -1,12 +1,21 @@
 const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
+const BaseService = require('./BaseService');
 
-class TranscriptionHistoryService {
+class TranscriptionHistoryService extends BaseService {
   constructor() {
+    super('TranscriptionHistory');
     this.historyFile = path.join(app.getPath('userData'), 'transcription-history.json');
     this.maxEntries = 10;
+  }
+
+  async _initialize() {
     this.ensureHistoryFile();
+  }
+
+  async _shutdown() {
+    // Nothing to clean up
   }
 
   ensureHistoryFile() {
@@ -19,7 +28,7 @@ class TranscriptionHistoryService {
         fs.writeFileSync(this.historyFile, JSON.stringify({ transcriptions: [] }));
       }
     } catch (error) {
-      console.error('Error ensuring history file exists:', error);
+      this.emitError(error);
     }
   }
 
@@ -28,7 +37,7 @@ class TranscriptionHistoryService {
       const data = fs.readFileSync(this.historyFile, 'utf8');
       return JSON.parse(data).transcriptions;
     } catch (error) {
-      console.error('Error reading transcription history:', error);
+      this.emitError(error);
       return [];
     }
   }
@@ -52,7 +61,7 @@ class TranscriptionHistoryService {
 
       return newEntry;
     } catch (error) {
-      console.error('Error adding transcription to history:', error);
+      this.emitError(error);
       throw error;
     }
   }
@@ -67,7 +76,7 @@ class TranscriptionHistoryService {
         JSON.stringify({ transcriptions: updatedHistory }, null, 2)
       );
     } catch (error) {
-      console.error('Error deleting transcription from history:', error);
+      this.emitError(error);
       throw error;
     }
   }
@@ -76,10 +85,11 @@ class TranscriptionHistoryService {
     try {
       fs.writeFileSync(this.historyFile, JSON.stringify({ transcriptions: [] }));
     } catch (error) {
-      console.error('Error clearing transcription history:', error);
+      this.emitError(error);
       throw error;
     }
   }
 }
 
-module.exports = new TranscriptionHistoryService(); 
+// Export a factory function instead of a singleton
+module.exports = () => new TranscriptionHistoryService(); 
