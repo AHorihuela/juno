@@ -427,4 +427,4 @@ class ConfigService extends BaseService {
   }
 }
 
-module.exports = new ConfigService(); 
+module.exports = () => new ConfigService(); 

@@ -1,7 +1,9 @@
 const { clipboard } = require('electron');
+const BaseService = require('./BaseService');
 
-class ContextService {
+class ContextService extends BaseService {
   constructor() {
+    super('Context');
     // Initialize with current clipboard content but no timestamp
     const currentClipboard = clipboard.readText();
     this.lastSystemClipboard = currentClipboard;
@@ -12,9 +14,16 @@ class ContextService {
     this.isRecording = false;
     this.isInternalClipboardOperation = false;
     this.highlightedText = ''; // Add storage for highlighted text
-    
+    this.checkInterval = null;
+  }
+
+  async _initialize() {
     // Set up clipboard monitoring
     this.checkInterval = setInterval(() => this.checkClipboardChange(), 1000);
+  }
+
+  async _shutdown() {
+    this.cleanup();
   }
 
   /**
@@ -22,17 +31,21 @@ class ContextService {
    * @private
    */
   checkClipboardChange() {
-    // Skip if we're doing internal clipboard operations
-    if (this.isInternalClipboardOperation) {
-      return;
-    }
+    try {
+      // Skip if we're doing internal clipboard operations
+      if (this.isInternalClipboardOperation) {
+        return;
+      }
 
-    const currentClipboard = clipboard.readText();
-    if (currentClipboard !== this.lastSystemClipboard) {
-      this.lastSystemClipboard = currentClipboard;
-      this.clipboardContent = currentClipboard;
-      this.clipboardTimestamp = Date.now();
-      console.log('[ContextService] Real clipboard change detected at:', this.clipboardTimestamp);
+      const currentClipboard = clipboard.readText();
+      if (currentClipboard !== this.lastSystemClipboard) {
+        this.lastSystemClipboard = currentClipboard;
+        this.clipboardContent = currentClipboard;
+        this.clipboardTimestamp = Date.now();
+        console.log('[ContextService] Real clipboard change detected at:', this.clipboardTimestamp);
+      }
+    } catch (error) {
+      this.emitError(error);
     }
   }
 
@@ -57,11 +70,15 @@ class ContextService {
    * Update clipboard content without updating timestamp
    */
   updateClipboardContext() {
-    const content = clipboard.readText();
-    if (content !== this.clipboardContent) {
-      this.clipboardContent = content;
-      this.lastSystemClipboard = content;
-      console.log('[ContextService] Clipboard content synced without updating timestamp');
+    try {
+      const content = clipboard.readText();
+      if (content !== this.clipboardContent) {
+        this.clipboardContent = content;
+        this.lastSystemClipboard = content;
+        console.log('[ContextService] Clipboard content synced without updating timestamp');
+      }
+    } catch (error) {
+      this.emitError(error);
     }
   }
 
@@ -70,20 +87,28 @@ class ContextService {
    * @param {string} highlightedText - Text highlighted when recording starts
    */
   async startRecording(highlightedText) {
-    this.recordingStartTime = Date.now();
-    this.isRecording = true;
-    this.highlightedText = highlightedText || '';
-    console.log('[ContextService] Recording started at:', this.recordingStartTime, 'with highlighted text:', this.highlightedText);
+    try {
+      this.recordingStartTime = Date.now();
+      this.isRecording = true;
+      this.highlightedText = highlightedText || '';
+      console.log('[ContextService] Recording started at:', this.recordingStartTime, 'with highlighted text:', this.highlightedText);
+    } catch (error) {
+      this.emitError(error);
+    }
   }
 
   /**
    * End the current recording session
    */
   stopRecording() {
-    this.recordingStartTime = null;
-    this.isRecording = false;
-    this.highlightedText = ''; // Clear highlighted text
-    console.log('[ContextService] Recording stopped');
+    try {
+      this.recordingStartTime = null;
+      this.isRecording = false;
+      this.highlightedText = ''; // Clear highlighted text
+      console.log('[ContextService] Recording stopped');
+    } catch (error) {
+      this.emitError(error);
+    }
   }
 
   /**
@@ -114,68 +139,78 @@ class ContextService {
    * @returns {Object} Context object with primary and secondary contexts
    */
   getContext(currentHighlightedText = '') {
-    this.updateClipboardContext();
+    try {
+      this.updateClipboardContext();
 
-    console.log('[ContextService] Getting context with inputs:', {
-      recordingHighlightedText: this.highlightedText,
-      currentHighlightedText,
-      clipboardContent: this.clipboardContent,
-      clipboardTimestamp: this.clipboardTimestamp,
-      isRecording: this.isRecording,
-      recordingStartTime: this.recordingStartTime
-    });
+      console.log('[ContextService] Getting context with inputs:', {
+        recordingHighlightedText: this.highlightedText,
+        currentHighlightedText,
+        clipboardContent: this.clipboardContent,
+        clipboardTimestamp: this.clipboardTimestamp,
+        isRecording: this.isRecording,
+        recordingStartTime: this.recordingStartTime
+      });
 
-    const context = {
-      primaryContext: null,
-      secondaryContext: null
-    };
-
-    // First try the text that was highlighted when recording started
-    if (this.highlightedText) {
-      console.log('[ContextService] Using recording-start highlighted text as primary context:', this.highlightedText);
-      context.primaryContext = {
-        type: 'highlight',
-        content: this.highlightedText
+      const context = {
+        primaryContext: null,
+        secondaryContext: null
       };
-    }
-    // Then try currently highlighted text if different
-    else if (currentHighlightedText && currentHighlightedText !== this.highlightedText) {
-      console.log('[ContextService] Using current highlighted text as primary context:', currentHighlightedText);
-      context.primaryContext = {
-        type: 'highlight',
-        content: currentHighlightedText
-      };
-    }
-    // Finally try clipboard if it's fresh
-    else if (this.isClipboardFresh()) {
-      console.log('[ContextService] Using clipboard as primary context:', this.clipboardContent);
-      context.primaryContext = {
-        type: 'clipboard',
-        content: this.clipboardContent
-      };
-    }
 
-    console.log('[ContextService] Generated context:', {
-      hasPrimaryContext: Boolean(context.primaryContext),
-      primaryContextType: context.primaryContext?.type,
-      primaryContent: context.primaryContext?.content,
-      hasSecondaryContext: Boolean(context.secondaryContext),
-      secondaryContextType: context.secondaryContext?.type,
-      secondaryContent: context.secondaryContext?.content
-    });
+      // First try the text that was highlighted when recording started
+      if (this.highlightedText) {
+        console.log('[ContextService] Using recording-start highlighted text as primary context:', this.highlightedText);
+        context.primaryContext = {
+          type: 'highlight',
+          content: this.highlightedText
+        };
+      }
+      // Then try currently highlighted text if different
+      else if (currentHighlightedText && currentHighlightedText !== this.highlightedText) {
+        console.log('[ContextService] Using current highlighted text as primary context:', currentHighlightedText);
+        context.primaryContext = {
+          type: 'highlight',
+          content: currentHighlightedText
+        };
+      }
+      // Finally try clipboard if it's fresh
+      else if (this.isClipboardFresh()) {
+        console.log('[ContextService] Using clipboard as primary context:', this.clipboardContent);
+        context.primaryContext = {
+          type: 'clipboard',
+          content: this.clipboardContent
+        };
+      }
 
-    return context;
+      console.log('[ContextService] Generated context:', {
+        hasPrimaryContext: Boolean(context.primaryContext),
+        primaryContextType: context.primaryContext?.type,
+        primaryContent: context.primaryContext?.content,
+        hasSecondaryContext: Boolean(context.secondaryContext),
+        secondaryContextType: context.secondaryContext?.type,
+        secondaryContent: context.secondaryContext?.content
+      });
+
+      return context;
+    } catch (error) {
+      this.emitError(error);
+      return { primaryContext: null, secondaryContext: null };
+    }
   }
 
   /**
    * Clean up resources
    */
   cleanup() {
-    if (this.checkInterval) {
-      clearInterval(this.checkInterval);
-      this.checkInterval = null;
+    try {
+      if (this.checkInterval) {
+        clearInterval(this.checkInterval);
+        this.checkInterval = null;
+      }
+    } catch (error) {
+      this.emitError(error);
     }
   }
 }
 
-module.exports = new ContextService(); 
+// Export a factory function instead of a singleton
+module.exports = () => new ContextService(); 

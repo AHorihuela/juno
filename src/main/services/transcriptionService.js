@@ -3,16 +3,10 @@
  * This will be replaced with actual Whisper API integration later.
  */
 const OpenAI = require('openai');
-const configService = require('./configService');
-const textProcessing = require('./textProcessing');
-const aiService = require('./aiService');
-const textInsertionService = require('./textInsertionService');
-const notificationService = require('./notificationService');
-const selectionService = require('./selectionService');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const dictionaryService = require('./dictionaryService');
+const BaseService = require('./BaseService');
 
 // WAV header constants
 const RIFF_HEADER_SIZE = 44;
@@ -20,9 +14,18 @@ const SAMPLE_RATE = 16000;
 const NUM_CHANNELS = 1;
 const BITS_PER_SAMPLE = 16;
 
-class TranscriptionService {
+class TranscriptionService extends BaseService {
   constructor() {
+    super('Transcription');
     this.openai = null;
+  }
+
+  async _initialize() {
+    // Nothing to initialize yet
+  }
+
+  async _shutdown() {
+    // Nothing to clean up
   }
 
   /**
@@ -78,7 +81,7 @@ class TranscriptionService {
    * @throws {Error} If API key is not set
    */
   async initializeOpenAI() {
-    const apiKey = await configService.getOpenAIApiKey();
+    const apiKey = await this.getService('config').getOpenAIApiKey();
     if (!apiKey) {
       throw new Error('OpenAI API key not configured');
     }
@@ -119,42 +122,51 @@ class TranscriptionService {
    * @returns {Promise<void>}
    */
   async processAndInsertText(text) {
-    console.log('[TranscriptionService] Starting text processing pipeline');
-    console.log('[TranscriptionService] Raw text:', text);
+    try {
+      if (!this.initialized) {
+        throw new Error('TranscriptionService not initialized');
+      }
 
-    // Get selected text if any
-    const highlightedText = await selectionService.getSelectedText();
-    console.log('[TranscriptionService] Selected text:', highlightedText);
+      console.log('[TranscriptionService] Starting text processing pipeline');
+      console.log('[TranscriptionService] Raw text:', text);
 
-    // First check if this is an AI command
-    const isAICommand = await aiService.isAICommand(text);
-    console.log('[TranscriptionService] Is AI command:', isAICommand);
+      // Get selected text if any
+      const highlightedText = await this.getService('selection').getSelectedText();
+      console.log('[TranscriptionService] Selected text:', highlightedText);
 
-    if (isAICommand) {
-      console.log('[TranscriptionService] Processing as AI command');
-      const aiResponse = await aiService.processCommand(text, highlightedText);
-      console.log('[TranscriptionService] AI response:', aiResponse);
+      // First check if this is an AI command
+      const isAICommand = await this.getService('ai').isAICommand(text);
+      console.log('[TranscriptionService] Is AI command:', isAICommand);
+
+      if (isAICommand) {
+        console.log('[TranscriptionService] Processing as AI command');
+        const aiResponse = await this.getService('ai').processCommand(text, highlightedText);
+        console.log('[TranscriptionService] AI response:', aiResponse);
+        
+        // Insert the AI response
+        await this.getService('textInsertion').insertText(aiResponse.text, highlightedText);
+        return aiResponse.text;
+      }
+
+      // If not an AI command, proceed with normal text processing
+      console.log('[TranscriptionService] Processing as normal text');
+
+      // First apply dictionary processing
+      const dictionaryProcessed = await this.getService('dictionary').processTranscribedText(text);
+      console.log('[TranscriptionService] After dictionary processing:', dictionaryProcessed);
+
+      // Then continue with other text processing
+      const textProcessing = this.getService('textProcessing');
+      const processed = textProcessing.processText(dictionaryProcessed);
+      console.log('[TranscriptionService] Final processed text:', processed);
+
+      // Insert the processed text
+      await this.getService('textInsertion').insertText(processed, highlightedText);
       
-      // Insert the AI response
-      await textInsertionService.insertText(aiResponse.text, highlightedText);
-      return aiResponse.text;
+      return processed;
+    } catch (error) {
+      throw this.emitError(error);
     }
-
-    // If not an AI command, proceed with normal text processing
-    console.log('[TranscriptionService] Processing as normal text');
-
-    // First apply dictionary processing
-    const dictionaryProcessed = await dictionaryService.processTranscribedText(text);
-    console.log('[TranscriptionService] After dictionary processing:', dictionaryProcessed);
-
-    // Then continue with other text processing
-    const processed = textProcessing.processText(dictionaryProcessed);
-    console.log('[TranscriptionService] Final processed text:', processed);
-
-    // Insert the processed text
-    await textInsertionService.insertText(processed, highlightedText);
-    
-    return processed;
   }
 
   /**
@@ -163,7 +175,7 @@ class TranscriptionService {
    * @throws {Error} If API key is not configured
    */
   async validateAndGetApiKey() {
-    const apiKey = await configService.getOpenAIApiKey();
+    const apiKey = await this.getService('config').getOpenAIApiKey();
     console.log('[Transcription] Retrieved OpenAI API key');
     
     if (!apiKey) {
@@ -215,7 +227,7 @@ class TranscriptionService {
         file: fs.createReadStream(tempFile),
         model: 'whisper-1',
         language: 'en',
-        prompt: await dictionaryService.generateWhisperPrompt()
+        prompt: await this.getService('dictionary').generateWhisperPrompt()
       });
 
       console.log('[Transcription] Response received:', response);
@@ -233,7 +245,7 @@ class TranscriptionService {
    */
   async logTranscriptionMetrics(originalText, processedText) {
     // Get dictionary stats
-    const dictStats = dictionaryService.getStats();
+    const dictStats = this.getService('dictionary').getStats();
     
     // Log effectiveness summary
     console.log('\n[Transcription] Dictionary effectiveness summary:');
@@ -247,52 +259,47 @@ class TranscriptionService {
       console.log('\n[Transcription] Text changes:');
       console.log('  Original:', originalText);
       console.log('  Processed:', processedText);
-    } else {
-      console.log('\n[Transcription] No dictionary-based changes were made');
     }
   }
 
   /**
-   * Transcribe audio data to text using OpenAI Whisper
-   * @param {Buffer} audioBuffer - The raw audio data to transcribe
-   * @param {string} highlightedText - Currently highlighted text
-   * @returns {Promise<string>} The transcribed text
+   * Main transcription function
+   * @param {Buffer} audioBuffer - Raw audio buffer to transcribe
+   * @param {string} highlightedText - Currently highlighted text (if any)
+   * @returns {Promise<string>} Transcribed and processed text
    */
   async transcribeAudio(audioBuffer, highlightedText = '') {
-    console.log('\n[Transcription] Starting transcription process...');
-    let tempFile = null;
-    
     try {
-      await this.validateAndGetApiKey();
-      const wavData = await this.prepareAudioData(audioBuffer);
-      tempFile = await this.createTempFile(wavData);
-      
-      const data = await this.callWhisperAPI(tempFile);
-      
-      // Log the raw transcription before dictionary processing
-      console.log('\n[Transcription] Raw transcription:', data.text);
-      
-      // Process and insert the transcribed text
-      const processedText = await this.processAndInsertText(data.text);
-      
-      await this.logTranscriptionMetrics(data.text, processedText);
-      return processedText;
-
-    } catch (error) {
-      console.error('[Transcription] Error:', error);
-      throw error;
-    } finally {
-      if (tempFile) {
-        try {
-          fs.unlinkSync(tempFile);
-          console.log('[Transcription] Temporary file cleaned up');
-        } catch (error) {
-          console.error('[Transcription] Error cleaning up temp file:', error);
-        }
+      if (!this.initialized) {
+        throw new Error('TranscriptionService not initialized');
       }
+
+      // Prepare audio data
+      const wavData = await this.prepareAudioData(audioBuffer);
+      const tempFile = await this.createTempFile(wavData);
+
+      try {
+        // Make API request
+        const response = await this.callWhisperAPI(tempFile);
+        const transcribedText = response.text;
+
+        // Process and insert the transcribed text
+        const processedText = await this.processAndInsertText(transcribedText);
+
+        // Log metrics
+        await this.logTranscriptionMetrics(transcribedText, processedText);
+
+        return processedText;
+      } finally {
+        // Clean up temp file
+        await this.cleanupTempFile(tempFile);
+      }
+    } catch (error) {
+      this.getService('notification').showTranscriptionError(error);
+      throw this.emitError(error);
     }
   }
 }
 
-// Export a singleton instance
-module.exports = new TranscriptionService(); 
+// Export a factory function instead of a singleton
+module.exports = () => new TranscriptionService(); 

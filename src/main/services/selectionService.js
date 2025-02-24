@@ -1,11 +1,16 @@
 const { exec } = require('child_process');
-const contextService = require('./contextService');
 const { webContents, BrowserWindow, ipcMain } = require('electron');
+const BaseService = require('./BaseService');
 
-class SelectionService {
+class SelectionService extends BaseService {
   constructor() {
+    super('Selection');
+    this.ipcHandler = null;
+  }
+
+  async _initialize() {
     // Set up IPC handler for getting selected text from renderer
-    ipcMain.handle('get-selected-text-from-renderer', async () => {
+    this.ipcHandler = async () => {
       const focusedWindow = BrowserWindow.getFocusedWindow();
       if (!focusedWindow) return '';
       
@@ -21,9 +26,19 @@ class SelectionService {
         return result || '';
       } catch (error) {
         console.error('[SelectionService] Error getting selection from renderer:', error);
+        this.emitError(error);
         return '';
       }
-    });
+    };
+
+    ipcMain.handle('get-selected-text-from-renderer', this.ipcHandler);
+  }
+
+  async _shutdown() {
+    if (this.ipcHandler) {
+      ipcMain.removeHandler('get-selected-text-from-renderer');
+      this.ipcHandler = null;
+    }
   }
 
   /**
@@ -92,6 +107,7 @@ class SelectionService {
             }
           } catch (error) {
             console.error('[SelectionService] Error getting selection from window:', error);
+            this.emitError(error);
           }
         }
         
@@ -103,7 +119,7 @@ class SelectionService {
       console.log('[SelectionService] Using clipboard method for app:', appName);
       
       // Notify context service we're starting an internal clipboard operation
-      contextService.startInternalOperation();
+      this.getService('context').startInternalOperation();
 
       const script = `
         tell application "System Events"
@@ -163,7 +179,7 @@ class SelectionService {
       });
 
       // End internal clipboard operation
-      contextService.endInternalOperation();
+      this.getService('context').endInternalOperation();
       
       console.log('[SelectionService] Selection detection completed:', {
         hasSelection: Boolean(result),
@@ -174,10 +190,12 @@ class SelectionService {
     } catch (error) {
       console.error('[SelectionService] Failed to get selected text:', error);
       // Make sure to end internal operation even if there's an error
-      contextService.endInternalOperation();
+      this.getService('context').endInternalOperation();
+      this.emitError(error);
       return '';
     }
   }
 }
 
-module.exports = new SelectionService(); 
+// Export a factory function instead of a singleton
+module.exports = () => new SelectionService(); 

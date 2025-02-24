@@ -1,9 +1,11 @@
 const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
+const BaseService = require('./BaseService');
 
-class DictionaryService {
+class DictionaryService extends BaseService {
   constructor() {
+    super('Dictionary');
     this.words = new Set();
     this.dictionaryPath = path.join(app.getPath('userData'), 'userDictionary.json');
     this.stats = {
@@ -13,46 +15,57 @@ class DictionaryService {
       unmatchedWords: 0,
       totalProcessed: 0
     };
-    this.initializeDictionary();
   }
 
-  initializeDictionary() {
+  async _initialize() {
+    await this.initializeDictionary();
+  }
+
+  async _shutdown() {
+    // Save dictionary on shutdown
+    await this.saveDictionary();
+  }
+
+  async initializeDictionary() {
     console.log('Initializing dictionary at:', this.dictionaryPath);
     try {
       if (!fs.existsSync(this.dictionaryPath)) {
         console.log('Dictionary file does not exist, creating...');
-        fs.writeFileSync(this.dictionaryPath, JSON.stringify([], null, 2), 'utf8');
+        await fs.promises.writeFile(this.dictionaryPath, JSON.stringify([], null, 2), 'utf8');
       }
-      this.loadDictionary();
+      await this.loadDictionary();
     } catch (error) {
       console.error('Error initializing dictionary:', error);
       // Create an empty dictionary if there's an error
       this.words = new Set();
+      this.emitError(error);
     }
   }
 
-  loadDictionary() {
+  async loadDictionary() {
     console.log('Loading dictionary from:', this.dictionaryPath);
     try {
-      const data = fs.readFileSync(this.dictionaryPath, 'utf8');
+      const data = await fs.promises.readFile(this.dictionaryPath, 'utf8');
       const words = JSON.parse(data);
       this.words = new Set(words);
       console.log('Dictionary loaded successfully with', this.words.size, 'words');
     } catch (error) {
       console.error('Error loading dictionary:', error);
       this.words = new Set();
+      this.emitError(error);
     }
   }
 
-  saveDictionary() {
+  async saveDictionary() {
     console.log('Saving dictionary...');
     try {
       const words = Array.from(this.words);
-      fs.writeFileSync(this.dictionaryPath, JSON.stringify(words, null, 2), 'utf8');
+      await fs.promises.writeFile(this.dictionaryPath, JSON.stringify(words, null, 2), 'utf8');
       console.log('Dictionary saved successfully');
       return true;
     } catch (error) {
       console.error('Error saving dictionary:', error);
+      this.emitError(error);
       return false;
     }
   }
@@ -260,6 +273,5 @@ class DictionaryService {
   }
 }
 
-// Create and export a singleton instance
-const dictionaryService = new DictionaryService();
-module.exports = dictionaryService; 
+// Export a factory function instead of a singleton
+module.exports = () => new DictionaryService(); 

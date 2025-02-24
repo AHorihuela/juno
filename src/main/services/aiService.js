@@ -1,24 +1,34 @@
 const OpenAI = require('openai');
+const BaseService = require('./BaseService');
 const configService = require('./configService');
 const notificationService = require('./notificationService');
 const contextService = require('./contextService');
 
-class AIService {
+class AIService extends BaseService {
   constructor() {
+    super('AI');
     this.openai = null;
     this.currentRequest = null;
   }
 
+  async _initialize() {
+    // Nothing to initialize yet
+  }
+
+  async _shutdown() {
+    this.cancelCurrentRequest();
+  }
+
   async initializeOpenAI() {
     try {
-      const apiKey = await configService.getOpenAIApiKey();
+      const apiKey = await this.getService('config').getOpenAIApiKey();
       if (!apiKey) {
         throw new Error('OpenAI API key not configured');
       }
       this.openai = new OpenAI({ apiKey });
     } catch (error) {
-      notificationService.showAPIError(error);
-      throw error;
+      this.getService('notification').showAPIError(error);
+      throw this.emitError(error);
     }
   }
 
@@ -46,7 +56,7 @@ class AIService {
     if (words.length === 0) return false;
 
     // Get trigger word from config
-    const triggerWord = await configService.getAITriggerWord() || 'juno';
+    const triggerWord = await this.getService('config').getAITriggerWord() || 'juno';
     console.log('[AIService] Trigger word:', triggerWord);
 
     // Check first 3 words for trigger word
@@ -68,7 +78,7 @@ class AIService {
     }
 
     // Get action verbs from config
-    const actionVerbs = await configService.getActionVerbs();
+    const actionVerbs = await this.getService('config').getActionVerbs();
     const ACTION_VERBS = new Set(actionVerbs);
 
     // Check for action verbs in first two words (per spec)
@@ -107,7 +117,7 @@ class AIService {
       const controller = new AbortController();
       
       // Get context using the context service
-      const context = contextService.getContext(highlightedText);
+      const context = this.getService('context').getContext(highlightedText);
       
       // Add diagnostic logging
       console.log('[AIService] Input text being summarized:', {
@@ -117,7 +127,7 @@ class AIService {
       });
 
       // Get AI rules
-      const aiRules = await configService.getAIRules();
+      const aiRules = await this.getService('config').getAIRules();
       console.log('[AIService] Retrieved AI rules:', aiRules);
       
       const rulesText = aiRules.length > 0 
@@ -132,7 +142,7 @@ class AIService {
       this.currentRequest = {
         controller,
         promise: this.openai.chat.completions.create({
-          model: await configService.getAIModel() || 'gpt-4',
+          model: await this.getService('config').getAIModel() || 'gpt-4',
           messages: [
             {
               role: 'system',
@@ -140,7 +150,7 @@ class AIService {
             },
             { role: 'user', content: prompt }
           ],
-          temperature: await configService.getAITemperature() || 0.7,
+          temperature: await this.getService('config').getAITemperature() || 0.7,
         }, { signal: controller.signal })
       };
 
@@ -171,19 +181,19 @@ class AIService {
         const status = error.response.status;
         switch (status) {
           case 401:
-            notificationService.showAPIError(error);
-            throw new Error('Invalid OpenAI API key');
+            this.getService('notification').showAPIError(error);
+            throw this.emitError(new Error('Invalid OpenAI API key'));
           case 429:
-            notificationService.showAPIError(error);
-            throw new Error('OpenAI API rate limit exceeded');
+            this.getService('notification').showAPIError(error);
+            throw this.emitError(new Error('OpenAI API rate limit exceeded'));
           default:
-            notificationService.showAIError(error);
-            throw new Error(`AI processing failed: ${error.message}`);
+            this.getService('notification').showAIError(error);
+            throw this.emitError(new Error(`AI processing failed: ${error.message}`));
         }
       }
       
-      notificationService.showAIError(error);
-      throw new Error(`AI processing failed: ${error.message}`);
+      this.getService('notification').showAIError(error);
+      throw this.emitError(new Error(`AI processing failed: ${error.message}`));
     }
   }
 
@@ -248,15 +258,16 @@ class AIService {
   }
 
   /**
-   * Cancel any ongoing AI request
+   * Cancel the current request if one exists
    */
   cancelCurrentRequest() {
-    if (this.currentRequest && this.currentRequest.controller) {
-      console.log('Cancelling current AI request');
+    if (this.currentRequest) {
+      console.log('[AIService] Cancelling current request');
       this.currentRequest.controller.abort();
       this.currentRequest = null;
     }
   }
 }
 
-module.exports = new AIService();
+// Export a factory function instead of a singleton
+module.exports = () => new AIService();

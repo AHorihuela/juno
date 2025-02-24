@@ -2,12 +2,21 @@ const { Notification } = require('electron');
 const path = require('path');
 const { exec } = require('child_process');
 const fs = require('fs').promises;
+const BaseService = require('./BaseService');
 
-class NotificationService {
+class NotificationService extends BaseService {
   constructor() {
+    super('Notification');
     this.errorSound = null;
     this.customSoundPath = path.join(__dirname, '../../../assets/sounds/error.wav');
-    this.initializeAudio();
+  }
+
+  async _initialize() {
+    await this.initializeAudio();
+  }
+
+  async _shutdown() {
+    // Nothing to clean up
   }
 
   async initializeAudio() {
@@ -35,23 +44,35 @@ class NotificationService {
   }
 
   showNotification(title, body, type = 'info') {
-    const notification = new Notification({
-      title,
-      body,
-      silent: true, // We'll handle the sound separately
-      icon: type === 'error' ? path.join(__dirname, '../../../assets/icons/error.png') : undefined
-    });
+    try {
+      if (!this.initialized) {
+        throw new Error('NotificationService not initialized');
+      }
 
-    notification.show();
+      const notification = new Notification({
+        title,
+        body,
+        silent: true, // We'll handle the sound separately
+        icon: type === 'error' ? path.join(__dirname, '../../../assets/icons/error.png') : undefined
+      });
 
-    // Play sound for errors
-    if (type === 'error') {
-      this.playErrorSound();
+      notification.show();
+
+      // Play sound for errors
+      if (type === 'error') {
+        this.playErrorSound();
+      }
+    } catch (error) {
+      this.emitError(error);
     }
   }
 
   async playErrorSound() {
     try {
+      if (!this.initialized) {
+        throw new Error('NotificationService not initialized');
+      }
+
       if (process.platform === 'darwin') {
         // On macOS, use system sound
         await new Promise((resolve, reject) => {
@@ -90,7 +111,7 @@ class NotificationService {
         });
       }
     } catch (error) {
-      console.error('Error playing sound:', error);
+      this.emitError(error);
     }
   }
 
@@ -146,4 +167,5 @@ class NotificationService {
   }
 }
 
-module.exports = new NotificationService(); 
+// Export a factory function instead of a singleton
+module.exports = () => new NotificationService(); 
