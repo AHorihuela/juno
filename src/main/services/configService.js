@@ -7,12 +7,29 @@ const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 const { app } = require('electron');
+const BaseService = require('./BaseService');
 
-class ConfigService {
+class ConfigService extends BaseService {
   constructor() {
+    super('Config');
     this.store = null;
     this.encryptionKey = null;
-    this.initializeStore();
+  }
+
+  async _initialize() {
+    await this.initializeStore();
+  }
+
+  async _shutdown() {
+    if (this.store) {
+      try {
+        await this.store.store;
+      } catch (error) {
+        throw this.emitError(error);
+      }
+    }
+    this.store = null;
+    this.encryptionKey = null;
   }
 
   async getEncryptionKey() {
@@ -32,6 +49,7 @@ class ConfigService {
       return this.encryptionKey;
     } catch (error) {
       console.error('Error managing encryption key:', error);
+      this.emit('error', error);
       throw new Error('Failed to manage encryption key');
     }
   }

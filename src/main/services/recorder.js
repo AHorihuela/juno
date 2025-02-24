@@ -1,16 +1,11 @@
 const { EventEmitter } = require('events');
 const record = require('node-record-lpcm16');
-const transcriptionService = require('./transcriptionService');
-const notificationService = require('./notificationService');
-const contextService = require('./contextService');
-const audioFeedback = require('./audioFeedbackService');
-const configService = require('./configService');
 const { systemPreferences } = require('electron');
+const BaseService = require('./BaseService');
 
-class AudioRecorder extends EventEmitter {
+class RecorderService extends BaseService {
   constructor() {
-    super();
-    console.log('Initializing AudioRecorder...');
+    super('Recorder');
     this.recording = false;
     this.recorder = null;
     this.audioData = [];
@@ -19,7 +14,17 @@ class AudioRecorder extends EventEmitter {
     this.currentDeviceId = null;
     this.levelSmoothingFactor = 0.3;
     this.currentLevels = [0, 0, 0, 0, 0];
-    console.log('AudioRecorder initialized successfully');
+  }
+
+  async _initialize() {
+    // Nothing to initialize yet
+    console.log('RecorderService initialized');
+  }
+
+  async _shutdown() {
+    if (this.recording) {
+      await this.stop();
+    }
   }
 
   async checkMicrophonePermission(deviceId = null) {
@@ -107,7 +112,7 @@ class AudioRecorder extends EventEmitter {
       return true;
     } catch (error) {
       console.error('Error setting device:', error);
-      notificationService.showNotification(
+      this.getService('notification').showNotification(
         'Microphone Error',
         error.message,
         'error'
@@ -125,7 +130,7 @@ class AudioRecorder extends EventEmitter {
 
       // Get the configured device ID
       if (!this.currentDeviceId) {
-        this.currentDeviceId = await configService.getDefaultMicrophone() || 'default';
+        this.currentDeviceId = await this.getService('config').getDefaultMicrophone() || 'default';
       }
 
       const recordingOptions = {
@@ -151,10 +156,10 @@ class AudioRecorder extends EventEmitter {
       this.hasAudioContent = false;
 
       // Start tracking recording session in context service
-      contextService.startRecording();
+      this.getService('context').startRecording();
 
       // Play start sound
-      audioFeedback.playStartSound();
+      await this.getService('audio').playStartSound();
 
       // Log audio data for testing
       this.recorder.stream()
@@ -176,7 +181,7 @@ class AudioRecorder extends EventEmitter {
         })
         .on('error', (err) => {
           console.error('Recording error:', err);
-          notificationService.showNotification(
+          this.getService('notification').showNotification(
             'Recording Error',
             err.message || 'Failed to record audio',
             'error'
@@ -190,7 +195,7 @@ class AudioRecorder extends EventEmitter {
       console.log('Recording started');
     } catch (error) {
       console.error('Error starting recording:', error);
-      notificationService.showNotification(
+      this.getService('notification').showNotification(
         'Recording Error',
         error.message || 'Failed to start recording',
         'error'
@@ -264,10 +269,10 @@ class AudioRecorder extends EventEmitter {
       this.recording = false;
 
       // Stop tracking recording session in context service
-      contextService.stopRecording();
+      this.getService('context').stopRecording();
 
       // Play stop sound
-      audioFeedback.playStopSound();
+      await this.getService('audio').playStopSound();
 
       // Calculate final audio metrics
       const totalSamples = this.audioData.reduce((sum, chunk) => sum + chunk.length, 0);
@@ -295,7 +300,7 @@ class AudioRecorder extends EventEmitter {
       // Skip transcription if no real audio content detected
       if (!this.hasAudioContent) {
         console.log('No significant audio content detected, skipping transcription');
-        notificationService.showNoAudioDetected();
+        this.getService('notification').showNoAudioDetected();
         this.emit('stop');
         return;
       }
@@ -311,12 +316,12 @@ class AudioRecorder extends EventEmitter {
       // Get transcription
       try {
         console.log('Sending audio for transcription...');
-        const transcription = await transcriptionService.transcribeAudio(completeAudioData);
+        const transcription = await this.getService('transcription').transcribeAudio(completeAudioData);
         this.emit('transcription', transcription);
         console.log('Transcription received:', transcription);
       } catch (error) {
         console.error('Transcription error:', error);
-        notificationService.showTranscriptionError(error);
+        this.getService('notification').showTranscriptionError(error);
         this.emit('error', error);
       }
 
@@ -324,7 +329,7 @@ class AudioRecorder extends EventEmitter {
       console.log('Recording stopped');
     } catch (error) {
       console.error('Failed to stop recording:', error);
-      notificationService.showNotification(
+      this.getService('notification').showNotification(
         'Recording Error',
         error.message || 'Failed to stop recording',
         'error'
@@ -338,5 +343,5 @@ class AudioRecorder extends EventEmitter {
   }
 }
 
-const recorder = new AudioRecorder();
-module.exports = recorder; 
+// Export a factory function
+module.exports = () => new RecorderService(); 
