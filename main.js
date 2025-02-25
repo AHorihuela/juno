@@ -133,6 +133,10 @@ function createWindow() {
       const windowMgr = serviceRegistry.get('windowManager');
       windowMgr.setMainWindow(mainWindow);
       
+      // Initialize tray service with main window
+      const trayService = serviceRegistry.get('tray');
+      trayService.setMainWindow(mainWindow);
+      
       // Open DevTools in development
       if (process.env.NODE_ENV === 'development') {
         console.log('Opening DevTools in development mode');
