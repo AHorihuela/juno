@@ -136,7 +136,7 @@ class WindowManager extends BaseService {
     try {
       if (this.overlayWindow) return;
       this.overlayWindow = this._createOverlayWindow();
-      this.overlayWindow.loadURL(`data:text/html;charset=utf-8,${this._getHTMLTemplate()}`);
+      this.overlayWindow.loadURL(`data:text/html;charset=utf-8,${this._getOverlayHTML()}`);
       this._setupOverlayBehavior();
     } catch (error) {
       console.error('[WindowManager] Error creating overlay:', {
@@ -151,9 +151,9 @@ class WindowManager extends BaseService {
     try {
       const { workArea } = screen.getPrimaryDisplay();
       return new BrowserWindow({
-        width: 200,
-        height: 40,
-        x: Math.floor(workArea.x + (workArea.width - 200) / 2),
+        width: 320,
+        height: 48,
+        x: Math.floor(workArea.x + (workArea.width - 320) / 2),
         y: workArea.height - 120,
         frame: false,
         transparent: true,
@@ -206,7 +206,7 @@ class WindowManager extends BaseService {
     }
   }
 
-  _getHTMLTemplate() {
+  _getOverlayHTML() {
     return `
       <html>
         <head>
@@ -215,7 +215,13 @@ class WindowManager extends BaseService {
         </head>
         <body>
           <div class="container">
-            ${Array(7).fill('<div class="bar"></div>').join('')}
+            <div class="recording-indicator">
+              <div class="record-icon"></div>
+            </div>
+            <div class="visualization-container">
+              ${Array(20).fill('<div class="bar"></div>').join('')}
+            </div>
+            <div class="timer">00:00</div>
           </div>
         </body>
       </html>
@@ -235,26 +241,77 @@ class WindowManager extends BaseService {
         justify-content: center;
         align-items: center;
         height: 100vh;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
       }
+      
       .container {
-        background: rgba(0, 0, 0, 0.85);
-        border-radius: 20px;
-        padding: 0 20px;
+        background: linear-gradient(135deg, rgba(30, 30, 30, 0.85) 0%, rgba(10, 10, 10, 0.95) 100%);
+        border-radius: 24px;
+        padding: 0 16px;
         display: flex;
-        justify-content: center;
+        justify-content: space-between;
         align-items: center;
-        gap: 4px;
-        height: 40px;
+        height: 48px;
+        min-width: 280px;
+        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      
+      .recording-indicator {
+        display: flex;
+        align-items: center;
+        margin-right: 12px;
+      }
+      
+      .record-icon {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background-color: #ff3b30;
+        animation: pulse 2s infinite;
+      }
+      
+      .visualization-container {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        height: 32px;
         overflow: hidden;
       }
+      
       .bar {
-        width: 4px;
-        height: 30px;
+        flex: 1;
+        height: 32px;
+        background: linear-gradient(to top, rgba(255, 59, 48, 0.5), rgba(255, 59, 48, 0.9));
         border-radius: 2px;
-        background: white;
-        transition: transform 0.1s ease-out;
+        transition: transform 0.12s cubic-bezier(0.4, 0.0, 0.2, 1);
         transform-origin: bottom;
         transform: scaleY(0.15);
+      }
+      
+      .timer {
+        font-size: 14px;
+        font-weight: 500;
+        color: white;
+        margin-left: 12px;
+        min-width: 45px;
+        text-align: right;
+      }
+      
+      @keyframes pulse {
+        0% {
+          box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.7);
+        }
+        70% {
+          box-shadow: 0 0 0 6px rgba(255, 59, 48, 0);
+        }
+        100% {
+          box-shadow: 0 0 0 0 rgba(255, 59, 48, 0);
+        }
       }
     `;
   }
@@ -262,68 +319,156 @@ class WindowManager extends BaseService {
   _getScript() {
     return `
       let bars = [];
+      let timerElement;
+      let startTime = 0;
       let currentState = 'idle';
+      let animationFrameId;
+      
       const states = {
         idle: () => {
           const now = Date.now() / 1000;
           bars.forEach((bar, i) => {
-            const offset = i * 0.2;
-            const scale = 0.15 + Math.sin(now * 1.2 + offset) * 0.05;
+            const offset = i * 0.05;
+            const scale = 0.15 + Math.sin(now * 2 + offset) * 0.05;
             bar.style.transform = \`scaleY(\${scale})\`;
           });
         },
         active: (levels) => {
-          if (!levels) return;
+          if (!levels || !Array.isArray(levels)) return;
+          
+          // Expand the levels array to match our number of bars
+          const expandedLevels = [];
+          const barsCount = bars.length;
+          const levelsCount = levels.length;
+          
+          for (let i = 0; i < barsCount; i++) {
+            // Map the bar index to a level index
+            const levelIdx = Math.floor(i * levelsCount / barsCount);
+            // Get the level value, with some randomization for visual interest
+            const randomFactor = 0.85 + Math.random() * 0.3;
+            const level = levels[levelIdx] * randomFactor;
+            expandedLevels.push(level);
+          }
+          
+          // Apply smoothed levels to bars with slight delay for wave effect
           bars.forEach((bar, i) => {
-            const scale = Math.max(0.15, Math.min(1, levels[i] || 0));
-            bar.style.transform = \`scaleY(\${scale})\`;
+            const delay = i * 15; // ms delay between bars for wave effect
+            setTimeout(() => {
+              const scale = Math.max(0.15, Math.min(1, expandedLevels[i] || 0));
+              bar.style.transform = \`scaleY(\${scale})\`;
+              
+              // Add subtle color variation based on intensity
+              const intensity = Math.min(0.9, 0.5 + scale * 0.5);
+              bar.style.background = \`linear-gradient(to top, 
+                rgba(255, 59, 48, \${intensity * 0.5}), 
+                rgba(255, 59, 48, \${intensity}))\`;
+            }, delay);
           });
+          
+          // Update timer
+          updateTimer();
         }
       };
 
-      function updateState(state, levels) {
-        currentState = state;
-        if (states[state]) {
-          states[state](levels);
-        }
+      function updateTimer() {
+        if (!timerElement) return;
+        
+        const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+        const minutes = Math.floor(elapsedSeconds / 60);
+        const seconds = elapsedSeconds % 60;
+        
+        timerElement.textContent = \`\${minutes.toString().padStart(2, '0')}:\${seconds.toString().padStart(2, '0')}\`;
       }
 
-      function animate() {
-        if (states[currentState]) {
-          states[currentState]();
+      function updateState(state, levels) {
+        if (state === 'active' && currentState !== 'active') {
+          // Starting recording
+          startTime = Date.now();
         }
-        requestAnimationFrame(animate);
+        
+        currentState = state;
+        
+        // Cancel any existing animation frame
+        if (animationFrameId) {
+          cancelAnimationFrame(animationFrameId);
+        }
+        
+        // Start animation loop
+        function animate() {
+          if (states[currentState]) {
+            states[currentState](levels);
+          }
+          animationFrameId = requestAnimationFrame(animate);
+        }
+        
+        animate();
       }
 
       document.addEventListener('DOMContentLoaded', () => {
         bars = Array.from(document.querySelectorAll('.bar'));
-        animate();
+        timerElement = document.querySelector('.timer');
+        
+        // Start with idle animation
+        updateState('idle');
+        
+        // Listen for messages from main process
+        window.addEventListener('message', (event) => {
+          const { type, data } = event.data;
+          
+          if (type === 'update-levels' && data.levels) {
+            updateState('active', data.levels);
+          } else if (type === 'set-state') {
+            updateState(data.state);
+          }
+        });
       });
     `;
   }
 
   updateOverlayAudioLevels(levels) {
     try {
-      if (!this.overlayWindow) return;
-      this.overlayWindow.webContents.executeJavaScript(`updateState('active', ${JSON.stringify(levels)})`);
-    } catch (error) {
-      console.error('[WindowManager] Error updating audio levels:', {
-        error: error.message,
-        stack: error.stack,
+      if (!this.overlayWindow || this.overlayWindow.isDestroyed()) {
+        console.log('[WindowManager] Cannot update overlay audio levels - no valid overlay window');
+        return;
+      }
+      
+      console.log('[WindowManager] Updating overlay audio levels');
+      this.overlayWindow.webContents.executeJavaScript(`
+        if (window.updateState) {
+          window.updateState('active', ${JSON.stringify(levels)});
+        } else {
+          window.postMessage({ type: 'update-levels', data: { levels: ${JSON.stringify(levels)} } }, '*');
+        }
+      `).catch(err => {
+        console.error('[WindowManager] Error updating overlay audio levels:', err);
+        this.emitError(err);
       });
+    } catch (error) {
+      console.error('[WindowManager] Error in updateOverlayAudioLevels:', error);
       this.emitError(error);
     }
   }
 
   setOverlayState(state) {
     try {
-      if (!this.overlayWindow) return;
-      this.overlayWindow.webContents.executeJavaScript(`updateState('${state}')`);
-    } catch (error) {
-      console.error('[WindowManager] Error setting overlay state:', {
-        error: error.message,
-        stack: error.stack,
+      if (!this.overlayWindow || this.overlayWindow.isDestroyed()) {
+        console.log('[WindowManager] Cannot set overlay state - no valid overlay window');
+        return;
+      }
+      
+      console.log('[WindowManager] Setting overlay state:', state);
+      this.overlayWindow.webContents.executeJavaScript(`
+        if (window.updateState) {
+          window.updateState('${state}');
+        } else {
+          window.postMessage({ type: 'set-state', data: { state: '${state}' } }, '*');
+        }
+      `).catch(err => {
+        console.error('[WindowManager] Error setting overlay state:', err);
+        this.emitError(err);
       });
+    } catch (error) {
+      console.error('[WindowManager] Error in setOverlayState:', error);
       this.emitError(error);
     }
   }
@@ -331,37 +476,78 @@ class WindowManager extends BaseService {
   showOverlay() {
     try {
       if (!this.overlayWindow) {
+        console.log('[WindowManager] Creating overlay window');
         this.createOverlay();
       }
       
-      // Show the window without activating it (taking focus)
-      if (process.platform === 'darwin') {
-        // On macOS, use showInactive to prevent focus stealing
-        this.overlayWindow.showInactive();
-      } else {
-        // For other platforms
-        this.overlayWindow.show();
-        this.overlayWindow.setAlwaysOnTop(true, 'screen-saver', 1);
+      if (this.overlayWindow.isDestroyed()) {
+        console.log('[WindowManager] Overlay window was destroyed, recreating');
+        this.createOverlay();
       }
+      
+      // Position the window at the bottom center of the screen
+      const { workArea } = screen.getPrimaryDisplay();
+      this.overlayWindow.setPosition(
+        Math.floor(workArea.x + (workArea.width - this.overlayWindow.getSize()[0]) / 2),
+        workArea.height - 120
+      );
+      
+      // Show with fade-in effect
+      console.log('[WindowManager] Showing overlay with fade-in effect');
+      this.overlayWindow.setOpacity(0);
+      this.overlayWindow.show();
+      
+      // Animate opacity
+      let opacity = 0;
+      const fadeIn = setInterval(() => {
+        opacity += 0.1;
+        if (!this.overlayWindow || this.overlayWindow.isDestroyed()) {
+          clearInterval(fadeIn);
+          return;
+        }
+        
+        this.overlayWindow.setOpacity(opacity);
+        
+        if (opacity >= 1) {
+          clearInterval(fadeIn);
+        }
+      }, 16);
+      
+      // Set state to idle initially
+      this.setOverlayState('idle');
     } catch (error) {
-      console.error('[WindowManager] Error showing overlay:', {
-        error: error.message,
-        stack: error.stack,
-      });
+      console.error('[WindowManager] Error showing overlay:', error);
       this.emitError(error);
     }
   }
 
   hideOverlay() {
     try {
-      if (this.overlayWindow) {
-        this.overlayWindow.hide();
+      if (!this.overlayWindow || this.overlayWindow.isDestroyed()) {
+        console.log('[WindowManager] Cannot hide overlay - no valid overlay window');
+        return;
       }
+      
+      // Fade out effect
+      console.log('[WindowManager] Hiding overlay with fade-out effect');
+      let opacity = this.overlayWindow.getOpacity();
+      const fadeOut = setInterval(() => {
+        opacity -= 0.1;
+        
+        if (!this.overlayWindow || this.overlayWindow.isDestroyed()) {
+          clearInterval(fadeOut);
+          return;
+        }
+        
+        this.overlayWindow.setOpacity(Math.max(0, opacity));
+        
+        if (opacity <= 0) {
+          clearInterval(fadeOut);
+          this.overlayWindow.hide();
+        }
+      }, 16);
     } catch (error) {
-      console.error('[WindowManager] Error hiding overlay:', {
-        error: error.message,
-        stack: error.stack,
-      });
+      console.error('[WindowManager] Error hiding overlay:', error);
       this.emitError(error);
     }
   }
