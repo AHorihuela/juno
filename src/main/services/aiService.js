@@ -136,10 +136,9 @@ class AIService extends BaseService {
       const aiRules = await this.getService('config').getAIRules();
       console.log('[AIService] Retrieved AI rules:', aiRules);
       
-      const rulesText = aiRules.length > 0 
-        ? `\n\nUser context:\n${aiRules.join('\n')}`
-        : '';
-      console.log('[AIService] Rules text being added to prompt:', rulesText);
+      // Build a more structured system prompt with rules
+      const systemPrompt = this.buildSystemPrompt(aiRules, context);
+      console.log('[AIService] System prompt:', systemPrompt);
 
       // Create completion request
       const prompt = this.buildPrompt(command, context);
@@ -150,10 +149,7 @@ class AIService extends BaseService {
         promise: this.openai.chat.completions.create({
           model: await this.getService('config').getAIModel() || 'gpt-4',
           messages: [
-            {
-              role: 'system',
-              content: 'You are a text processing tool. Output ONLY the processed text without any explanations, greetings, or commentary. Never say things like "here\'s the text" or "I can help". Just output the transformed text directly.' + rulesText
-            },
+            { role: 'system', content: systemPrompt },
             { role: 'user', content: prompt }
           ],
           temperature: await this.getService('config').getAITemperature() || 0.7,
@@ -204,6 +200,46 @@ class AIService extends BaseService {
   }
 
   /**
+   * Build a structured system prompt with rules
+   * @param {string[]} rules - Array of AI rules
+   * @param {Object} context - Context object
+   * @returns {string} The system prompt
+   */
+  buildSystemPrompt(rules, context) {
+    const parts = [
+      'You are a text processing tool that helps users with their writing and content.',
+      'Output ONLY the processed text without any explanations, greetings, or commentary.',
+      'Never say things like "here\'s the text" or "I can help". Just output the transformed text directly.'
+    ];
+    
+    // Add application-specific guidance if available
+    if (context.applicationContext && context.applicationContext.name) {
+      const appName = context.applicationContext.name;
+      
+      // Add application-specific instructions
+      if (appName === 'Cursor' || appName === 'Visual Studio Code' || appName === 'VSCodium') {
+        parts.push('The user is currently in a code editor. Format your response appropriately for code if the context appears to be code.');
+      } else if (appName === 'Microsoft Word' || appName === 'Pages' || appName === 'Google Docs') {
+        parts.push('The user is currently in a document editor. Format your response with proper paragraphs and document structure.');
+      } else if (appName === 'Mail' || appName === 'Outlook' || appName === 'Gmail') {
+        parts.push('The user is currently in an email application. Format your response appropriately for email communication.');
+      } else if (appName === 'Slack' || appName === 'Discord' || appName === 'Messages') {
+        parts.push('The user is currently in a messaging application. Keep your response concise and conversational.');
+      }
+    }
+    
+    // Add user rules with structure
+    if (rules && rules.length > 0) {
+      parts.push('\nUser preferences:');
+      rules.forEach(rule => {
+        parts.push(`- ${rule}`);
+      });
+    }
+    
+    return parts.join('\n');
+  }
+
+  /**
    * Build the prompt for GPT based on command and context
    * @param {string} command - The user's command
    * @param {Object} context - Context object with primary and secondary contexts
@@ -220,11 +256,64 @@ class AIService extends BaseService {
       const label = context.primaryContext.type === 'highlight' ? 'Selected text' : 'Recent clipboard content';
       parts.push(`\n${label}:\n"""\n${context.primaryContext.content}\n"""`);
     }
+    
     if (context.secondaryContext) {
       parts.push(`\nAdditional context:\n"""\n${context.secondaryContext.content}\n"""`);
     }
+    
+    // Add application context if available
+    if (context.applicationContext && context.applicationContext.name) {
+      parts.push(`\nCurrent application: ${context.applicationContext.name}`);
+    }
+    
+    // Add history context if available
+    if (context.historyContext && context.historyContext.length > 0) {
+      // Skip items that are already included in primary or secondary context
+      const primaryContent = context.primaryContext?.content || '';
+      const secondaryContent = context.secondaryContext?.content || '';
+      
+      const relevantHistory = context.historyContext.filter(item => 
+        item.content !== primaryContent && 
+        item.content !== secondaryContent
+      );
+      
+      if (relevantHistory.length > 0) {
+        parts.push('\nRecent context:');
+        
+        relevantHistory.forEach((item, index) => {
+          const historyLabel = item.type === 'highlight' ? 
+            `Previously selected text (${this.formatTimestamp(item.timestamp)})` : 
+            `Previous clipboard content (${this.formatTimestamp(item.timestamp)})`;
+          
+          // Use a more compact format for history items
+          parts.push(`\n${historyLabel}:\n"""\n${item.content}\n"""`);
+        });
+      }
+    }
 
     return parts.join('\n');
+  }
+  
+  /**
+   * Format a timestamp in a human-readable way
+   * @param {number} timestamp - The timestamp to format
+   * @returns {string} A human-readable representation of the timestamp
+   */
+  formatTimestamp(timestamp) {
+    if (!timestamp) return 'unknown time';
+    
+    const now = Date.now();
+    const diffSeconds = Math.floor((now - timestamp) / 1000);
+    
+    if (diffSeconds < 60) {
+      return `${diffSeconds} seconds ago`;
+    } else if (diffSeconds < 3600) {
+      return `${Math.floor(diffSeconds / 60)} minutes ago`;
+    } else if (diffSeconds < 86400) {
+      return `${Math.floor(diffSeconds / 3600)} hours ago`;
+    } else {
+      return `${Math.floor(diffSeconds / 86400)} days ago`;
+    }
   }
 
   /**
@@ -240,6 +329,11 @@ class AIService extends BaseService {
       if (context.secondaryContext) {
         parts.push(`\nAdditional context:\n"""\n${context.secondaryContext.content}\n"""`);
       }
+    }
+    
+    // Add application context if available
+    if (context.applicationContext && context.applicationContext.name) {
+      parts.push(`\nCurrent application: ${context.applicationContext.name}`);
     }
 
     return parts.join('\n');

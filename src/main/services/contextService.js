@@ -15,15 +15,38 @@ class ContextService extends BaseService {
     this.isInternalClipboardOperation = false;
     this.highlightedText = ''; // Add storage for highlighted text
     this.checkInterval = null;
+    
+    // Context history for richer context
+    this.contextHistory = [];
+    this.maxHistoryItems = 5;
+    this.activeApplication = '';
   }
 
   async _initialize() {
     // Set up clipboard monitoring
     this.checkInterval = setInterval(() => this.checkClipboardChange(), 1000);
+    
+    // Get active application periodically
+    this.appCheckInterval = setInterval(() => this.updateActiveApplication(), 5000);
   }
 
   async _shutdown() {
     this.cleanup();
+  }
+
+  /**
+   * Update the active application information
+   * @private
+   */
+  async updateActiveApplication() {
+    try {
+      const selectionService = this.getService('selection');
+      if (selectionService) {
+        this.activeApplication = await selectionService.getActiveAppName();
+      }
+    } catch (error) {
+      console.error('[ContextService] Error updating active application:', error);
+    }
   }
 
   /**
@@ -38,14 +61,48 @@ class ContextService extends BaseService {
       }
 
       const currentClipboard = clipboard.readText();
-      if (currentClipboard !== this.lastSystemClipboard) {
+      if (currentClipboard !== this.lastSystemClipboard && currentClipboard.trim()) {
         this.lastSystemClipboard = currentClipboard;
         this.clipboardContent = currentClipboard;
         this.clipboardTimestamp = Date.now();
         console.log('[ContextService] Real clipboard change detected at:', this.clipboardTimestamp);
+        
+        // Add to context history if it's substantial (more than just a few characters)
+        if (currentClipboard.length > 10) {
+          this.addToContextHistory({
+            type: 'clipboard',
+            content: currentClipboard,
+            timestamp: this.clipboardTimestamp,
+            application: this.activeApplication
+          });
+        }
       }
     } catch (error) {
       this.emitError(error);
+    }
+  }
+
+  /**
+   * Add an item to context history
+   * @param {Object} contextItem - The context item to add
+   * @private
+   */
+  addToContextHistory(contextItem) {
+    // Don't add duplicates
+    const isDuplicate = this.contextHistory.some(item => 
+      item.type === contextItem.type && item.content === contextItem.content
+    );
+    
+    if (!isDuplicate) {
+      // Add to beginning of array
+      this.contextHistory.unshift(contextItem);
+      
+      // Trim history to max size
+      if (this.contextHistory.length > this.maxHistoryItems) {
+        this.contextHistory = this.contextHistory.slice(0, this.maxHistoryItems);
+      }
+      
+      console.log('[ContextService] Added item to context history, new size:', this.contextHistory.length);
     }
   }
 
@@ -91,7 +148,21 @@ class ContextService extends BaseService {
       this.recordingStartTime = Date.now();
       this.isRecording = true;
       this.highlightedText = highlightedText || '';
+      
+      // Update active application at recording start
+      await this.updateActiveApplication();
+      
       console.log('[ContextService] Recording started at:', this.recordingStartTime, 'with highlighted text:', this.highlightedText);
+      
+      // Add highlighted text to context history if it exists
+      if (this.highlightedText) {
+        this.addToContextHistory({
+          type: 'highlight',
+          content: this.highlightedText,
+          timestamp: this.recordingStartTime,
+          application: this.activeApplication
+        });
+      }
     } catch (error) {
       this.emitError(error);
     }
@@ -117,6 +188,7 @@ class ContextService extends BaseService {
    */
   isClipboardFresh() {
     if (!this.clipboardTimestamp) return false;
+    if (!this.clipboardContent || this.clipboardContent.trim() === '') return false;
 
     const now = Date.now();
     const isWithin30Seconds = (now - this.clipboardTimestamp) <= 30000;
@@ -148,12 +220,16 @@ class ContextService extends BaseService {
         clipboardContent: this.clipboardContent,
         clipboardTimestamp: this.clipboardTimestamp,
         isRecording: this.isRecording,
-        recordingStartTime: this.recordingStartTime
+        recordingStartTime: this.recordingStartTime,
+        activeApplication: this.activeApplication,
+        historyItems: this.contextHistory.length
       });
 
       const context = {
         primaryContext: null,
-        secondaryContext: null
+        secondaryContext: null,
+        applicationContext: this.activeApplication ? { name: this.activeApplication } : null,
+        historyContext: this.contextHistory.length > 0 ? this.contextHistory.slice(0, 2) : null
       };
 
       // First try the text that was highlighted when recording started
@@ -171,6 +247,14 @@ class ContextService extends BaseService {
           type: 'highlight',
           content: currentHighlightedText
         };
+        
+        // Add to context history
+        this.addToContextHistory({
+          type: 'highlight',
+          content: currentHighlightedText,
+          timestamp: Date.now(),
+          application: this.activeApplication
+        });
       }
       // Finally try clipboard if it's fresh
       else if (this.isClipboardFresh()) {
@@ -180,14 +264,38 @@ class ContextService extends BaseService {
           content: this.clipboardContent
         };
       }
+      
+      // If we have context history but no primary context, use the most recent history item
+      if (!context.primaryContext && this.contextHistory.length > 0) {
+        const mostRecent = this.contextHistory[0];
+        console.log('[ContextService] Using most recent history item as primary context:', mostRecent);
+        context.primaryContext = {
+          type: mostRecent.type,
+          content: mostRecent.content
+        };
+      }
+      
+      // If we have more history items, use the second most recent as secondary context
+      if (this.contextHistory.length > 1 && !context.secondaryContext) {
+        const secondMostRecent = this.contextHistory[1];
+        console.log('[ContextService] Using second most recent history item as secondary context:', secondMostRecent);
+        context.secondaryContext = {
+          type: secondMostRecent.type,
+          content: secondMostRecent.content
+        };
+      }
 
       console.log('[ContextService] Generated context:', {
         hasPrimaryContext: Boolean(context.primaryContext),
         primaryContextType: context.primaryContext?.type,
-        primaryContent: context.primaryContext?.content,
+        primaryContentLength: context.primaryContext?.content?.length,
         hasSecondaryContext: Boolean(context.secondaryContext),
         secondaryContextType: context.secondaryContext?.type,
-        secondaryContent: context.secondaryContext?.content
+        secondaryContentLength: context.secondaryContext?.content?.length,
+        hasApplicationContext: Boolean(context.applicationContext),
+        applicationName: context.applicationContext?.name,
+        hasHistoryContext: Boolean(context.historyContext),
+        historyItemCount: context.historyContext?.length
       });
 
       return context;
@@ -205,6 +313,11 @@ class ContextService extends BaseService {
       if (this.checkInterval) {
         clearInterval(this.checkInterval);
         this.checkInterval = null;
+      }
+      
+      if (this.appCheckInterval) {
+        clearInterval(this.appCheckInterval);
+        this.appCheckInterval = null;
       }
     } catch (error) {
       this.emitError(error);

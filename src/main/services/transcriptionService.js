@@ -116,25 +116,59 @@ class TranscriptionService extends BaseService {
       console.log('[TranscriptionService] Starting text processing pipeline');
       console.log('[TranscriptionService] Raw text:', text);
 
+      // Skip processing if text is empty or just whitespace
+      if (!text || !text.trim()) {
+        console.log('[TranscriptionService] Empty text, skipping processing');
+        return '';
+      }
+
       // Get selected text if any
       const highlightedText = await this.getService('selection').getSelectedText();
       console.log('[TranscriptionService] Selected text:', highlightedText);
+      
+      // Store the highlighted text in context service for future reference
+      if (highlightedText) {
+        await this.getService('context').startRecording(highlightedText);
+      }
 
       // First check if this is an AI command
       const isAICommand = await this.getService('ai').isAICommand(text);
       console.log('[TranscriptionService] Is AI command:', isAICommand);
 
       if (isAICommand) {
-        console.log('[TranscriptionService] Processing as AI command');
-        const aiResponse = await this.getService('ai').processCommand(text, highlightedText);
-        console.log('[TranscriptionService] AI response:', aiResponse);
-        
-        // Insert the AI response
-        await this.getService('textInsertion').insertText(aiResponse.text, highlightedText);
-        return aiResponse.text;
+        try {
+          console.log('[TranscriptionService] Processing as AI command');
+          const aiResponse = await this.getService('ai').processCommand(text, highlightedText);
+          
+          // Check if the AI request was cancelled or failed
+          if (!aiResponse) {
+            console.log('[TranscriptionService] AI request was cancelled or failed');
+            return '';
+          }
+          
+          console.log('[TranscriptionService] AI response:', aiResponse);
+          
+          // Insert the AI response
+          await this.getService('textInsertion').insertText(aiResponse.text, highlightedText);
+          return aiResponse.text;
+        } catch (aiError) {
+          console.error('[TranscriptionService] Error processing AI command:', aiError);
+          
+          // Fall back to normal text processing if AI fails
+          console.log('[TranscriptionService] Falling back to normal text processing due to AI error');
+          
+          // Show notification to user
+          this.getService('notification').showNotification({
+            title: 'AI Processing Failed',
+            body: 'Falling back to normal transcription.',
+            type: 'warning'
+          });
+          
+          // Continue with normal processing below
+        }
       }
 
-      // If not an AI command, proceed with normal text processing
+      // If not an AI command or AI processing failed, proceed with normal text processing
       console.log('[TranscriptionService] Processing as normal text');
 
       // First apply dictionary processing
@@ -151,7 +185,19 @@ class TranscriptionService extends BaseService {
       
       return processed;
     } catch (error) {
+      console.error('[TranscriptionService] Error in processAndInsertText:', error);
+      
+      // Show notification to user
+      this.getService('notification').showNotification({
+        title: 'Text Processing Failed',
+        body: 'Failed to process and insert text.',
+        type: 'error'
+      });
+      
       throw this.emitError(error);
+    } finally {
+      // Always stop recording context when done
+      this.getService('context').stopRecording();
     }
   }
 
