@@ -14,7 +14,13 @@ contextBridge.exposeInMainWorld(
         'ai:getStats',
         'get-settings',
         'reset-settings',
-        'get-selected-text-from-renderer'
+        'get-selected-text-from-renderer',
+        'get-dictionary-words',
+        'add-dictionary-word',
+        'remove-dictionary-word',
+        'get-action-verbs',
+        'add-action-verb',
+        'remove-action-verb'
       ];
       
       if (validChannels.includes(channel)) {

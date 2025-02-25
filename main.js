@@ -26,6 +26,7 @@ const memoryManager = require('./src/main/services/MemoryManager');
 
 // Import IPC handlers
 const setupIpcHandlers = require('./src/main/ipc/handlers');
+const setupDictionaryIpcHandlers = require('./src/main/services/dictionaryIpcHandlers');
 
 // First log to verify process start
 console.log('[Main] Main process starting...');
@@ -137,6 +138,9 @@ function createWindow() {
 
     // Setup IPC handlers
     setupIpcHandlers(mainWindow);
+    
+    // Setup dictionary IPC handlers
+    setupDictionaryIpcHandlers();
 
     mainWindow.on('closed', () => {
       mainWindow = null;

@@ -1,5 +1,6 @@
 const { ipcMain } = require('electron');
-const dictionaryService = require('./dictionaryService');
+const dictionaryServiceFactory = require('./dictionaryService');
+const dictionaryService = dictionaryServiceFactory();
 const configService = require('./configService');
 
 // Define our channel names at module level
