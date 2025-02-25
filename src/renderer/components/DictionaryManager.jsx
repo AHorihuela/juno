@@ -6,21 +6,53 @@ const DictionaryManager = () => {
   const [newWord, setNewWord] = useState('');
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
+  const [ipcTestResult, setIpcTestResult] = useState('PENDING');
 
   useEffect(() => {
+    // Test if IPC is working
+    testIpcConnection();
     loadWords();
   }, []);
 
+  const testIpcConnection = async () => {
+    try {
+      const ipcRenderer = getIpcRenderer();
+      console.log('IPC renderer available:', !!ipcRenderer);
+      if (ipcRenderer) {
+        console.log('IPC methods available:', {
+          invoke: typeof ipcRenderer.invoke === 'function',
+          on: typeof ipcRenderer.on === 'function',
+          send: typeof ipcRenderer.send === 'function',
+          removeAllListeners: typeof ipcRenderer.removeAllListeners === 'function'
+        });
+        setIpcTestResult('PASSED');
+      } else {
+        console.error('IPC renderer not available');
+        setIpcTestResult('FAILED');
+      }
+    } catch (error) {
+      console.error('Error testing IPC connection:', error);
+      setIpcTestResult('ERROR');
+    }
+  };
+
   const loadWords = async () => {
+    console.log('Loading dictionary words...');
     try {
       const ipcRenderer = getIpcRenderer();
       if (!ipcRenderer) {
+        console.error('IPC renderer not available for loading words');
         throw new Error('IPC renderer not available');
       }
+      
+      console.log('Invoking get-dictionary-words...');
       const loadedWords = await ipcRenderer.invoke('get-dictionary-words');
-      setWords(loadedWords);
+      console.log('Dictionary words loaded:', loadedWords);
+      
+      setWords(loadedWords || []);
       setError(null);
     } catch (error) {
+      console.error('Error loading dictionary words:', error);
       setError('Failed to load dictionary');
       setWords([]);
     }
@@ -67,6 +99,10 @@ const DictionaryManager = () => {
 
   return (
     <div>
+      <div className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-md text-sm text-gray-700">
+        IPC Test Result: {ipcTestResult}
+      </div>
+
       {error && (
         <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">
           {error}

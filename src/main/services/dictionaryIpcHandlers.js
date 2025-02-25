@@ -17,6 +17,15 @@ function setupDictionaryIpcHandlers() {
   console.log('[DictionaryIpcHandlers] Starting setup...');
   console.log('[DictionaryIpcHandlers] ipcMain available:', !!ipcMain);
   console.log('[DictionaryIpcHandlers] handle method available:', typeof ipcMain?.handle === 'function');
+  console.log('[DictionaryIpcHandlers] dictionaryService available:', !!dictionaryService);
+  
+  if (dictionaryService) {
+    console.log('[DictionaryIpcHandlers] dictionaryService methods:', {
+      getAllWords: typeof dictionaryService.getAllWords === 'function',
+      addWord: typeof dictionaryService.addWord === 'function',
+      removeWord: typeof dictionaryService.removeWord === 'function'
+    });
+  }
   
   if (!ipcMain || typeof ipcMain.handle !== 'function') {
     console.error('[DictionaryIpcHandlers] Critical: ipcMain or handle method not available');
@@ -43,6 +52,11 @@ function setupDictionaryIpcHandlers() {
     ipcMain.handle(CHANNELS.GET_WORDS, async () => {
       console.log('[DictionaryIpcHandlers] Handling get-dictionary-words request');
       try {
+        if (!dictionaryService || typeof dictionaryService.getAllWords !== 'function') {
+          console.error('[DictionaryIpcHandlers] dictionaryService or getAllWords method not available');
+          throw new Error('Dictionary service not properly initialized');
+        }
+        
         const words = await dictionaryService.getAllWords();
         console.log('[DictionaryIpcHandlers] Retrieved words:', words);
         return words;
