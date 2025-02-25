@@ -29,8 +29,8 @@ class TrayService extends BaseService {
 
       this.mainWindow = mainWindow;
       
-      // Create tray icon from the no-background icon
-      const iconPath = path.join(__dirname, '../../../assets/images/juno_nobg.png');
+      // Create tray icon from the B&W logo
+      const iconPath = path.join(__dirname, '../../../assets/images/junobw.png');
       const icon = nativeImage.createFromPath(iconPath).resize({ width: 20, height: 20 });
       
       // Create the tray icon

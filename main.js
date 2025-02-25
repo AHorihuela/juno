@@ -32,6 +32,11 @@ console.log('[Main] Main process starting...');
 console.log('[Main] Environment:', process.env.NODE_ENV);
 console.log('[Main] Current working directory:', process.cwd());
 
+// Ensure app appears in dock on macOS
+if (process.platform === 'darwin') {
+  app.dock.setIcon(path.join(__dirname, 'assets/icon.png'));
+}
+
 // Handle creating/removing shortcuts on Windows when installing/uninstalling
 if (require('electron-squirrel-startup')) {
   app.quit();
@@ -96,7 +101,8 @@ function createWindow() {
       minimizable: true,
       maximizable: false,
       closable: true,
-      title: 'Juno - AI Dictation'
+      title: 'Juno - AI Dictation',
+      icon: path.join(__dirname, 'assets/icon.png')
     });
 
     // Set Content Security Policy

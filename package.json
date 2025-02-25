@@ -67,26 +67,26 @@
   },
   "build": {
     "appId": "com.dictation.tool",
-    "productName": "Dictation Tool",
+    "productName": "Juno AI Dictation",
     "directories": {
       "output": "dist"
     },
     "mac": {
-      "icon": "assets/icons/icon.png",
+      "icon": "assets/icon.png",
       "target": [
         "dmg",
         "zip"
       ]
     },
     "win": {
-      "icon": "assets/icons/icon.png",
+      "icon": "assets/icon.png",
       "target": [
         "nsis",
         "portable"
       ]
     },
     "linux": {
-      "icon": "assets/icons/icon.png",
+      "icon": "assets/icon.png",
       "target": [
         "AppImage",
         "deb"
