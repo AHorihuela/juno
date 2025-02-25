@@ -212,6 +212,11 @@ class ContextService extends BaseService {
    * @private
    */
   addToContextHistory(contextItem) {
+    // Ensure the item has an ID
+    if (!contextItem.id) {
+      contextItem.id = `ctx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    }
+    
     // Don't add duplicates
     const isDuplicate = this.contextHistory.some(item => 
       item.type === contextItem.type && item.content === contextItem.content
@@ -628,7 +633,7 @@ class ContextService extends BaseService {
         return {
           available: true,
           items: this.contextHistory.map(item => ({
-            id: item.id,
+            id: item.id || `ctx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             type: item.type || 'context',
             content: item.content,
             size: Buffer.byteLength(JSON.stringify(item), 'utf8'),
@@ -641,7 +646,7 @@ class ContextService extends BaseService {
       return {
         available: true,
         items: this.contextHistory.map(item => ({
-          id: item.id,
+          id: item.id || `ctx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           type: 'context',
           content: item.content,
           size: Buffer.byteLength(JSON.stringify(item), 'utf8'),
