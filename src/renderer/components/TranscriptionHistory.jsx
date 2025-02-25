@@ -13,24 +13,25 @@ const TranscriptionHistory = () => {
     ipcRenderer.send('get-transcription-history');
 
     // Listen for history updates
-    ipcRenderer.on('transcription-history', (_, data) => {
+    const historyUnsubscribe = ipcRenderer.on('transcription-history', (data) => {
       setHistory(data);
     });
 
     // Listen for errors
-    ipcRenderer.on('transcription-history-error', (_, errorMessage) => {
+    const errorUnsubscribe = ipcRenderer.on('transcription-history-error', (errorMessage) => {
       setError(errorMessage);
     });
 
     // Listen for new transcriptions
-    ipcRenderer.on('transcription', (_, text) => {
+    const transcriptionUnsubscribe = ipcRenderer.on('transcription', (text) => {
       ipcRenderer.send('get-transcription-history');
     });
 
     return () => {
-      ipcRenderer.removeAllListeners('transcription-history');
-      ipcRenderer.removeAllListeners('transcription-history-error');
-      ipcRenderer.removeAllListeners('transcription');
+      // Clean up listeners
+      if (historyUnsubscribe) historyUnsubscribe();
+      if (errorUnsubscribe) errorUnsubscribe();
+      if (transcriptionUnsubscribe) transcriptionUnsubscribe();
     };
   }, []);
 

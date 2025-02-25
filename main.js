@@ -22,6 +22,7 @@ const transcriptionHistoryService = require('./src/main/services/transcriptionHi
 const windowService = require('./src/main/services/windowService');
 const textProcessingService = require('./src/main/services/textProcessing');
 const resourceManager = require('./src/main/services/resourceManager');
+const memoryManager = require('./src/main/services/MemoryManager');
 
 // Import IPC handlers
 const setupIpcHandlers = require('./src/main/ipc/handlers');
@@ -52,6 +53,7 @@ async function initializeServices() {
     .register('dictionary', dictionaryService())
     .register('textProcessing', textProcessingService())
     .register('audio', audioFeedbackService())
+    .register('memoryManager', memoryManager())
     .register('recorder', recorderService())
     .register('transcription', transcriptionService())
     .register('ai', aiService())
@@ -75,8 +77,9 @@ function createWindow() {
       width: 800,
       height: 800,
       webPreferences: {
-        nodeIntegration: true,
-        contextIsolation: false,
+        nodeIntegration: false,
+        contextIsolation: true,
+        preload: path.join(__dirname, 'src/renderer/preload.js'),
         webSecurity: true,
       },
       show: false,

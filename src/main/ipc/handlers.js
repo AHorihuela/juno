@@ -122,6 +122,64 @@ function setupIpcHandlers(mainWindow) {
       throw new Error(`Failed to reset settings: ${error.message}`);
     }
   });
+  
+  // Memory Manager handlers
+  ipcMain.handle('context:getMemoryStats', async () => {
+    try {
+      console.log('Getting memory stats...');
+      const contextService = serviceRegistry.get('context');
+      return contextService.getMemoryStats();
+    } catch (error) {
+      console.error('Error getting memory stats:', error);
+      throw new Error(`Failed to get memory stats: ${error.message}`);
+    }
+  });
+  
+  ipcMain.handle('memory:deleteItem', async (event, itemId) => {
+    try {
+      console.log('Deleting memory item:', itemId);
+      const memoryManager = serviceRegistry.get('memoryManager');
+      const success = memoryManager.deleteItem(itemId);
+      return { success };
+    } catch (error) {
+      console.error('Error deleting memory item:', error);
+      throw new Error(`Failed to delete memory item: ${error.message}`);
+    }
+  });
+  
+  ipcMain.handle('memory:clearMemory', async (event, tier) => {
+    try {
+      console.log('Clearing memory tier:', tier);
+      const memoryManager = serviceRegistry.get('memoryManager');
+      memoryManager.clearMemory(tier);
+      return { success: true };
+    } catch (error) {
+      console.error('Error clearing memory:', error);
+      throw new Error(`Failed to clear memory: ${error.message}`);
+    }
+  });
+  
+  ipcMain.handle('memory:getStats', async () => {
+    try {
+      console.log('Getting memory manager stats...');
+      const memoryManager = serviceRegistry.get('memoryManager');
+      return memoryManager.stats;
+    } catch (error) {
+      console.error('Error getting memory manager stats:', error);
+      throw new Error(`Failed to get memory manager stats: ${error.message}`);
+    }
+  });
+  
+  ipcMain.handle('ai:getStats', async () => {
+    try {
+      console.log('Getting AI usage stats...');
+      const aiService = serviceRegistry.get('ai');
+      return aiService.getAIUsageStats();
+    } catch (error) {
+      console.error('Error getting AI usage stats:', error);
+      throw new Error(`Failed to get AI usage stats: ${error.message}`);
+    }
+  });
 }
 
 module.exports = setupIpcHandlers; 

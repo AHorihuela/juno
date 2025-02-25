@@ -15,7 +15,19 @@ class AIService extends BaseService {
       hasClipboardContent: false,
       applicationName: '',
       contextSize: 0,
-      timestamp: 0
+      timestamp: 0,
+      memoryTiersUsed: [],
+      relevanceScores: []
+    };
+    
+    // Track AI usage statistics
+    this.stats = {
+      totalRequests: 0,
+      successfulRequests: 0,
+      failedRequests: 0,
+      averageResponseTime: 0,
+      lastResponseTime: 0,
+      lastRequestTimestamp: 0
     };
   }
 
@@ -120,6 +132,11 @@ class AIService extends BaseService {
    */
   async processCommand(command, highlightedText = '') {
     try {
+      // Start timing the request
+      const startTime = Date.now();
+      this.stats.lastRequestTimestamp = startTime;
+      this.stats.totalRequests++;
+      
       // Cancel any existing request
       this.cancelCurrentRequest();
 
@@ -131,11 +148,14 @@ class AIService extends BaseService {
       // Create AbortController for this request
       const controller = new AbortController();
       
-      // Get context using the context service
-      const context = this.getService('context').getContext(highlightedText);
+      // Get context using the context service with the command for intelligent context selection
+      const context = await this.getService('context').getContextAsync(highlightedText, command);
       
       // Track context usage for feedback
       this.updateContextUsage(context, highlightedText);
+      
+      // Show user feedback about context being used
+      this.showContextFeedback();
       
       // Add diagnostic logging
       console.log('[AIService] Input text being summarized:', {
@@ -155,9 +175,6 @@ class AIService extends BaseService {
       // Create completion request
       const prompt = this.buildPrompt(command, context);
       console.log('[AIService] Full prompt being sent to GPT:', prompt);
-
-      // Show user feedback about context being used
-      this.showContextFeedback();
 
       this.currentRequest = {
         controller,
@@ -180,15 +197,30 @@ class AIService extends BaseService {
       // Clean the response text
       const cleanedText = this.cleanResponse(response.choices[0].message.content.trim());
       console.log('[AIService] Cleaned response text:', cleanedText);
+      
+      // Update stats for successful request
+      const endTime = Date.now();
+      this.stats.lastResponseTime = endTime - startTime;
+      this.stats.successfulRequests++;
+      this.stats.averageResponseTime = 
+        (this.stats.averageResponseTime * (this.stats.successfulRequests - 1) + this.stats.lastResponseTime) / 
+        this.stats.successfulRequests;
+      
+      // Provide feedback on context usefulness if we have memory manager
+      this.updateContextUsefulness(context, true);
 
       return {
         text: cleanedText,
         hasHighlight: Boolean(highlightedText),
         originalCommand: command,
-        contextUsed: this.getContextUsageSummary()
+        contextUsed: this.getContextUsageSummary(),
+        responseTime: this.stats.lastResponseTime
       };
 
     } catch (error) {
+      // Update stats for failed request
+      this.stats.failedRequests++;
+      
       // Don't show notification for cancelled requests
       if (error.name === 'AbortError') {
         console.log('AI request cancelled');
@@ -222,16 +254,103 @@ class AIService extends BaseService {
    * @private
    */
   updateContextUsage(context, highlightedText) {
+    // Extract memory tiers used and relevance scores
+    const memoryTiersUsed = new Set();
+    const relevanceScores = [];
+    
+    // Check primary context
+    if (context.primaryContext) {
+      if (context.primaryContext.tier) {
+        memoryTiersUsed.add(context.primaryContext.tier);
+      }
+      if (context.primaryContext.relevanceScore) {
+        relevanceScores.push({
+          type: 'primary',
+          score: context.primaryContext.relevanceScore
+        });
+      }
+    }
+    
+    // Check secondary context
+    if (context.secondaryContext) {
+      if (context.secondaryContext.tier) {
+        memoryTiersUsed.add(context.secondaryContext.tier);
+      }
+      if (context.secondaryContext.relevanceScore) {
+        relevanceScores.push({
+          type: 'secondary',
+          score: context.secondaryContext.relevanceScore
+        });
+      }
+    }
+    
+    // Check history context
+    if (context.historyContext && Array.isArray(context.historyContext)) {
+      for (const item of context.historyContext) {
+        if (item.tier) {
+          memoryTiersUsed.add(item.tier);
+        }
+        if (item.relevanceScore) {
+          relevanceScores.push({
+            type: 'history',
+            score: item.relevanceScore
+          });
+        }
+      }
+    }
+    
     this.lastContextUsage = {
       hasHighlightedText: Boolean(highlightedText),
       hasClipboardContent: Boolean(context.primaryContext?.type === 'clipboard'),
       applicationName: context.applicationContext?.name || '',
       contextSize: this.calculateContextSize(context),
       timestamp: Date.now(),
-      historyItemCount: context.historyContext?.length || 0
+      historyItemCount: context.historyContext?.length || 0,
+      memoryTiersUsed: Array.from(memoryTiersUsed),
+      relevanceScores,
+      memoryStats: context.memoryStats || null
     };
     
     console.log('[AIService] Updated context usage tracking:', this.lastContextUsage);
+  }
+  
+  /**
+   * Update usefulness scores for context items
+   * @param {Object} context - Context object
+   * @param {boolean} wasSuccessful - Whether the AI request was successful
+   * @private
+   */
+  updateContextUsefulness(context, wasSuccessful) {
+    try {
+      const memoryManager = this.getService('memoryManager');
+      if (!memoryManager) return;
+      
+      // Base usefulness score - higher if request was successful
+      const baseScore = wasSuccessful ? 8 : 3;
+      
+      // Record usefulness for primary context
+      if (context.primaryContext?.id) {
+        memoryManager.recordItemUsage(context.primaryContext.id, baseScore);
+      }
+      
+      // Record usefulness for secondary context (slightly lower score)
+      if (context.secondaryContext?.id) {
+        memoryManager.recordItemUsage(context.secondaryContext.id, Math.max(1, baseScore - 2));
+      }
+      
+      // Record usefulness for history context items (even lower score)
+      if (context.historyContext && Array.isArray(context.historyContext)) {
+        for (const item of context.historyContext) {
+          if (item.id) {
+            memoryManager.recordItemUsage(item.id, Math.max(1, baseScore - 4));
+          }
+        }
+      }
+      
+      console.log('[AIService] Updated context usefulness scores');
+    } catch (error) {
+      console.error('[AIService] Error updating context usefulness:', error);
+    }
   }
   
   /**
@@ -308,6 +427,22 @@ class AIService extends BaseService {
         contextTypes.push('context history');
       }
       
+      // Add memory tiers if available
+      if (this.lastContextUsage.memoryTiersUsed && this.lastContextUsage.memoryTiersUsed.length > 0) {
+        const tiersText = this.lastContextUsage.memoryTiersUsed
+          .map(tier => {
+            switch(tier) {
+              case 'working': return 'recent memory';
+              case 'short-term': return 'session memory';
+              case 'long-term': return 'long-term memory';
+              default: return tier;
+            }
+          })
+          .join(', ');
+        
+        contextTypes.push(tiersText);
+      }
+      
       const contextTypeText = contextTypes.length > 0 
         ? contextTypes.join(', ') 
         : 'available context';
@@ -316,9 +451,25 @@ class AIService extends BaseService {
         ? ` in ${this.lastContextUsage.applicationName}` 
         : '';
       
+      // Add relevance information if available
+      let relevanceText = '';
+      if (this.lastContextUsage.relevanceScores && this.lastContextUsage.relevanceScores.length > 0) {
+        const avgScore = this.lastContextUsage.relevanceScores.reduce(
+          (sum, item) => sum + item.score, 0
+        ) / this.lastContextUsage.relevanceScores.length;
+        
+        if (avgScore > 80) {
+          relevanceText = ' (high relevance)';
+        } else if (avgScore > 50) {
+          relevanceText = ' (medium relevance)';
+        } else {
+          relevanceText = ' (low relevance)';
+        }
+      }
+      
       this.getService('notification').showNotification({
         title: 'Processing AI Command',
-        body: `Using ${contextTypeText}${appText} (${this.formatContextSize(this.lastContextUsage.contextSize)})`,
+        body: `Using ${contextTypeText}${appText} (${this.formatContextSize(this.lastContextUsage.contextSize)})${relevanceText}`,
         type: 'info',
         timeout: 3000
       });
@@ -354,6 +505,11 @@ class AIService extends BaseService {
       }
     }
     
+    // Add memory context information if available
+    if (context.memoryStats) {
+      parts.push(`The context provided has been intelligently selected from ${context.memoryStats.totalItemsScored} available memory items based on relevance to the current command.`);
+    }
+    
     // Add user rules with structure
     if (rules && rules.length > 0) {
       parts.push('\nUser preferences:');
@@ -379,12 +535,23 @@ class AIService extends BaseService {
 
     // Add context with clear hierarchy
     if (context.primaryContext) {
-      const label = context.primaryContext.type === 'highlight' ? 'Selected text' : 'Recent clipboard content';
-      parts.push(`\n${label}:\n"""\n${context.primaryContext.content}\n"""`);
+      const label = context.primaryContext.type === 'highlight' ? 'Selected text' : 
+                   context.primaryContext.type === 'clipboard' ? 'Recent clipboard content' :
+                   'Primary context';
+      
+      // Add relevance score if available
+      const relevanceInfo = context.primaryContext.relevanceScore ? 
+        ` (relevance: ${context.primaryContext.relevanceScore}/100)` : '';
+      
+      parts.push(`\n${label}${relevanceInfo}:\n"""\n${context.primaryContext.content}\n"""`);
     }
     
     if (context.secondaryContext) {
-      parts.push(`\nAdditional context:\n"""\n${context.secondaryContext.content}\n"""`);
+      // Add relevance score if available
+      const relevanceInfo = context.secondaryContext.relevanceScore ? 
+        ` (relevance: ${context.secondaryContext.relevanceScore}/100)` : '';
+      
+      parts.push(`\nAdditional context${relevanceInfo}:\n"""\n${context.secondaryContext.content}\n"""`);
     }
     
     // Add application context if available
@@ -404,15 +571,21 @@ class AIService extends BaseService {
       );
       
       if (relevantHistory.length > 0) {
-        parts.push('\nRecent context:');
+        parts.push('\nAdditional context:');
         
         relevantHistory.forEach((item, index) => {
           const historyLabel = item.type === 'highlight' ? 
-            `Previously selected text (${this.formatTimestamp(item.timestamp)})` : 
-            `Previous clipboard content (${this.formatTimestamp(item.timestamp)})`;
+            `Previously selected text` : 
+            item.type === 'clipboard' ?
+            `Previous clipboard content` :
+            `Context item`;
+          
+          // Add relevance score if available
+          const relevanceInfo = item.relevanceScore ? 
+            ` (relevance: ${item.relevanceScore}/100)` : '';
           
           // Use a more compact format for history items
-          parts.push(`\n${historyLabel}:\n"""\n${item.content}\n"""`);
+          parts.push(`\n${historyLabel}${relevanceInfo}:\n"""\n${item.content}\n"""`);
         });
       }
     }
@@ -440,29 +613,6 @@ class AIService extends BaseService {
     } else {
       return `${Math.floor(diffSeconds / 86400)} days ago`;
     }
-  }
-
-  /**
-   * Build prompt text from context
-   * @param {Object} context - Context object with primary and secondary context
-   * @returns {string} Full prompt text
-   */
-  buildPromptText(context) {
-    const parts = [];
-
-    if (context.primaryContext) {
-      parts.push(`Primary context:\n"""\n${context.primaryContext.content}\n"""`);
-      if (context.secondaryContext) {
-        parts.push(`\nAdditional context:\n"""\n${context.secondaryContext.content}\n"""`);
-      }
-    }
-    
-    // Add application context if available
-    if (context.applicationContext && context.applicationContext.name) {
-      parts.push(`\nCurrent application: ${context.applicationContext.name}`);
-    }
-
-    return parts.join('\n');
   }
 
   /**
@@ -502,8 +652,27 @@ class AIService extends BaseService {
     return {
       lastContextUsage: this.lastContextUsage,
       formattedContextSize: this.formatContextSize(this.lastContextUsage.contextSize),
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      stats: this.stats,
+      formattedResponseTime: this.formatResponseTime(this.stats.lastResponseTime),
+      formattedAverageResponseTime: this.formatResponseTime(this.stats.averageResponseTime)
     };
+  }
+  
+  /**
+   * Format response time in a human-readable way
+   * @param {number} time - Time in milliseconds
+   * @returns {string} Formatted time
+   * @private
+   */
+  formatResponseTime(time) {
+    if (!time) return 'N/A';
+    
+    if (time < 1000) {
+      return `${time}ms`;
+    } else {
+      return `${(time / 1000).toFixed(1)}s`;
+    }
   }
 }
 
