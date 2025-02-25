@@ -1,14 +1,29 @@
 const selectionService = require('./selectionService');
 const contextService = require('./contextService');
-const audioFeedback = require('./audioFeedback');
 const windowService = require('./windowService');
+const BaseService = require('./BaseService');
 
-class RecordingService {
+class RecordingService extends BaseService {
   constructor() {
+    super('Recording');
     this.isRecording = false;
     this.audioRecorder = null;
     this.audioData = [];
     this.hasAudioContent = false;
+  }
+
+  async _initialize() {
+    // Ensure audio service is initialized
+    try {
+      const audioService = this.getService('audio');
+      if (!audioService || !audioService.initialized) {
+        throw new Error('Audio service not properly initialized');
+      }
+      console.log('[Recording] Audio service verified and ready');
+    } catch (error) {
+      console.error('[Recording] Failed to verify audio service:', error);
+      throw this.emitError(error);
+    }
   }
 
   /**
@@ -42,7 +57,18 @@ class RecordingService {
       await contextService.startRecording(highlightedText);
 
       // Play start sound first
-      await audioFeedback.playStartSound();
+      try {
+        const audioService = this.getService('audio');
+        if (!audioService || !audioService.initialized) {
+          throw new Error('Audio service not properly initialized');
+        }
+        console.log('[Recording] Playing start sound...');
+        await audioService.playStartSound();
+        console.log('[Recording] Start sound completed');
+      } catch (error) {
+        console.error('[Recording] Failed to play start sound:', error);
+        // Continue with recording even if sound fails
+      }
 
       // Show minimal recording indicator without stealing focus
       windowService.showRecordingIndicator();
@@ -71,7 +97,8 @@ class RecordingService {
       windowService.hideWindow();
       
       // Play stop sound (don't await, let it play in background)
-      audioFeedback.playStopSound();
+      const audioService = this.getService('audio');
+      audioService.playStopSound();
       
       // Stop recording first
       this.audioRecorder.stop();
@@ -115,4 +142,7 @@ class RecordingService {
   }
 
   // ... rest of the class implementation ...
-} 
+}
+
+// Export a factory function instead of a singleton
+module.exports = () => new RecordingService(); 

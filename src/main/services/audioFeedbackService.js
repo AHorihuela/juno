@@ -13,6 +13,7 @@ class AudioFeedbackService extends BaseService {
     this.startPath = '';
     this.stopPath = '';
     this.initTime = Date.now();
+    console.log('[AudioFeedback] Service constructed');
   }
 
   async _initialize() {
@@ -22,12 +23,19 @@ class AudioFeedbackService extends BaseService {
       
       // Ensure app is ready
       if (!app.isReady()) {
+        console.log('[AudioFeedback] Waiting for app to be ready...');
         await new Promise(resolve => app.once('ready', resolve));
+        console.log('[AudioFeedback] App is now ready');
       }
       
       const assetsPath = path.join(process.cwd(), 'assets', 'sounds');
       this.startPath = path.join(assetsPath, 'start.wav');
       this.stopPath = path.join(assetsPath, 'stop.wav');
+
+      console.log('[AudioFeedback] Sound paths set:', {
+        startPath: this.startPath,
+        stopPath: this.stopPath
+      });
 
       // Verify sound files exist and are accessible
       if (!fs.existsSync(this.startPath)) {
@@ -57,6 +65,7 @@ class AudioFeedbackService extends BaseService {
       });
 
     } catch (error) {
+      console.error('[AudioFeedback] Initialization error:', error);
       throw this.emitError(error);
     }
   }
@@ -68,11 +77,12 @@ class AudioFeedbackService extends BaseService {
   async playStartSound() {
     try {
       if (!this.initialized) {
+        console.error('[AudioFeedback] Service not initialized when trying to play start sound');
         throw new Error('AudioFeedbackService not initialized');
       }
 
       const startTime = Date.now();
-      console.log('[AudioFeedback] Playing start sound...');
+      console.log('[AudioFeedback] Playing start sound from:', this.startPath);
       
       await player.play({
         path: this.startPath,
@@ -81,6 +91,7 @@ class AudioFeedbackService extends BaseService {
       
       console.log('[AudioFeedback] Start sound completed, duration:', Date.now() - startTime, 'ms');
     } catch (error) {
+      console.error('[AudioFeedback] Error playing start sound:', error);
       throw this.emitError(error);
     }
   }
@@ -88,11 +99,12 @@ class AudioFeedbackService extends BaseService {
   async playStopSound() {
     try {
       if (!this.initialized) {
+        console.error('[AudioFeedback] Service not initialized when trying to play stop sound');
         throw new Error('AudioFeedbackService not initialized');
       }
 
       const startTime = Date.now();
-      console.log('[AudioFeedback] Playing stop sound...');
+      console.log('[AudioFeedback] Playing stop sound from:', this.stopPath);
       
       await player.play({
         path: this.stopPath,
@@ -101,6 +113,7 @@ class AudioFeedbackService extends BaseService {
       
       console.log('[AudioFeedback] Stop sound completed, duration:', Date.now() - startTime, 'ms');
     } catch (error) {
+      console.error('[AudioFeedback] Error playing stop sound:', error);
       throw this.emitError(error);
     }
   }
