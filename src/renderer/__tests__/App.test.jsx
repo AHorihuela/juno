@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, screen, act } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import App from '../App';
 
 // Mock electron
@@ -13,19 +14,28 @@ window.require = jest.fn(() => ({
   ipcRenderer: mockIpcRenderer
 }));
 
+// Helper function to render App with Router
+const renderWithRouter = () => {
+  return render(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>
+  );
+};
+
 describe('App Component', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
   it('renders initial state correctly', () => {
-    render(<App />);
+    renderWithRouter();
     expect(screen.getByText(/Status: Ready/)).toBeInTheDocument();
     expect(screen.getByText(/Double-tap F6: Start recording/)).toBeInTheDocument();
   });
 
   it('shows recording status when recording starts', async () => {
-    render(<App />);
+    renderWithRouter();
     
     // Get the recording status callback
     const statusCallback = mockIpcRenderer.on.mock.calls.find(
@@ -41,7 +51,7 @@ describe('App Component', () => {
   });
 
   it('shows error message when recording fails', async () => {
-    render(<App />);
+    renderWithRouter();
     
     // Get the error callback
     const errorCallback = mockIpcRenderer.on.mock.calls.find(
@@ -57,7 +67,7 @@ describe('App Component', () => {
   });
 
   it('displays transcription when received', async () => {
-    render(<App />);
+    renderWithRouter();
     
     // Get the transcription callback
     const transcriptionCallback = mockIpcRenderer.on.mock.calls.find(
@@ -73,7 +83,7 @@ describe('App Component', () => {
   });
 
   it('cleans up listeners on unmount', () => {
-    const { unmount } = render(<App />);
+    const { unmount } = renderWithRouter();
     unmount();
     
     expect(mockIpcRenderer.removeAllListeners).toHaveBeenCalledWith('recording-status');

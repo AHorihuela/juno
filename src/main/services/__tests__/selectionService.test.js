@@ -7,9 +7,25 @@ jest.mock('child_process', () => ({
 }));
 
 describe('SelectionService', () => {
+  const originalPlatform = process.platform;
+  
   beforeEach(() => {
     jest.clearAllMocks();
-    process.platform = 'darwin'; // Mock macOS platform
+    // Use Object.defineProperty to mock platform
+    Object.defineProperty(process, 'platform', {
+      value: 'darwin',
+      writable: true,
+      configurable: true
+    });
+  });
+  
+  afterEach(() => {
+    // Restore original platform
+    Object.defineProperty(process, 'platform', {
+      value: originalPlatform,
+      writable: true,
+      configurable: true
+    });
   });
 
   it('gets selected text successfully', async () => {
@@ -35,7 +51,12 @@ describe('SelectionService', () => {
   });
 
   it('returns empty string on non-macOS platforms', async () => {
-    process.platform = 'win32';
+    // Use Object.defineProperty to mock platform as win32
+    Object.defineProperty(process, 'platform', {
+      value: 'win32',
+      writable: true,
+      configurable: true
+    });
     
     const result = await selectionService.getSelectedText();
     

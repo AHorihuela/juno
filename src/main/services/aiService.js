@@ -7,6 +7,7 @@ class AIService extends BaseService {
   constructor() {
     super('AI');
     this.currentRequest = null;
+    this.openai = null;
   }
 
   async _initialize() {
@@ -15,6 +16,23 @@ class AIService extends BaseService {
 
   async _shutdown() {
     this.cancelCurrentRequest();
+  }
+
+  /**
+   * Initialize the OpenAI client with the API key from config
+   * @returns {Promise<Object>} The initialized OpenAI client
+   * @throws {Error} If API key is not configured
+   */
+  async initializeOpenAI() {
+    const OpenAI = require('openai');
+    const apiKey = await this.getService('config').getOpenAIApiKey();
+    
+    if (!apiKey) {
+      throw new Error('OpenAI API key not configured');
+    }
+    
+    this.openai = new OpenAI({ apiKey });
+    return this.openai;
   }
 
   /**
@@ -96,8 +114,11 @@ class AIService extends BaseService {
       // Cancel any existing request
       this.cancelCurrentRequest();
 
-      const openai = await this.getService('resource').getOpenAIClient();
-
+      // Initialize OpenAI if not already initialized
+      if (!this.openai) {
+        await this.initializeOpenAI();
+      }
+      
       // Create AbortController for this request
       const controller = new AbortController();
       
@@ -126,7 +147,7 @@ class AIService extends BaseService {
 
       this.currentRequest = {
         controller,
-        promise: openai.chat.completions.create({
+        promise: this.openai.chat.completions.create({
           model: await this.getService('config').getAIModel() || 'gpt-4',
           messages: [
             {
