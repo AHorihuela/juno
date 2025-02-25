@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld(
         'context:getMemoryStats',
         'ai:getStats',
         'get-settings',
+        'save-settings',
         'reset-settings',
         'get-selected-text-from-renderer',
         'get-dictionary-words',
@@ -20,7 +21,11 @@ contextBridge.exposeInMainWorld(
         'remove-dictionary-word',
         'get-action-verbs',
         'add-action-verb',
-        'remove-action-verb'
+        'remove-action-verb',
+        // Microphone-related channels
+        'get-microphones',
+        'set-microphone',
+        'change-microphone'
       ];
       
       if (validChannels.includes(channel)) {
@@ -53,7 +58,8 @@ contextBridge.exposeInMainWorld(
       const validChannels = [
         'get-transcription-history',
         'delete-transcription',
-        'clear-transcription-history'
+        'clear-transcription-history',
+        'show-notification'
       ];
       
       if (validChannels.includes(channel)) {

@@ -68,6 +68,72 @@ class RecorderService extends BaseService {
     return true;
   }
 
+  /**
+   * Tests microphone access by attempting to start a short recording
+   * This is useful for detecting if microphones are available
+   * @returns {Promise<boolean>} True if microphone access is available
+   */
+  async testMicrophoneAccess() {
+    console.log('[Recorder] Testing microphone access...');
+    
+    try {
+      // Check microphone permission first
+      await this.checkMicrophonePermission();
+      
+      // Try to create a recorder instance
+      const record = require('node-record-lpcm16');
+      
+      const recordingOptions = {
+        sampleRate: 16000,
+        channels: 1,
+        audioType: 'raw'
+      };
+      
+      console.log('[Recorder] Creating test recorder with options:', recordingOptions);
+      const testRecorder = record.record(recordingOptions);
+      
+      // Start recording for a very short time
+      console.log('[Recorder] Starting test recording...');
+      const stream = testRecorder.stream();
+      
+      // Set up data handler
+      let dataReceived = false;
+      const dataPromise = new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          if (!dataReceived) {
+            console.log('[Recorder] No audio data received during test');
+            resolve(false);
+          }
+        }, 500);
+        
+        stream.once('data', () => {
+          console.log('[Recorder] Successfully received audio data in test');
+          dataReceived = true;
+          clearTimeout(timeout);
+          resolve(true);
+        });
+        
+        stream.once('error', (err) => {
+          console.error('[Recorder] Error during test recording:', err);
+          clearTimeout(timeout);
+          resolve(false);
+        });
+      });
+      
+      // Wait for data or timeout
+      await dataPromise;
+      
+      // Stop the test recorder
+      console.log('[Recorder] Stopping test recording');
+      testRecorder.stop();
+      
+      return dataReceived;
+    } catch (error) {
+      console.error('[Recorder] Error testing microphone access:', error);
+      return false;
+    }
+  }
+
   async setDevice(deviceId) {
     try {
       console.log('Setting device:', deviceId);
