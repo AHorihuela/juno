@@ -102,24 +102,46 @@ class DictionaryService extends BaseService {
     return false;
   }
 
-  processText(text) {
-    if (!text) return '';
+  /**
+   * Process text using the dictionary
+   * This is a simplified wrapper around processTranscribedText that allows
+   * controlling logging verbosity and fuzzy matching
+   * 
+   * @param {string} text - The text to process
+   * @param {Object} options - Processing options
+   * @param {boolean} options.enableFuzzyMatching - Whether to enable fuzzy matching (default: false)
+   * @param {boolean} options.enableDetailedLogging - Whether to enable detailed logging (default: false)
+   * @returns {string} - The processed text
+   */
+  processText(text, options = {}) {
+    const defaults = {
+      enableFuzzyMatching: false,
+      enableDetailedLogging: false
+    };
     
-    let processed = text;
-    // Split text into words while preserving punctuation and spacing
-    const words = processed.split(/(\b\w+\b)/);
+    const settings = { ...defaults, ...options };
     
-    // Process each word
-    processed = words.map(part => {
-      // If it's not a word (punctuation/space), preserve it
-      if (!/^\w+$/.test(part)) {
-        return part;
+    if (!settings.enableDetailedLogging) {
+      // If detailed logging is disabled, temporarily store the console.log function
+      const originalConsoleLog = console.log;
+      console.log = () => {}; // No-op function
+      
+      try {
+        // Call the full processing method with minimal logging
+        const result = this.processTranscribedText(text, { 
+          enableFuzzyMatching: settings.enableFuzzyMatching 
+        });
+        return result;
+      } finally {
+        // Restore console.log
+        console.log = originalConsoleLog;
       }
-      // Check if the word is in our dictionary
-      return this.words.has(part) ? part : part;
-    }).join('');
-    
-    return processed;
+    } else {
+      // Use the full processing method with all logging
+      return this.processTranscribedText(text, { 
+        enableFuzzyMatching: settings.enableFuzzyMatching 
+      });
+    }
   }
 
   async generateWhisperPrompt() {
@@ -177,10 +199,24 @@ class DictionaryService extends BaseService {
     return bestMatch;
   }
 
-  processTranscribedText(text) {
+  /**
+   * Process transcribed text using the dictionary with detailed logging and statistics
+   * 
+   * @param {string} text - The text to process
+   * @param {Object} options - Processing options
+   * @param {boolean} options.enableFuzzyMatching - Whether to enable fuzzy matching (default: true)
+   * @returns {string} - The processed text
+   */
+  processTranscribedText(text, options = {}) {
     console.log('\n[Dictionary] Starting text processing...');
     console.log('[Dictionary] Input text:', text);
     if (!text) return '';
+
+    const defaults = {
+      enableFuzzyMatching: true
+    };
+    
+    const settings = { ...defaults, ...options };
 
     // Reset word-level stats for this processing run
     const runStats = {
@@ -202,6 +238,7 @@ class DictionaryService extends BaseService {
       }
 
       runStats.totalWords++;
+      this.stats.totalProcessed++;
       
       // Check for exact match first
       if (this.words.has(part)) {
@@ -211,14 +248,16 @@ class DictionaryService extends BaseService {
         return part;
       }
 
-      // Try fuzzy matching for potential corrections
-      const closestMatch = this.findClosestMatch(part);
-      if (closestMatch) {
-        console.log(`[Dictionary] ~ Fuzzy match: "${part}" -> "${closestMatch}"`);
-        runStats.fuzzyMatches++;
-        this.stats.fuzzyMatches++;
-        runStats.replacements.push({ original: part, replacement: closestMatch });
-        return closestMatch;
+      // Try fuzzy matching for potential corrections if enabled
+      if (settings.enableFuzzyMatching) {
+        const closestMatch = this.findClosestMatch(part);
+        if (closestMatch) {
+          console.log(`[Dictionary] ~ Fuzzy match: "${part}" -> "${closestMatch}"`);
+          runStats.fuzzyMatches++;
+          this.stats.fuzzyMatches++;
+          runStats.replacements.push({ original: part, replacement: closestMatch });
+          return closestMatch;
+        }
       }
 
       console.log(`[Dictionary] × No match for "${part}"`);
