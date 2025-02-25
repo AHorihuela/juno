@@ -74,6 +74,8 @@ class WindowService extends BaseService {
       // Use the overlay service for visualization
       const overlayService = this.getService('overlay');
       overlayService.createWindow();
+      
+      // Show the overlay without activating it
       overlayService.show();
       
       console.log('[WindowService] Recording indicator shown');

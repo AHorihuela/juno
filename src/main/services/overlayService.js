@@ -52,7 +52,8 @@ class OverlayService extends BaseService {
         hasShadow: false,
         backgroundColor: '#00000000',
         titleBarStyle: 'hidden',
-        titleBarOverlay: false
+        titleBarOverlay: false,
+        show: false
       });
     } catch (error) {
       this.emitError(error);
@@ -66,6 +67,11 @@ class OverlayService extends BaseService {
       this.window.setIgnoreMouseEvents(true);
       this.window.setAlwaysOnTop(true, 'screen-saver', 1);
       this.window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+      
+      if (process.platform === 'darwin') {
+        this.window.setWindowButtonVisibility(false);
+      }
+      
       this.window.hide();
     } catch (error) {
       this.emitError(error);
@@ -191,7 +197,16 @@ class OverlayService extends BaseService {
       if (!this.window) {
         this.createWindow();
       }
-      this.window.show();
+      
+      // Show the window without activating it (taking focus)
+      if (process.platform === 'darwin') {
+        // On macOS, use showInactive to prevent focus stealing
+        this.window.showInactive();
+      } else {
+        // For other platforms
+        this.window.show();
+        this.window.setAlwaysOnTop(true, 'screen-saver', 1);
+      }
     } catch (error) {
       this.emitError(error);
     }

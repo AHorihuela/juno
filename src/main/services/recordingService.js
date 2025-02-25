@@ -94,7 +94,7 @@ class RecordingService extends BaseService {
       console.log('Stopping recording...');
       
       // Immediately hide the recording indicator
-      windowService.hideWindow();
+      windowService.hideRecordingIndicator();
       
       // Play stop sound (don't await, let it play in background)
       const audioService = this.getService('audio');

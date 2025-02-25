@@ -149,8 +149,6 @@ class RecorderService extends BaseService {
 
       console.log('Starting recording with settings:', recordingOptions);
       
-      this.recorder = record.record(recordingOptions);
-
       // Reset audio data buffer and flags
       this.audioData = [];
       this.hasAudioContent = false;
@@ -158,8 +156,18 @@ class RecorderService extends BaseService {
       // Start tracking recording session in context service
       this.getService('context').startRecording();
 
-      // Play start sound
-      await this.getService('audio').playStartSound();
+      // Play start sound BEFORE starting the recorder
+      try {
+        console.log('Playing start sound before recording...');
+        await this.getService('audio').playStartSound();
+        console.log('Start sound completed, now starting recorder');
+      } catch (soundError) {
+        console.error('Error playing start sound:', soundError);
+        // Continue with recording even if sound fails
+      }
+
+      // Initialize and start the recorder AFTER the sound has played
+      this.recorder = record.record(recordingOptions);
 
       // Log audio data for testing
       this.recorder.stream()
