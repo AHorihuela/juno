@@ -8,6 +8,15 @@ class AIService extends BaseService {
     super('AI');
     this.currentRequest = null;
     this.openai = null;
+    
+    // Track context usage for feedback
+    this.lastContextUsage = {
+      hasHighlightedText: false,
+      hasClipboardContent: false,
+      applicationName: '',
+      contextSize: 0,
+      timestamp: 0
+    };
   }
 
   async _initialize() {
@@ -125,6 +134,9 @@ class AIService extends BaseService {
       // Get context using the context service
       const context = this.getService('context').getContext(highlightedText);
       
+      // Track context usage for feedback
+      this.updateContextUsage(context, highlightedText);
+      
       // Add diagnostic logging
       console.log('[AIService] Input text being summarized:', {
         command,
@@ -143,6 +155,9 @@ class AIService extends BaseService {
       // Create completion request
       const prompt = this.buildPrompt(command, context);
       console.log('[AIService] Full prompt being sent to GPT:', prompt);
+
+      // Show user feedback about context being used
+      this.showContextFeedback();
 
       this.currentRequest = {
         controller,
@@ -170,6 +185,7 @@ class AIService extends BaseService {
         text: cleanedText,
         hasHighlight: Boolean(highlightedText),
         originalCommand: command,
+        contextUsed: this.getContextUsageSummary()
       };
 
     } catch (error) {
@@ -196,6 +212,116 @@ class AIService extends BaseService {
       
       this.getService('notification').showAIError(error);
       throw this.emitError(new Error(`AI processing failed: ${error.message}`));
+    }
+  }
+  
+  /**
+   * Update context usage tracking
+   * @param {Object} context - Context object
+   * @param {string} highlightedText - Currently highlighted text
+   * @private
+   */
+  updateContextUsage(context, highlightedText) {
+    this.lastContextUsage = {
+      hasHighlightedText: Boolean(highlightedText),
+      hasClipboardContent: Boolean(context.primaryContext?.type === 'clipboard'),
+      applicationName: context.applicationContext?.name || '',
+      contextSize: this.calculateContextSize(context),
+      timestamp: Date.now(),
+      historyItemCount: context.historyContext?.length || 0
+    };
+    
+    console.log('[AIService] Updated context usage tracking:', this.lastContextUsage);
+  }
+  
+  /**
+   * Calculate the total size of context in characters
+   * @param {Object} context - Context object
+   * @returns {number} Total context size in characters
+   * @private
+   */
+  calculateContextSize(context) {
+    let size = 0;
+    
+    if (context.primaryContext?.content) {
+      size += context.primaryContext.content.length;
+    }
+    
+    if (context.secondaryContext?.content) {
+      size += context.secondaryContext.content.length;
+    }
+    
+    if (context.historyContext) {
+      for (const item of context.historyContext) {
+        if (item.content) {
+          size += item.content.length;
+        }
+      }
+    }
+    
+    return size;
+  }
+  
+  /**
+   * Get a summary of context usage for user feedback
+   * @returns {Object} Context usage summary
+   */
+  getContextUsageSummary() {
+    return {
+      ...this.lastContextUsage,
+      contextSizeFormatted: this.formatContextSize(this.lastContextUsage.contextSize)
+    };
+  }
+  
+  /**
+   * Format context size in a human-readable way
+   * @param {number} size - Size in characters
+   * @returns {string} Formatted size
+   * @private
+   */
+  formatContextSize(size) {
+    if (size < 1000) {
+      return `${size} characters`;
+    } else {
+      return `${(size / 1000).toFixed(1)}K characters`;
+    }
+  }
+  
+  /**
+   * Show feedback to the user about context being used
+   * @private
+   */
+  showContextFeedback() {
+    // Only show feedback if we have context
+    if (this.lastContextUsage.contextSize > 0) {
+      const contextTypes = [];
+      
+      if (this.lastContextUsage.hasHighlightedText) {
+        contextTypes.push('highlighted text');
+      }
+      
+      if (this.lastContextUsage.hasClipboardContent) {
+        contextTypes.push('clipboard content');
+      }
+      
+      if (this.lastContextUsage.historyItemCount > 0) {
+        contextTypes.push('context history');
+      }
+      
+      const contextTypeText = contextTypes.length > 0 
+        ? contextTypes.join(', ') 
+        : 'available context';
+      
+      const appText = this.lastContextUsage.applicationName 
+        ? ` in ${this.lastContextUsage.applicationName}` 
+        : '';
+      
+      this.getService('notification').showNotification({
+        title: 'Processing AI Command',
+        body: `Using ${contextTypeText}${appText} (${this.formatContextSize(this.lastContextUsage.contextSize)})`,
+        type: 'info',
+        timeout: 3000
+      });
     }
   }
 
@@ -366,6 +492,18 @@ class AIService extends BaseService {
       this.currentRequest.controller.abort();
       this.currentRequest = null;
     }
+  }
+  
+  /**
+   * Get detailed statistics about AI usage
+   * @returns {Object} AI usage statistics
+   */
+  getAIUsageStats() {
+    return {
+      lastContextUsage: this.lastContextUsage,
+      formattedContextSize: this.formatContextSize(this.lastContextUsage.contextSize),
+      timestamp: Date.now()
+    };
   }
 }
 

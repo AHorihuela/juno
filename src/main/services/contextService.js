@@ -20,11 +20,22 @@ class ContextService extends BaseService {
     this.contextHistory = [];
     this.maxHistoryItems = 5;
     this.activeApplication = '';
+    
+    // Performance optimizations
+    this.contextUpdateInterval = 1000; // 1 second
+    this.lastContextUpdate = 0;
+    this.pendingContextUpdate = null;
+    this.contextCache = null;
+    this.contextCacheTTL = 2000; // 2 seconds
+    this.lastContextCacheTime = 0;
+    
+    // Content similarity detection to avoid duplicates
+    this.similarityThreshold = 0.8; // 80% similarity threshold
   }
 
   async _initialize() {
-    // Set up clipboard monitoring
-    this.checkInterval = setInterval(() => this.checkClipboardChange(), 1000);
+    // Set up clipboard monitoring with optimized interval
+    this.checkInterval = setInterval(() => this.checkClipboardChange(), this.contextUpdateInterval);
     
     // Get active application periodically
     this.appCheckInterval = setInterval(() => this.updateActiveApplication(), 5000);
@@ -42,7 +53,8 @@ class ContextService extends BaseService {
     try {
       const selectionService = this.getService('selection');
       if (selectionService) {
-        this.activeApplication = await selectionService.getActiveAppName();
+        // Use the cached version if available
+        this.activeApplication = await selectionService.getCachedActiveAppName();
       }
     } catch (error) {
       console.error('[ContextService] Error updating active application:', error);
@@ -68,18 +80,76 @@ class ContextService extends BaseService {
         console.log('[ContextService] Real clipboard change detected at:', this.clipboardTimestamp);
         
         // Add to context history if it's substantial (more than just a few characters)
-        if (currentClipboard.length > 10) {
+        // and not too similar to existing items
+        if (currentClipboard.length > 10 && !this.isSimilarToExistingContext(currentClipboard)) {
           this.addToContextHistory({
             type: 'clipboard',
             content: currentClipboard,
             timestamp: this.clipboardTimestamp,
             application: this.activeApplication
           });
+          
+          // Invalidate context cache when new content is added
+          this.invalidateContextCache();
         }
       }
     } catch (error) {
       this.emitError(error);
     }
+  }
+
+  /**
+   * Check if content is similar to existing context items
+   * @param {string} content - Content to check
+   * @returns {boolean} True if similar content exists
+   * @private
+   */
+  isSimilarToExistingContext(content) {
+    // Simple implementation: check if any existing item contains this content
+    // or if this content contains any existing item
+    return this.contextHistory.some(item => {
+      // Skip different types
+      if (item.type !== 'clipboard') return false;
+      
+      const itemContent = item.content || '';
+      
+      // Check if one contains the other
+      if (itemContent.includes(content) || content.includes(itemContent)) {
+        return true;
+      }
+      
+      // Check similarity using Levenshtein distance for shorter content
+      if (content.length < 200 && itemContent.length < 200) {
+        return this.calculateSimilarity(content, itemContent) > this.similarityThreshold;
+      }
+      
+      return false;
+    });
+  }
+  
+  /**
+   * Calculate similarity between two strings (0-1)
+   * @param {string} str1 - First string
+   * @param {string} str2 - Second string
+   * @returns {number} Similarity score (0-1)
+   * @private
+   */
+  calculateSimilarity(str1, str2) {
+    // Simple implementation of similarity based on common words
+    const words1 = new Set(str1.toLowerCase().split(/\s+/));
+    const words2 = new Set(str2.toLowerCase().split(/\s+/));
+    
+    // Count common words
+    let commonCount = 0;
+    for (const word of words1) {
+      if (words2.has(word)) {
+        commonCount++;
+      }
+    }
+    
+    // Calculate Jaccard similarity
+    const totalUniqueWords = new Set([...words1, ...words2]).size;
+    return totalUniqueWords > 0 ? commonCount / totalUniqueWords : 0;
   }
 
   /**
@@ -154,14 +224,17 @@ class ContextService extends BaseService {
       
       console.log('[ContextService] Recording started at:', this.recordingStartTime, 'with highlighted text:', this.highlightedText);
       
-      // Add highlighted text to context history if it exists
-      if (this.highlightedText) {
+      // Add highlighted text to context history if it exists and is not too similar to existing items
+      if (this.highlightedText && !this.isSimilarToExistingContext(this.highlightedText)) {
         this.addToContextHistory({
           type: 'highlight',
           content: this.highlightedText,
           timestamp: this.recordingStartTime,
           application: this.activeApplication
         });
+        
+        // Invalidate context cache when new content is added
+        this.invalidateContextCache();
       }
     } catch (error) {
       this.emitError(error);
@@ -177,6 +250,9 @@ class ContextService extends BaseService {
       this.isRecording = false;
       this.highlightedText = ''; // Clear highlighted text
       console.log('[ContextService] Recording stopped');
+      
+      // Invalidate context cache when recording stops
+      this.invalidateContextCache();
     } catch (error) {
       this.emitError(error);
     }
@@ -206,12 +282,34 @@ class ContextService extends BaseService {
   }
 
   /**
-   * Get the current context for AI processing
+   * Invalidate the context cache
+   * @private
+   */
+  invalidateContextCache() {
+    this.contextCache = null;
+    this.lastContextCacheTime = 0;
+    console.log('[ContextService] Context cache invalidated');
+  }
+
+  /**
+   * Get the current context for AI processing with caching
    * @param {string} currentHighlightedText - Currently highlighted text (optional)
    * @returns {Object} Context object with primary and secondary contexts
    */
   getContext(currentHighlightedText = '') {
     try {
+      // Check if we can use cached context
+      const now = Date.now();
+      const isCacheValid = this.contextCache && 
+                          (now - this.lastContextCacheTime) < this.contextCacheTTL &&
+                          !currentHighlightedText; // Don't use cache if new highlighted text is provided
+      
+      if (isCacheValid) {
+        console.log('[ContextService] Using cached context');
+        return this.contextCache;
+      }
+      
+      // Update clipboard content
       this.updateClipboardContext();
 
       console.log('[ContextService] Getting context with inputs:', {
@@ -248,13 +346,15 @@ class ContextService extends BaseService {
           content: currentHighlightedText
         };
         
-        // Add to context history
-        this.addToContextHistory({
-          type: 'highlight',
-          content: currentHighlightedText,
-          timestamp: Date.now(),
-          application: this.activeApplication
-        });
+        // Add to context history if not too similar to existing items
+        if (!this.isSimilarToExistingContext(currentHighlightedText)) {
+          this.addToContextHistory({
+            type: 'highlight',
+            content: currentHighlightedText,
+            timestamp: Date.now(),
+            application: this.activeApplication
+          });
+        }
       }
       // Finally try clipboard if it's fresh
       else if (this.isClipboardFresh()) {
@@ -297,12 +397,48 @@ class ContextService extends BaseService {
         hasHistoryContext: Boolean(context.historyContext),
         historyItemCount: context.historyContext?.length
       });
+      
+      // Cache the context
+      this.contextCache = context;
+      this.lastContextCacheTime = now;
 
       return context;
     } catch (error) {
       this.emitError(error);
       return { primaryContext: null, secondaryContext: null };
     }
+  }
+  
+  /**
+   * Get context asynchronously with debouncing
+   * @param {string} currentHighlightedText - Currently highlighted text (optional)
+   * @returns {Promise<Object>} Context object with primary and secondary contexts
+   */
+  async getContextAsync(currentHighlightedText = '') {
+    // Implement debouncing for context updates
+    const now = Date.now();
+    if (now - this.lastContextUpdate < 500) { // 500ms debounce
+      // If we have a pending update, cancel it
+      if (this.pendingContextUpdate) {
+        clearTimeout(this.pendingContextUpdate.timeoutId);
+      }
+      
+      // Set up a new pending update
+      return new Promise((resolve) => {
+        this.pendingContextUpdate = {
+          timeoutId: setTimeout(() => {
+            const context = this.getContext(currentHighlightedText);
+            this.pendingContextUpdate = null;
+            this.lastContextUpdate = Date.now();
+            resolve(context);
+          }, 500)
+        };
+      });
+    }
+    
+    // No debouncing needed, update immediately
+    this.lastContextUpdate = now;
+    return this.getContext(currentHighlightedText);
   }
 
   /**
@@ -319,8 +455,55 @@ class ContextService extends BaseService {
         clearInterval(this.appCheckInterval);
         this.appCheckInterval = null;
       }
+      
+      if (this.pendingContextUpdate) {
+        clearTimeout(this.pendingContextUpdate.timeoutId);
+        this.pendingContextUpdate = null;
+      }
     } catch (error) {
       this.emitError(error);
+    }
+  }
+  
+  /**
+   * Export context history for persistence
+   * @returns {Object} Serializable context history
+   */
+  exportContextHistory() {
+    return {
+      history: this.contextHistory,
+      timestamp: Date.now()
+    };
+  }
+  
+  /**
+   * Import context history from persistence
+   * @param {Object} data - Previously exported context history
+   * @returns {boolean} Success status
+   */
+  importContextHistory(data) {
+    try {
+      if (!data || !data.history || !Array.isArray(data.history)) {
+        return false;
+      }
+      
+      // Only import history that's less than 24 hours old
+      const now = Date.now();
+      if (now - data.timestamp > 24 * 60 * 60 * 1000) {
+        console.log('[ContextService] Imported history is too old, ignoring');
+        return false;
+      }
+      
+      this.contextHistory = data.history;
+      console.log('[ContextService] Imported context history, size:', this.contextHistory.length);
+      
+      // Invalidate context cache
+      this.invalidateContextCache();
+      
+      return true;
+    } catch (error) {
+      console.error('[ContextService] Error importing context history:', error);
+      return false;
     }
   }
 }

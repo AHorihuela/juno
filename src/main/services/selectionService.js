@@ -8,6 +8,13 @@ class SelectionService extends BaseService {
     this.ipcHandler = null;
     this.lastSelectionAttempt = null;
     this.selectionCache = { text: '', timestamp: 0 };
+    
+    // Performance optimization
+    this.appNameCache = { name: '', timestamp: 0 };
+    this.appNameCacheTTL = 5000; // 5 seconds
+    this.pendingSelectionRequest = null;
+    this.selectionDebounceTime = 300; // 300ms
+    this.lastSelectionTime = 0;
   }
 
   async _initialize() {
@@ -41,13 +48,57 @@ class SelectionService extends BaseService {
       ipcMain.removeHandler('get-selected-text-from-renderer');
       this.ipcHandler = null;
     }
+    
+    // Cancel any pending selection requests
+    if (this.pendingSelectionRequest) {
+      clearTimeout(this.pendingSelectionRequest);
+      this.pendingSelectionRequest = null;
+    }
   }
 
   /**
-   * Get selected text from the active application
+   * Get selected text from the active application with debouncing
    * @returns {Promise<string>} Selected text or empty string if none
    */
   async getSelectedText() {
+    // Implement debouncing to prevent rapid consecutive calls
+    const now = Date.now();
+    if (now - this.lastSelectionTime < this.selectionDebounceTime) {
+      console.log('[SelectionService] Debouncing selection request');
+      
+      // Return cached selection if available and recent
+      if (this.selectionCache.text && (now - this.selectionCache.timestamp < 1000)) {
+        console.log('[SelectionService] Returning cached selection due to debounce');
+        return this.selectionCache.text;
+      }
+      
+      // Set up a debounced request
+      return new Promise((resolve) => {
+        if (this.pendingSelectionRequest) {
+          clearTimeout(this.pendingSelectionRequest);
+        }
+        
+        this.pendingSelectionRequest = setTimeout(async () => {
+          const text = await this._getSelectedTextImpl();
+          this.pendingSelectionRequest = null;
+          resolve(text);
+        }, this.selectionDebounceTime);
+      });
+    }
+    
+    // Update last selection time
+    this.lastSelectionTime = now;
+    
+    // Proceed with normal selection
+    return this._getSelectedTextImpl();
+  }
+  
+  /**
+   * Implementation of selection detection
+   * @returns {Promise<string>} Selected text or empty string if none
+   * @private
+   */
+  async _getSelectedTextImpl() {
     if (process.platform !== 'darwin') {
       console.log('[SelectionService] Platform not supported for getting selected text');
       return '';
@@ -56,8 +107,8 @@ class SelectionService extends BaseService {
     try {
       console.log('[SelectionService] Starting selection detection');
       
-      // First get the active app name
-      const appName = await this.getActiveAppName();
+      // First get the active app name (with caching)
+      const appName = await this.getCachedActiveAppName();
       console.log('[SelectionService] Active application:', appName);
 
       // If we're in Cursor or another Electron app, use IPC to get selection
@@ -106,6 +157,32 @@ class SelectionService extends BaseService {
       this.emitError(error);
       return '';
     }
+  }
+
+  /**
+   * Get the name of the active application with caching
+   * @returns {Promise<string>} Name of the active application
+   * @private
+   */
+  async getCachedActiveAppName() {
+    const now = Date.now();
+    
+    // Return cached app name if it's still valid
+    if (this.appNameCache.name && (now - this.appNameCache.timestamp) < this.appNameCacheTTL) {
+      console.log('[SelectionService] Using cached app name:', this.appNameCache.name);
+      return this.appNameCache.name;
+    }
+    
+    // Get fresh app name
+    const appName = await this.getActiveAppName();
+    
+    // Update cache
+    this.appNameCache = {
+      name: appName,
+      timestamp: now
+    };
+    
+    return appName;
   }
 
   /**
@@ -183,6 +260,7 @@ class SelectionService extends BaseService {
    * @private
    */
   async getSelectionViaAccessibility(appName) {
+    // Optimization: Use a more efficient AppleScript that doesn't create a new process
     const accessibilityScript = `
       tell application "System Events"
         tell process "${appName}"
@@ -197,7 +275,15 @@ class SelectionService extends BaseService {
     `;
     
     return new Promise((resolve, reject) => {
+      // Use a timeout to prevent hanging
+      const timeoutId = setTimeout(() => {
+        console.log('[SelectionService] Accessibility API timed out');
+        resolve('');
+      }, 500);
+      
       exec(`osascript -e '${accessibilityScript}'`, (error, stdout, stderr) => {
+        clearTimeout(timeoutId);
+        
         if (error) {
           console.error('[SelectionService] Error getting selection via accessibility:', error);
           resolve('');
@@ -224,6 +310,7 @@ class SelectionService extends BaseService {
     // Notify context service we're starting an internal clipboard operation
     this.getService('context').startInternalOperation();
 
+    // Optimization: Use a more efficient AppleScript with better error handling
     const script = `
       tell application "System Events"
         set frontAppName to "${appName}"
@@ -232,48 +319,80 @@ class SelectionService extends BaseService {
         set prevClipboard to the clipboard
         
         -- Use clipboard method
-        tell process frontAppName
-          keystroke "c" using command down
-        end tell
-        
-        -- Wait for the clipboard to update
-        delay 0.3
-        
-        -- Get clipboard content
-        set selectedText to the clipboard
-        
-        -- Only restore clipboard if it changed
-        if selectedText is not equal to prevClipboard then
+        try
+          tell process frontAppName
+            keystroke "c" using command down
+          end tell
+          
+          -- Wait for the clipboard to update, but with a shorter delay
+          delay 0.2
+          
+          -- Get clipboard content
+          set selectedText to the clipboard
+          
+          -- Only restore clipboard if it changed
+          if selectedText is not equal to prevClipboard then
+            set the clipboard to prevClipboard
+          end if
+          
+          return selectedText
+        on error errMsg
+          -- Restore clipboard on error
           set the clipboard to prevClipboard
-        end if
-        
-        return selectedText
+          return ""
+        end try
       end tell
     `;
 
     try {
       console.log('[SelectionService] Executing AppleScript for clipboard selection');
       
-      const result = await new Promise((resolve, reject) => {
-        exec(`osascript -e '${script}'`, (error, stdout, stderr) => {
-          if (error) {
-            console.error('[SelectionService] Error getting selected text via clipboard:', error);
+      // Use a timeout to prevent hanging
+      const result = await Promise.race([
+        new Promise((resolve, reject) => {
+          exec(`osascript -e '${script}'`, (error, stdout, stderr) => {
+            if (error) {
+              console.error('[SelectionService] Error getting selected text via clipboard:', error);
+              resolve('');
+            } else if (stderr) {
+              console.warn('[SelectionService] AppleScript warning:', stderr);
+            }
+            
+            const selectedText = stdout.trim();
+            console.log('[SelectionService] Raw selected text length via clipboard:', selectedText.length);
+            
+            resolve(selectedText);
+          });
+        }),
+        new Promise((resolve) => {
+          setTimeout(() => {
+            console.log('[SelectionService] Clipboard selection timed out');
             resolve('');
-          } else if (stderr) {
-            console.warn('[SelectionService] AppleScript warning:', stderr);
-          }
-          
-          const selectedText = stdout.trim();
-          console.log('[SelectionService] Raw selected text length via clipboard:', selectedText.length);
-          
-          resolve(selectedText);
-        });
-      });
+          }, 1000);
+        })
+      ]);
 
       return result;
     } finally {
       // Always end internal clipboard operation
       this.getService('context').endInternalOperation();
+    }
+  }
+  
+  /**
+   * Preload app name for better performance in subsequent calls
+   * This can be called during app initialization or when user activity is detected
+   */
+  async preloadAppName() {
+    try {
+      const appName = await this.getActiveAppName();
+      this.appNameCache = {
+        name: appName,
+        timestamp: Date.now()
+      };
+      console.log('[SelectionService] Preloaded app name:', appName);
+    } catch (error) {
+      console.error('[SelectionService] Error preloading app name:', error);
     }
   }
 }

@@ -16,6 +16,16 @@ const BITS_PER_SAMPLE = 16;
 class TranscriptionService extends BaseService {
   constructor() {
     super('Transcription');
+    
+    // Performance tracking
+    this.processingStats = {
+      lastProcessingTime: 0,
+      averageProcessingTime: 0,
+      processedCount: 0,
+      aiCommandCount: 0,
+      normalTranscriptionCount: 0,
+      errorCount: 0
+    };
   }
 
   async _initialize() {
@@ -108,6 +118,9 @@ class TranscriptionService extends BaseService {
    * @returns {Promise<void>}
    */
   async processAndInsertText(text) {
+    const startTime = Date.now();
+    let isAICommand = false;
+    
     try {
       if (!this.initialized) {
         throw new Error('TranscriptionService not initialized');
@@ -122,23 +135,39 @@ class TranscriptionService extends BaseService {
         return '';
       }
 
-      // Get selected text if any
-      const highlightedText = await this.getService('selection').getSelectedText();
+      // Get selected text if any - use the optimized selection service
+      const selectionService = this.getService('selection');
+      const highlightedText = await selectionService.getSelectedText();
       console.log('[TranscriptionService] Selected text:', highlightedText);
       
+      // Preload app name for future operations
+      selectionService.preloadAppName().catch(err => {
+        console.error('[TranscriptionService] Error preloading app name:', err);
+      });
+      
       // Store the highlighted text in context service for future reference
+      const contextService = this.getService('context');
       if (highlightedText) {
-        await this.getService('context').startRecording(highlightedText);
+        await contextService.startRecording(highlightedText);
       }
 
       // First check if this is an AI command
-      const isAICommand = await this.getService('ai').isAICommand(text);
+      const aiService = this.getService('ai');
+      isAICommand = await aiService.isAICommand(text);
       console.log('[TranscriptionService] Is AI command:', isAICommand);
 
       if (isAICommand) {
         try {
+          // Show processing notification
+          this.getService('notification').showNotification({
+            title: 'Processing AI Command',
+            body: 'Analyzing context and preparing response...',
+            type: 'info',
+            timeout: 2000
+          });
+          
           console.log('[TranscriptionService] Processing as AI command');
-          const aiResponse = await this.getService('ai').processCommand(text, highlightedText);
+          const aiResponse = await aiService.processCommand(text, highlightedText);
           
           // Check if the AI request was cancelled or failed
           if (!aiResponse) {
@@ -148,8 +177,17 @@ class TranscriptionService extends BaseService {
           
           console.log('[TranscriptionService] AI response:', aiResponse);
           
+          // Show context usage feedback
+          if (aiResponse.contextUsed) {
+            this.showContextUsageFeedback(aiResponse.contextUsed);
+          }
+          
           // Insert the AI response
           await this.getService('textInsertion').insertText(aiResponse.text, highlightedText);
+          
+          // Update stats
+          this.processingStats.aiCommandCount++;
+          
           return aiResponse.text;
         } catch (aiError) {
           console.error('[TranscriptionService] Error processing AI command:', aiError);
@@ -163,6 +201,9 @@ class TranscriptionService extends BaseService {
             body: 'Falling back to normal transcription.',
             type: 'warning'
           });
+          
+          // Update error stats
+          this.processingStats.errorCount++;
           
           // Continue with normal processing below
         }
@@ -183,6 +224,9 @@ class TranscriptionService extends BaseService {
       // Insert the processed text
       await this.getService('textInsertion').insertText(processed, highlightedText);
       
+      // Update stats
+      this.processingStats.normalTranscriptionCount++;
+      
       return processed;
     } catch (error) {
       console.error('[TranscriptionService] Error in processAndInsertText:', error);
@@ -194,11 +238,85 @@ class TranscriptionService extends BaseService {
         type: 'error'
       });
       
+      // Update error stats
+      this.processingStats.errorCount++;
+      
       throw this.emitError(error);
     } finally {
       // Always stop recording context when done
       this.getService('context').stopRecording();
+      
+      // Update processing time stats
+      const processingTime = Date.now() - startTime;
+      this.updateProcessingStats(processingTime, isAICommand);
+      
+      console.log('[TranscriptionService] Processing completed in', processingTime, 'ms');
     }
+  }
+  
+  /**
+   * Show feedback about context usage
+   * @param {Object} contextUsage - Context usage information
+   * @private
+   */
+  showContextUsageFeedback(contextUsage) {
+    // Only show if we have meaningful context
+    if (contextUsage && contextUsage.contextSize > 0) {
+      const title = 'AI Response Ready';
+      let body = `Generated using ${contextUsage.contextSizeFormatted}`;
+      
+      if (contextUsage.applicationName) {
+        body += ` from ${contextUsage.applicationName}`;
+      }
+      
+      this.getService('notification').showNotification({
+        title,
+        body,
+        type: 'success',
+        timeout: 3000
+      });
+    }
+  }
+  
+  /**
+   * Update processing time statistics
+   * @param {number} processingTime - Time taken to process in ms
+   * @param {boolean} isAICommand - Whether this was an AI command
+   * @private
+   */
+  updateProcessingStats(processingTime, isAICommand) {
+    this.processingStats.lastProcessingTime = processingTime;
+    this.processingStats.processedCount++;
+    
+    // Update average processing time with exponential moving average
+    if (this.processingStats.processedCount === 1) {
+      this.processingStats.averageProcessingTime = processingTime;
+    } else {
+      // Use a weight of 0.2 for the new value
+      this.processingStats.averageProcessingTime = 
+        0.8 * this.processingStats.averageProcessingTime + 
+        0.2 * processingTime;
+    }
+    
+    console.log('[TranscriptionService] Updated processing stats:', {
+      lastTime: processingTime,
+      avgTime: this.processingStats.averageProcessingTime,
+      count: this.processingStats.processedCount,
+      aiCount: this.processingStats.aiCommandCount,
+      normalCount: this.processingStats.normalTranscriptionCount,
+      errorCount: this.processingStats.errorCount
+    });
+  }
+  
+  /**
+   * Get processing statistics
+   * @returns {Object} Processing statistics
+   */
+  getProcessingStats() {
+    return {
+      ...this.processingStats,
+      timestamp: Date.now()
+    };
   }
 
   /**
@@ -250,6 +368,14 @@ class TranscriptionService extends BaseService {
   async callWhisperAPI(tempFile) {
     console.log('[Transcription] Sending request to Whisper API...');
     
+    // Show notification to user
+    this.getService('notification').showNotification({
+      title: 'Transcribing Audio',
+      body: 'Sending audio to Whisper API...',
+      type: 'info',
+      timeout: 3000
+    });
+    
     const openai = await this.getService('resource').getOpenAIClient();
 
     try {
@@ -299,6 +425,8 @@ class TranscriptionService extends BaseService {
    * @returns {Promise<string>} Transcribed and processed text
    */
   async transcribeAudio(audioBuffer, highlightedText = '') {
+    const startTime = Date.now();
+    
     try {
       if (!this.initialized) {
         throw new Error('TranscriptionService not initialized');
@@ -312,12 +440,24 @@ class TranscriptionService extends BaseService {
         // Make API request
         const response = await this.callWhisperAPI(tempFile);
         const transcribedText = response.text;
+        
+        // Show transcription success notification
+        this.getService('notification').showNotification({
+          title: 'Transcription Complete',
+          body: 'Processing transcribed text...',
+          type: 'success',
+          timeout: 2000
+        });
 
         // Process and insert the transcribed text
         const processedText = await this.processAndInsertText(transcribedText);
 
         // Log metrics
         await this.logTranscriptionMetrics(transcribedText, processedText);
+        
+        // Log performance
+        const totalTime = Date.now() - startTime;
+        console.log(`[Transcription] Total processing time: ${totalTime}ms`);
 
         return processedText;
       } finally {
@@ -326,6 +466,10 @@ class TranscriptionService extends BaseService {
       }
     } catch (error) {
       this.getService('notification').showTranscriptionError(error);
+      
+      // Update error stats
+      this.processingStats.errorCount++;
+      
       throw this.emitError(error);
     }
   }
