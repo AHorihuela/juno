@@ -10,7 +10,6 @@ const configService = require('./src/main/services/configService');
 const recorderService = require('./src/main/services/recorder');
 const transcriptionService = require('./src/main/services/transcriptionService');
 const notificationService = require('./src/main/services/notificationService');
-const overlayService = require('./src/main/services/overlayService');
 const trayService = require('./src/main/services/trayService');
 const audioFeedbackService = require('./src/main/services/audioFeedbackService');
 const dictionaryService = require('./src/main/services/dictionaryService');
@@ -19,7 +18,7 @@ const selectionService = require('./src/main/services/selectionService');
 const textInsertionService = require('./src/main/services/textInsertionService');
 const aiService = require('./src/main/services/aiService');
 const transcriptionHistoryService = require('./src/main/services/transcriptionHistoryService');
-const windowService = require('./src/main/services/windowService');
+const windowManager = require('./src/main/services/WindowManager');
 const textProcessingService = require('./src/main/services/textProcessing');
 const resourceManager = require('./src/main/services/resourceManager');
 const memoryManager = require('./src/main/services/MemoryManager');
@@ -62,8 +61,7 @@ async function initializeServices() {
     .register('selection', selectionService())
     .register('textInsertion', textInsertionService())
     .register('tray', trayService())
-    .register('window', windowService())
-    .register('overlay', overlayService())
+    .register('windowManager', windowManager())
     .register('transcriptionHistory', transcriptionHistoryService());
 
   // Initialize all services
@@ -125,9 +123,9 @@ function createWindow() {
     mainWindow.once('ready-to-show', () => {
       console.log('Window ready to show');
       
-      // Initialize window service first
-      const windowService = serviceRegistry.get('window');
-      windowService.setMainWindow(mainWindow);
+      // Initialize window manager first
+      const windowMgr = serviceRegistry.get('windowManager');
+      windowMgr.setMainWindow(mainWindow);
       
       // Open DevTools in development
       if (process.env.NODE_ENV === 'development') {

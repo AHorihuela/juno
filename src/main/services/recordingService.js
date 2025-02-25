@@ -1,6 +1,5 @@
 const selectionService = require('./selectionService');
 const contextService = require('./contextService');
-const windowService = require('./windowService');
 const BaseService = require('./BaseService');
 
 class RecordingService extends BaseService {
@@ -71,7 +70,8 @@ class RecordingService extends BaseService {
       }
 
       // Show minimal recording indicator without stealing focus
-      windowService.showRecordingIndicator();
+      const windowManager = this.getService('windowManager');
+      windowManager.showRecordingIndicator();
 
       console.log('Recording started');
       return true;
@@ -94,7 +94,8 @@ class RecordingService extends BaseService {
       console.log('Stopping recording...');
       
       // Immediately hide the recording indicator
-      windowService.hideRecordingIndicator();
+      const windowManager = this.getService('windowManager');
+      windowManager.hideRecordingIndicator();
       
       // Play stop sound (don't await, let it play in background)
       const audioService = this.getService('audio');

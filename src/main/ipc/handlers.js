@@ -5,7 +5,7 @@ function setupIpcHandlers(mainWindow) {
   // Recording status handlers
   const recorder = serviceRegistry.get('recorder');
   const tray = serviceRegistry.get('tray');
-  const overlay = serviceRegistry.get('overlay');
+  const windowManager = serviceRegistry.get('windowManager');
   
   recorder.on('start', () => {
     console.log('Recording started, registering Escape key');
@@ -21,7 +21,7 @@ function setupIpcHandlers(mainWindow) {
       mainWindow.webContents.send('recording-status', true);
     }
     tray.updateRecordingStatus(true);
-    overlay.show();
+    windowManager.showOverlay();
   });
 
   recorder.on('stop', () => {
@@ -34,7 +34,7 @@ function setupIpcHandlers(mainWindow) {
       mainWindow.webContents.send('recording-status', false);
     }
     tray.updateRecordingStatus(false);
-    overlay.hide();
+    windowManager.hideOverlay();
   });
 
   recorder.on('error', (error) => {
