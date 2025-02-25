@@ -28,6 +28,7 @@ const setupDictionaryIpcHandlers = require('./src/main/services/dictionaryIpcHan
 const setupMicrophoneHandlers = require('./src/main/ipc/microphoneHandlers');
 const setupSettingsHandlers = require('./src/main/ipc/settingsHandlers');
 const setupNotificationHandlers = require('./src/main/ipc/notificationHandlers');
+const setupRecordingHandlers = require('./src/main/ipc/recordingHandlers');
 
 // Import utilities
 const { setupErrorHandlers } = require('./src/main/utils/errorHandlers');
@@ -94,6 +95,7 @@ function setupAllIpcHandlers() {
   setupMicrophoneHandlers();
   setupSettingsHandlers();
   setupNotificationHandlers();
+  setupRecordingHandlers();
 }
 
 // This method will be called when Electron has finished initialization

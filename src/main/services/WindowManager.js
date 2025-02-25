@@ -150,6 +150,7 @@ class WindowManager extends BaseService {
   _createOverlayWindow() {
     try {
       const { workArea } = screen.getPrimaryDisplay();
+      console.log('[WindowManager] Creating overlay window');
       return new BrowserWindow({
         width: 320,
         height: 48,
@@ -173,7 +174,9 @@ class WindowManager extends BaseService {
         backgroundColor: '#00000000',
         titleBarStyle: 'hidden',
         titleBarOverlay: false,
-        show: false
+        show: false,
+        parent: null,
+        modal: false
       });
     } catch (error) {
       console.error('[WindowManager] Error creating overlay window:', {
@@ -188,13 +191,30 @@ class WindowManager extends BaseService {
   _setupOverlayBehavior() {
     try {
       if (!this.overlayWindow) return;
+      
+      // Make the overlay window click-through
       this.overlayWindow.setIgnoreMouseEvents(true);
+      
+      // Ensure it stays on top of all windows
       this.overlayWindow.setAlwaysOnTop(true, 'screen-saver', 1);
+      
+      // Make it visible on all workspaces and in fullscreen mode
       this.overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
       
+      // Ensure it doesn't appear in the taskbar
+      this.overlayWindow.setSkipTaskbar(true);
+      
+      // Hide window buttons on macOS
       if (process.platform === 'darwin') {
         this.overlayWindow.setWindowButtonVisibility(false);
       }
+      
+      // Ensure it doesn't activate when shown
+      this.overlayWindow.on('show', () => {
+        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+          this.mainWindow.focus();
+        }
+      });
       
       this.overlayWindow.hide();
     } catch (error) {
@@ -492,10 +512,15 @@ class WindowManager extends BaseService {
         workArea.height - 120
       );
       
+      // Ensure the overlay doesn't steal focus
+      this.overlayWindow.setAlwaysOnTop(true, 'screen-saver', 1);
+      this.overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+      this.overlayWindow.setSkipTaskbar(true);
+      
       // Show with fade-in effect
       console.log('[WindowManager] Showing overlay with fade-in effect');
       this.overlayWindow.setOpacity(0);
-      this.overlayWindow.show();
+      this.overlayWindow.showInactive(); // Use showInactive instead of show
       
       // Animate opacity
       let opacity = 0;
