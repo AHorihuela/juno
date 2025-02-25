@@ -85,7 +85,7 @@ class AIService extends BaseService {
 
     // Check first 3 words for trigger word
     const firstThreeWords = words.slice(0, 3).map(w => w.replace(/[.,!?]$/, ''));
-    console.log('[AIService] Checking first three words:', firstThreeWords);
+    console.log('[AIService] Checking first three words:', firstThreeWords, 'against trigger word:', triggerWord.toLowerCase());
 
     // Common greeting words that can precede the trigger word
     const GREETINGS = new Set(['hey', 'hi', 'hello', 'yo', 'ok', 'okay', 'um', 'uh']);
@@ -172,19 +172,25 @@ class AIService extends BaseService {
       const systemPrompt = this.buildSystemPrompt(aiRules, context);
       console.log('[AIService] System prompt:', systemPrompt);
 
-      // Create completion request
+      // Build the prompt for GPT based on command and context
       const prompt = this.buildPrompt(command, context);
       console.log('[AIService] Full prompt being sent to GPT:', prompt);
+
+      // Get model and temperature settings from config
+      const model = await this.getService('config').getAIModel() || 'gpt-4';
+      const temperature = await this.getService('config').getAITemperature() || 0.7;
+      
+      console.log('[AIService] Using model:', model, 'with temperature:', temperature);
 
       this.currentRequest = {
         controller,
         promise: this.openai.chat.completions.create({
-          model: await this.getService('config').getAIModel() || 'gpt-4',
+          model: model,
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: prompt }
           ],
-          temperature: await this.getService('config').getAITemperature() || 0.7,
+          temperature: temperature,
         }, { signal: controller.signal })
       };
 

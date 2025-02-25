@@ -419,6 +419,48 @@ class WindowManager extends BaseService {
       this.emitError(error);
     }
   }
+
+  /**
+   * Gets the main window instance
+   * @returns {BrowserWindow|null} The main window or null if not set
+   */
+  getMainWindow() {
+    return this.mainWindow;
+  }
+  
+  /**
+   * Clears the main window reference
+   */
+  clearMainWindow() {
+    console.log('[WindowManager] Clearing main window reference');
+    this.mainWindow = null;
+  }
+  
+  /**
+   * Recreates the main window if it was destroyed
+   */
+  recreateMainWindow() {
+    console.log('[WindowManager] Recreating main window');
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+      const { createMainWindow } = require('../utils/windowManager');
+      this.mainWindow = createMainWindow();
+      
+      // Re-setup IPC handlers
+      const setupIpcHandlers = require('../ipc/handlers');
+      setupIpcHandlers(this.mainWindow);
+      
+      // Re-setup specialized IPC handlers
+      const setupMicrophoneHandlers = require('../ipc/microphoneHandlers');
+      const setupSettingsHandlers = require('../ipc/settingsHandlers');
+      const setupNotificationHandlers = require('../ipc/notificationHandlers');
+      const setupDictionaryIpcHandlers = require('../services/dictionaryIpcHandlers');
+      
+      setupMicrophoneHandlers();
+      setupSettingsHandlers();
+      setupNotificationHandlers();
+      setupDictionaryIpcHandlers();
+    }
+  }
 }
 
 // Export a factory function instead of a singleton

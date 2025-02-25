@@ -53,6 +53,10 @@ const OpenAISection = ({ settings, updateSetting }) => (
             {settings.aiTemperature}
           </span>
         </div>
+        <p className="mt-2 text-sm text-gray-500">
+          💡 Controls the creativity of AI responses. Lower values (0-0.5) are more focused and deterministic, 
+          higher values (0.7-1.5) are more creative and varied.
+        </p>
       </div>
     </div>
   </div>
