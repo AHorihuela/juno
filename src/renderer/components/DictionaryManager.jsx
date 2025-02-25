@@ -99,9 +99,9 @@ const DictionaryManager = () => {
 
   return (
     <div>
-      <div className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-md text-sm text-gray-700">
+      {ipcTestResult !== "PASSED" && (<div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">
         IPC Test Result: {ipcTestResult}
-      </div>
+      </div>)}
 
       {error && (
         <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">

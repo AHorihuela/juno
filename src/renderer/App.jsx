@@ -87,15 +87,15 @@ const App = () => {
 
   return (
     <MainLayout>
-      {testResult !== null && (
+      {testResult === false && (
         <div style={{ 
           padding: '10px', 
-          backgroundColor: testResult ? '#d4edda' : '#f8d7da',
-          color: testResult ? '#155724' : '#721c24',
+          backgroundColor: '#f8d7da',
+          color: '#721c24',
           marginBottom: '10px',
           borderRadius: '4px'
         }}>
-          IPC Test Result: {testResult ? 'PASSED' : 'FAILED'}
+          IPC Test Result: FAILED
         </div>
       )}
       <Routes>
