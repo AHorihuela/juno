@@ -136,7 +136,7 @@ class WindowManager extends BaseService {
     try {
       if (this.overlayWindow) return;
       this.overlayWindow = this._createOverlayWindow();
-      this.overlayWindow.loadURL(`data:text/html;charset=utf-8,${this._getOverlayHTML()}`);
+      this.overlayWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(this._getOverlayHTML())}`);
       this._setupOverlayBehavior();
     } catch (error) {
       console.error('[WindowManager] Error creating overlay:', {
@@ -149,40 +149,37 @@ class WindowManager extends BaseService {
 
   _createOverlayWindow() {
     try {
-      const { workArea } = screen.getPrimaryDisplay();
       console.log('[WindowManager] Creating overlay window');
-      return new BrowserWindow({
-        width: 320,
-        height: 48,
-        x: Math.floor(workArea.x + (workArea.width - 320) / 2),
-        y: workArea.height - 120,
+      
+      // Create a new BrowserWindow for the overlay
+      this.overlayWindow = new BrowserWindow({
+        width: 200,
+        height: 80,
         frame: false,
         transparent: true,
-        alwaysOnTop: true,
-        skipTaskbar: true,
+        hasShadow: false,
         resizable: false,
+        movable: false,
         minimizable: false,
         maximizable: false,
         closable: false,
+        alwaysOnTop: true,
+        skipTaskbar: true,
         focusable: false,
-        webPreferences: {
-          nodeIntegration: true,
-          contextIsolation: false,
-        },
-        type: 'panel',
-        hasShadow: false,
-        backgroundColor: '#00000000',
-        titleBarStyle: 'hidden',
-        titleBarOverlay: false,
+        parent: null, // Set to null to ensure it's not attached to main window
+        modal: false, // Set to false to ensure it doesn't behave like a modal dialog
         show: false,
-        parent: null,
-        modal: false
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+          preload: path.join(__dirname, '../../renderer/preload.js'),
+        }
       });
+      
+      // Return the created window (removed the loadFile call that was trying to load a non-existent file)
+      return this.overlayWindow;
     } catch (error) {
-      console.error('[WindowManager] Error creating overlay window:', {
-        error: error.message,
-        stack: error.stack,
-      });
+      console.error('[WindowManager] Error creating overlay window:', error);
       this.emitError(error);
       return null;
     }
@@ -190,38 +187,36 @@ class WindowManager extends BaseService {
 
   _setupOverlayBehavior() {
     try {
-      if (!this.overlayWindow) return;
+      if (!this.overlayWindow || this.overlayWindow.isDestroyed()) return;
       
-      // Make the overlay window click-through
+      // Make the window click-through
       this.overlayWindow.setIgnoreMouseEvents(true);
       
-      // Ensure it stays on top of all windows
+      // Ensure it's always on top
       this.overlayWindow.setAlwaysOnTop(true, 'screen-saver', 1);
       
-      // Make it visible on all workspaces and in fullscreen mode
+      // Make it visible on all workspaces
       this.overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
       
       // Ensure it doesn't appear in the taskbar
       this.overlayWindow.setSkipTaskbar(true);
       
-      // Hide window buttons on macOS
-      if (process.platform === 'darwin') {
-        this.overlayWindow.setWindowButtonVisibility(false);
-      }
+      // Position the window at the bottom center of the screen
+      const { workArea } = screen.getPrimaryDisplay();
+      this.overlayWindow.setPosition(
+        Math.floor(workArea.x + (workArea.width - this.overlayWindow.getSize()[0]) / 2),
+        workArea.height - 120
+      );
       
-      // Ensure it doesn't activate when shown
-      this.overlayWindow.on('show', () => {
-        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-          this.mainWindow.focus();
-        }
+      // Set initial state
+      this.setOverlayState('idle');
+      
+      // Handle window events
+      this.overlayWindow.on('closed', () => {
+        this.overlayWindow = null;
       });
-      
-      this.overlayWindow.hide();
     } catch (error) {
-      console.error('[WindowManager] Error setting up overlay behavior:', {
-        error: error.message,
-        stack: error.stack,
-      });
+      console.error('[WindowManager] Error setting up overlay behavior:', error);
       this.emitError(error);
     }
   }
@@ -424,6 +419,9 @@ class WindowManager extends BaseService {
         animate();
       }
 
+      // Expose updateState globally so it can be called from the main process
+      window.updateState = updateState;
+
       document.addEventListener('DOMContentLoaded', () => {
         bars = Array.from(document.querySelectorAll('.bar'));
         timerElement = document.querySelector('.timer');
@@ -495,51 +493,37 @@ class WindowManager extends BaseService {
 
   showOverlay() {
     try {
-      if (!this.overlayWindow) {
-        console.log('[WindowManager] Creating overlay window');
+      if (!this.overlayWindow || this.overlayWindow.isDestroyed()) {
         this.createOverlay();
       }
       
-      if (this.overlayWindow.isDestroyed()) {
-        console.log('[WindowManager] Overlay window was destroyed, recreating');
-        this.createOverlay();
-      }
-      
-      // Position the window at the bottom center of the screen
-      const { workArea } = screen.getPrimaryDisplay();
-      this.overlayWindow.setPosition(
-        Math.floor(workArea.x + (workArea.width - this.overlayWindow.getSize()[0]) / 2),
-        workArea.height - 120
-      );
-      
-      // Ensure the overlay doesn't steal focus
-      this.overlayWindow.setAlwaysOnTop(true, 'screen-saver', 1);
-      this.overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-      this.overlayWindow.setSkipTaskbar(true);
-      
-      // Show with fade-in effect
       console.log('[WindowManager] Showing overlay with fade-in effect');
-      this.overlayWindow.setOpacity(0);
-      this.overlayWindow.showInactive(); // Use showInactive instead of show
       
-      // Animate opacity
+      // Set initial opacity to 0
+      this.overlayWindow.setOpacity(0);
+      
+      // Show the window without activating it (no focus stealing)
+      this.overlayWindow.showInactive();
+      
+      // Ensure it's always on top without activating
+      this.overlayWindow.setAlwaysOnTop(true, 'floating', 1);
+      
+      // Fade in effect
       let opacity = 0;
       const fadeIn = setInterval(() => {
         opacity += 0.1;
+        
         if (!this.overlayWindow || this.overlayWindow.isDestroyed()) {
           clearInterval(fadeIn);
           return;
         }
         
-        this.overlayWindow.setOpacity(opacity);
+        this.overlayWindow.setOpacity(Math.min(1, opacity));
         
         if (opacity >= 1) {
           clearInterval(fadeIn);
         }
       }, 16);
-      
-      // Set state to idle initially
-      this.setOverlayState('idle');
     } catch (error) {
       console.error('[WindowManager] Error showing overlay:', error);
       this.emitError(error);
