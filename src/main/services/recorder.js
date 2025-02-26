@@ -10,10 +10,10 @@ class RecorderService extends BaseService {
     this.recorder = null;
     this.audioData = [];
     this.hasAudioContent = false;
-    this.silenceThreshold = 50;
+    this.silenceThreshold = 30;
     this.currentDeviceId = null;
-    this.levelSmoothingFactor = 0.3;
-    this.currentLevels = [0, 0, 0, 0, 0];
+    this.levelSmoothingFactor = 0.5;
+    this.currentLevels = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
   }
 
   async _initialize() {
@@ -310,11 +310,15 @@ class RecorderService extends BaseService {
     }
     
     const rms = Math.sqrt(sum / samples.length);
-    const normalizedLevel = Math.min(1, rms / 5000);
+    
+    // More sensitive normalization (reduced from 5000 to 3000)
+    // Apply a non-linear curve to amplify quieter sounds
+    const normalizedLevel = Math.min(1, Math.pow(rms / 3000, 0.8));
     
     // Update smoothed levels with some randomization for visual interest
     for (let i = 0; i < this.currentLevels.length; i++) {
-      const targetLevel = normalizedLevel * (0.8 + Math.random() * 0.4);
+      // Increased base level to ensure bars are more visible even with quiet sounds
+      const targetLevel = Math.max(0.2, normalizedLevel * (0.8 + Math.random() * 0.4));
       this.currentLevels[i] = this.currentLevels[i] * (1 - this.levelSmoothingFactor) +
                            targetLevel * this.levelSmoothingFactor;
     }
@@ -328,7 +332,7 @@ class RecorderService extends BaseService {
     
     // Consider it real audio only if we have a significant percentage of samples above threshold
     // AND we have some consecutive samples above threshold (indicating sustained sound)
-    return percentageAboveThreshold > 20 && maxConsecutiveSamplesAboveThreshold > 50;
+    return percentageAboveThreshold > 15 && maxConsecutiveSamplesAboveThreshold > 40;
   }
 
   async stop() {

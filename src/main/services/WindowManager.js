@@ -234,7 +234,7 @@ class WindowManager extends BaseService {
               <div class="record-icon"></div>
             </div>
             <div class="visualization-container">
-              ${Array(20).fill('<div class="bar"></div>').join('')}
+              ${Array(24).fill('<div class="bar"></div>').join('')}
             </div>
             <div class="timer">00:00</div>
           </div>
@@ -267,11 +267,12 @@ class WindowManager extends BaseService {
         justify-content: space-between;
         align-items: center;
         height: 48px;
-        min-width: 280px;
+        min-width: 320px;
         box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
         backdrop-filter: blur(12px);
         -webkit-backdrop-filter: blur(12px);
         border: 1px solid rgba(255, 255, 255, 0.08);
+        transition: all 0.3s ease;
       }
       
       .recording-indicator {
@@ -293,7 +294,7 @@ class WindowManager extends BaseService {
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 2px;
+        gap: 3px;
         height: 32px;
         overflow: hidden;
       }
@@ -302,10 +303,11 @@ class WindowManager extends BaseService {
         flex: 1;
         height: 32px;
         background: linear-gradient(to top, rgba(255, 59, 48, 0.5), rgba(255, 59, 48, 0.9));
-        border-radius: 2px;
-        transition: transform 0.12s cubic-bezier(0.4, 0.0, 0.2, 1);
+        border-radius: 3px;
+        transition: transform 0.1s cubic-bezier(0.4, 0.0, 0.2, 1);
         transform-origin: bottom;
         transform: scaleY(0.15);
+        will-change: transform, background;
       }
       
       .timer {
@@ -357,26 +359,32 @@ class WindowManager extends BaseService {
           const levelsCount = levels.length;
           
           for (let i = 0; i < barsCount; i++) {
-            // Map the bar index to a level index
-            const levelIdx = Math.floor(i * levelsCount / barsCount);
-            // Get the level value, with some randomization for visual interest
-            const randomFactor = 0.85 + Math.random() * 0.3;
-            const level = levels[levelIdx] * randomFactor;
+            // Map the bar index to a level index with some overlap for smoother visualization
+            const levelIdx = Math.min(levelsCount - 1, Math.floor(i * levelsCount / barsCount));
+            
+            // Enhanced randomization for more dynamic visualization
+            const randomFactor = 0.9 + Math.random() * 0.3;
+            
+            // Apply a slight curve to emphasize peaks
+            const level = Math.pow(levels[levelIdx] * randomFactor, 0.9);
             expandedLevels.push(level);
           }
           
           // Apply smoothed levels to bars with slight delay for wave effect
           bars.forEach((bar, i) => {
-            const delay = i * 15; // ms delay between bars for wave effect
+            // Reduced delay for more responsive animation
+            const delay = i * 8; 
             setTimeout(() => {
-              const scale = Math.max(0.15, Math.min(1, expandedLevels[i] || 0));
+              // Ensure minimum scale for better visibility
+              const scale = Math.max(0.2, Math.min(1, expandedLevels[i] || 0));
               bar.style.transform = \`scaleY(\${scale})\`;
               
-              // Add subtle color variation based on intensity
-              const intensity = Math.min(0.9, 0.5 + scale * 0.5);
+              // Enhanced color variation based on intensity
+              const intensity = Math.min(0.95, 0.5 + scale * 0.5);
+              const hue = 360 - Math.floor(scale * 15); // Slight hue shift based on intensity
               bar.style.background = \`linear-gradient(to top, 
-                rgba(255, 59, 48, \${intensity * 0.5}), 
-                rgba(255, 59, 48, \${intensity}))\`;
+                hsla(\${hue}, 90%, 50%, \${intensity * 0.5}), 
+                hsla(\${hue}, 90%, 60%, \${intensity}))\`;
             }, delay);
           });
           
