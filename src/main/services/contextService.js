@@ -130,7 +130,7 @@ class ContextService extends BaseService {
         if (currentClipboard.length > 10 && !this.isSimilarToExistingContext(currentClipboard)) {
           // Add to memory manager if available
           if (this.memoryManager) {
-            this.memoryManager.addItem({
+            this.memoryManager.addMemoryItem({
               content: currentClipboard,
               source: 'clipboard',
               application: this.activeApplication,
