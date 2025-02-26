@@ -153,7 +153,7 @@ class NotificationService extends BaseService {
   showNoAudioDetected() {
     this.showNotification(
       'No Audio Detected',
-      'No speech was detected during the recording.',
+      'No speech was detected during the recording. Try speaking louder or adjusting your microphone.',
       'info'
     );
   }

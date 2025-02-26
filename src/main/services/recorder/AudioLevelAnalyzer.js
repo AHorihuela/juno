@@ -4,10 +4,11 @@
 class AudioLevelAnalyzer {
   constructor(services) {
     this.services = services;
-    this.silenceThreshold = 20;
+    this.silenceThreshold = 15;
     this.levelSmoothingFactor = 0.7;
     this.currentLevels = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     this.hasAudioContent = false;
+    this.peakRMS = 0; // Track peak RMS value
   }
 
   /**
@@ -16,6 +17,7 @@ class AudioLevelAnalyzer {
   reset() {
     this.hasAudioContent = false;
     this.currentLevels = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    this.peakRMS = 0;
   }
 
   /**
@@ -59,6 +61,9 @@ class AudioLevelAnalyzer {
     
     const rms = Math.sqrt(sum / samples.length);
     
+    // Track peak RMS value
+    this.peakRMS = Math.max(this.peakRMS, rms);
+    
     // Even more sensitive normalization (reduced from 2000 to 1800)
     // Apply an even stronger non-linear curve to significantly amplify quieter sounds
     // The power of 0.5 makes the curve more aggressive for low values
@@ -88,9 +93,9 @@ class AudioLevelAnalyzer {
     
     // More stringent thresholds to better distinguish between ambient noise and actual speech
     // Requires both a minimum percentage of samples above threshold AND a minimum RMS value
-    const isActualSpeech = percentageAboveThreshold > 12 && 
-                          maxConsecutiveSamplesAboveThreshold > 30 &&
-                          rms > 300;
+    const isActualSpeech = percentageAboveThreshold > 8 &&
+                          maxConsecutiveSamplesAboveThreshold > 20 &&
+                          rms > 200;
     
     // Log detailed audio metrics for debugging
     if (isActualSpeech) {
@@ -118,7 +123,8 @@ class AudioLevelAnalyzer {
       return {
         hasRealSpeech: false,
         percentageAboveThreshold: 0,
-        averageRMS: 0
+        averageRMS: 0,
+        peakRMS: 0
       };
     }
     
@@ -133,23 +139,29 @@ class AudioLevelAnalyzer {
     
     const percentageAboveThreshold = (samplesAboveThreshold / totalSamples) * 100;
     
-    // Calculate RMS value for better audio content detection
+    // Calculate RMS values for better audio content detection
+    let peakRMS = 0;
     const averageRMS = Math.round(
       audioData.reduce((sum, chunk) => {
         const samples = new Int16Array(chunk.buffer);
         const rms = Math.sqrt(samples.reduce((s, sample) => s + sample * sample, 0) / samples.length);
+        peakRMS = Math.max(peakRMS, rms);
         return sum + rms;
       }, 0) / audioData.length
     );
     
-    // More stringent check for audio content - requires both percentage above threshold
-    // and minimum RMS value to consider it valid speech
-    const hasRealSpeech = percentageAboveThreshold > 15 && averageRMS > 250;
+    // More stringent check for audio content - requires either:
+    // 1. Sufficient average RMS value, OR
+    // 2. A high peak RMS value with some minimum percentage above threshold
+    const hasRealSpeech = 
+      (percentageAboveThreshold > 10 && averageRMS > 100) || 
+      (percentageAboveThreshold > 5 && peakRMS > 300);
     
     return {
       hasRealSpeech,
       percentageAboveThreshold,
-      averageRMS
+      averageRMS,
+      peakRMS: Math.round(peakRMS)
     };
   }
 

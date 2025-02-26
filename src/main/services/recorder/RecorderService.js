@@ -247,8 +247,19 @@ class RecorderService extends BaseService {
         totalChunks: this.audioData.length,
         hasAudioContent,
         averageRMS: audioAnalysis.averageRMS,
+        peakRMS: audioAnalysis.peakRMS,
         hasRealSpeech,
-        hasMinimumDuration
+        hasMinimumDuration,
+        // Add more detailed diagnostics
+        thresholds: {
+          percentageThreshold: '10%', // Should match the value in AudioLevelAnalyzer
+          rmsThreshold: 100, // Updated to match the value in AudioLevelAnalyzer
+          peakRMSThreshold: 300 // New peak RMS threshold
+        },
+        audioDetails: {
+          silenceThreshold: this.audioAnalyzer.silenceThreshold,
+          maxRMS: audioAnalysis.averageRMS
+        }
       });
 
       // Skip transcription if no real audio content detected or recording is too short
@@ -263,7 +274,15 @@ class RecorderService extends BaseService {
             type: 'info'
           });
         } else {
-          this.getService('notification').showNoAudioDetected();
+          // Enhanced notification with more details
+          const percentageValue = Math.round(audioAnalysis.percentageAboveThreshold);
+          const rmsValue = audioAnalysis.averageRMS;
+          const peakRMSValue = audioAnalysis.peakRMS;
+          this.getService('notification').showNotification(
+            'No Audio Detected',
+            `No speech was detected (Avg RMS: ${rmsValue}, Peak RMS: ${peakRMSValue}). Try speaking louder or adjusting your microphone.`,
+            'info'
+          );
         }
         
         this.emit('stop');
