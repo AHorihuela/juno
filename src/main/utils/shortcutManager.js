@@ -1,5 +1,8 @@
 const { globalShortcut } = require('electron');
-const serviceRegistry = require('../services/ServiceRegistry');
+const LogManager = require('./LogManager');
+
+// Get a logger for this module
+const logger = LogManager.getLogger('ShortcutManager');
 
 // Constants
 const FN_DOUBLE_TAP_DELAY = 200; // ms (reduced from 300ms for faster response)
@@ -14,6 +17,11 @@ let fnKeyTimeout = null;
  * @returns {string} - The normalized shortcut
  */
 function normalizeShortcut(shortcut) {
+  if (!shortcut) {
+    logger.warn('Attempted to normalize undefined or empty shortcut');
+    return '';
+  }
+  
   // Replace macOS symbols with their ASCII equivalents
   return shortcut
     .replace('⌘', 'Command')
@@ -24,55 +32,132 @@ function normalizeShortcut(shortcut) {
 
 /**
  * Registers all global shortcuts for the application
+ * @param {Object} serviceRegistry - The service registry instance
+ * @returns {Promise<boolean>} - True if shortcuts were registered successfully
  */
-async function registerShortcuts() {
-  console.log('Registering shortcuts...');
+async function registerShortcuts(serviceRegistry) {
+  logger.info('Registering application shortcuts...');
   
-  // Get configured shortcut
-  const rawShortcut = await serviceRegistry.get('config').getKeyboardShortcut();
-  const shortcut = normalizeShortcut(rawShortcut);
+  if (!serviceRegistry) {
+    logger.error('Service registry not provided to registerShortcuts');
+    return false;
+  }
   
-  console.log('Using keyboard shortcut:', rawShortcut);
-  console.log('Normalized shortcut:', shortcut);
-  
-  // Register configured shortcut for toggle
-  const success = globalShortcut.register(shortcut, () => {
-    console.log('Shortcut triggered');
-    const now = Date.now();
-    
-    if (now - lastFnKeyPress <= FN_DOUBLE_TAP_DELAY) {
-      // Double tap detected
-      console.log('Double tap detected, starting recording');
-      clearTimeout(fnKeyTimeout);
-      const recorder = serviceRegistry.get('recorder');
-      if (!recorder.isRecording()) {
-        recorder.start();
-      }
-    } else {
-      // Single tap - wait to see if it's a double tap
-      console.log('Single tap detected, waiting for potential double tap');
-      fnKeyTimeout = setTimeout(() => {
-        const recorder = serviceRegistry.get('recorder');
-        if (recorder.isRecording()) {
-          console.log('Single tap timeout reached, stopping recording');
-          recorder.stop();
-        }
-      }, FN_DOUBLE_TAP_DELAY);
+  try {
+    // Get configured shortcut
+    const configService = serviceRegistry.get('config');
+    if (!configService) {
+      logger.error('Config service not available for shortcut registration');
+      return false;
     }
     
-    lastFnKeyPress = now;
-  });
+    logger.debug('Retrieved config service, getting keyboard shortcut...');
+    
+    const rawShortcut = await configService.getKeyboardShortcut();
+    logger.debug('Retrieved keyboard shortcut from config:', { metadata: { rawShortcut } });
+    
+    if (!rawShortcut) {
+      logger.warn('No keyboard shortcut configured, skipping registration');
+      return false;
+    }
+    
+    const shortcut = normalizeShortcut(rawShortcut);
+    
+    logger.info('Registering keyboard shortcut:', { 
+      metadata: { 
+        rawShortcut, 
+        normalizedShortcut: shortcut 
+      } 
+    });
+    
+    // Unregister any existing shortcuts to avoid conflicts
+    try {
+      globalShortcut.unregister(shortcut);
+    } catch (error) {
+      logger.warn('Error unregistering existing shortcut:', { metadata: { error } });
+    }
+    
+    // Register configured shortcut for toggle
+    const success = globalShortcut.register(shortcut, () => {
+      logger.debug('Shortcut triggered');
+      const now = Date.now();
+      
+      try {
+        const recorder = serviceRegistry.get('recorder');
+        if (!recorder) {
+          logger.error('Recorder service not available for shortcut action');
+          return;
+        }
+        
+        if (now - lastFnKeyPress <= FN_DOUBLE_TAP_DELAY) {
+          // Double tap detected
+          logger.info('Double tap detected, starting recording');
+          clearTimeout(fnKeyTimeout);
+          
+          if (!recorder.isRecording()) {
+            logger.debug('Initiating recording via shortcut');
+            recorder.start().catch(error => {
+              logger.error('Error starting recording via shortcut:', { metadata: { error } });
+            });
+          }
+        } else {
+          // Single tap - wait to see if it's a double tap
+          logger.debug('Single tap detected, waiting for potential double tap');
+          
+          if (fnKeyTimeout) {
+            clearTimeout(fnKeyTimeout);
+          }
+          
+          fnKeyTimeout = setTimeout(() => {
+            try {
+              if (recorder.isRecording()) {
+                logger.info('Single tap timeout reached, stopping recording');
+                recorder.stop().catch(error => {
+                  logger.error('Error stopping recording via shortcut:', { metadata: { error } });
+                });
+              }
+            } catch (error) {
+              logger.error('Error in shortcut timeout handler:', { metadata: { error } });
+            }
+          }, FN_DOUBLE_TAP_DELAY);
+        }
+        
+        lastFnKeyPress = now;
+      } catch (error) {
+        logger.error('Error handling shortcut:', { metadata: { error } });
+      }
+    });
 
-  console.log('Keyboard shortcut registration success:', success);
-  return success;
+    if (success) {
+      logger.info('Keyboard shortcut registered successfully:', { metadata: { shortcut } });
+    } else {
+      logger.error('Failed to register keyboard shortcut:', { metadata: { shortcut } });
+    }
+    
+    return success;
+  } catch (error) {
+    logger.error('Error registering shortcuts:', { 
+      metadata: { 
+        error: error.toString(),
+        stack: error.stack,
+        message: error.message
+      } 
+    });
+    return false;
+  }
 }
 
 /**
  * Unregisters all global shortcuts
  */
 function unregisterAllShortcuts() {
-  globalShortcut.unregisterAll();
-  console.log('All shortcuts unregistered');
+  try {
+    logger.info('Unregistering all shortcuts');
+    globalShortcut.unregisterAll();
+    logger.info('All shortcuts unregistered successfully');
+  } catch (error) {
+    logger.error('Error unregistering shortcuts:', { metadata: { error } });
+  }
 }
 
 module.exports = {

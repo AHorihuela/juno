@@ -1,4 +1,9 @@
 const { systemPreferences } = require('electron');
+const record = require('node-record-lpcm16');
+const LogManager = require('../../utils/LogManager');
+
+// Get a logger for this module
+const logger = LogManager.getLogger('MicrophoneManager');
 
 /**
  * Manages microphone permissions and device selection
@@ -7,172 +12,198 @@ class MicrophoneManager {
   constructor(services) {
     this.services = services;
     this.currentDeviceId = null;
+    logger.debug('MicrophoneManager initialized');
   }
 
   /**
-   * Checks if the microphone permission is granted
+   * Checks if microphone permission is granted
    * @param {string} deviceId - Optional device ID to check
    * @returns {Promise<boolean>} - True if permission is granted
    */
   async checkMicrophonePermission(deviceId = null) {
+    logger.debug('Checking microphone permission...', { metadata: { deviceId } });
+    
+    // On macOS, check system preferences
     if (process.platform === 'darwin') {
-      const status = systemPreferences.getMediaAccessStatus('microphone');
-      
-      if (status === 'not-determined') {
-        const granted = await systemPreferences.askForMediaAccess('microphone');
-        if (!granted) {
-          throw new Error('Microphone access denied');
-        }
-        return true;
-      }
-      
-      if (status !== 'granted') {
-        throw new Error('Microphone access denied');
-      }
-
-      // For macOS, we need to check if this specific device is accessible
-      if (deviceId && deviceId !== 'default') {
-        try {
-          const { desktopCapturer } = require('electron');
-          const sources = await desktopCapturer.getSources({
-            types: ['audio'],
-            thumbnailSize: { width: 0, height: 0 }
-          });
+      try {
+        const status = systemPreferences.getMediaAccessStatus('microphone');
+        logger.debug('macOS microphone permission status:', { metadata: { status } });
+        
+        if (status === 'denied') {
+          logger.warn('Microphone permission denied by macOS');
+          this.services.notification.showNotification(
+            'Microphone Access Required',
+            'Please enable microphone access in System Preferences > Security & Privacy > Privacy > Microphone',
+            'error'
+          );
+          return false;
+        } else if (status === 'restricted') {
+          logger.warn('Microphone access restricted by macOS');
+          this.services.notification.showNotification(
+            'Microphone Access Restricted',
+            'Microphone access is restricted by system policy. Please contact your system administrator.',
+            'error'
+          );
+          return false;
+        } else if (status === 'not-determined') {
+          logger.info('Requesting microphone permission from macOS...');
+          const granted = await systemPreferences.askForMediaAccess('microphone');
+          logger.info('Microphone permission request result:', { metadata: { granted } });
           
-          const deviceExists = sources.some(source => source.id === deviceId);
-          if (!deviceExists) {
-            throw new Error('Selected microphone is no longer available');
+          if (!granted) {
+            this.services.notification.showNotification(
+              'Microphone Access Denied',
+              'Microphone access is required for recording. Please enable it in System Preferences.',
+              'error'
+            );
+            return false;
           }
-        } catch (error) {
-          console.error('Error checking device availability:', error);
-          throw new Error('Failed to verify microphone access');
         }
+      } catch (error) {
+        logger.error('Error checking macOS microphone permissions:', { metadata: { error } });
+        throw new Error(`Failed to check microphone permissions: ${error.message}`);
       }
-      
-      return true;
     }
     
-    return true;
+    // Test if we can actually access the microphone
+    try {
+      logger.debug('Testing microphone access...');
+      const hasAccess = await this.testMicrophoneAccess(deviceId);
+      
+      if (!hasAccess) {
+        logger.warn('Microphone test failed - no access to device');
+        this.services.notification.showNotification(
+          'Microphone Not Available',
+          'Could not access the microphone. Please check your connections and permissions.',
+          'error'
+        );
+        return false;
+      }
+      
+      logger.debug('Microphone permission check passed');
+      return true;
+    } catch (error) {
+      logger.error('Error testing microphone access:', { metadata: { error } });
+      throw error;
+    }
   }
 
   /**
-   * Tests microphone access by attempting to start a short recording
-   * @returns {Promise<boolean>} - True if microphone access is available
+   * Tests microphone access by starting a short recording
+   * @param {string} deviceId - Optional device ID to test
+   * @returns {Promise<boolean>} - True if microphone is accessible
    */
-  async testMicrophoneAccess() {
-    console.log('[Recorder] Testing microphone access...');
+  async testMicrophoneAccess(deviceId = null) {
+    logger.debug('Testing microphone access...', { metadata: { deviceId } });
     
-    try {
-      // Check microphone permission first
-      await this.checkMicrophonePermission();
-      
-      // Try to create a recorder instance
-      const record = require('node-record-lpcm16');
-      
-      const recordingOptions = {
-        sampleRate: 16000,
-        channels: 1,
-        audioType: 'raw'
-      };
-      
-      console.log('[Recorder] Creating test recorder with options:', recordingOptions);
-      const testRecorder = record.record(recordingOptions);
-      
-      // Start recording for a very short time
-      console.log('[Recorder] Starting test recording...');
-      const stream = testRecorder.stream();
-      
-      // Set up data handler
-      let dataReceived = false;
-      const dataPromise = new Promise((resolve) => {
-        const timeout = setTimeout(() => {
+    return new Promise((resolve, reject) => {
+      try {
+        // Configure recording options
+        const options = {
+          sampleRate: 16000,
+          channels: 1,
+          audioType: 'raw'
+        };
+        
+        if (deviceId) {
+          options.device = deviceId;
+        }
+        
+        logger.debug('Starting test recording with options:', { metadata: { options } });
+        
+        // Start a test recording
+        const testRecorder = record.record(options);
+        let dataReceived = false;
+        let timeout = null;
+        
+        // Set a timeout to end the test after 1 second
+        timeout = setTimeout(() => {
+          logger.debug('Test recording timeout reached');
+          testRecorder.stop();
+          
           if (!dataReceived) {
-            console.log('[Recorder] No audio data received during test');
-            resolve(false);
+            logger.warn('No audio data received during test recording');
           }
-        }, 500);
+          
+          resolve(dataReceived);
+        }, 1000);
         
-        stream.once('data', () => {
-          console.log('[Recorder] Successfully received audio data in test');
-          dataReceived = true;
-          clearTimeout(timeout);
-          resolve(true);
-        });
-        
-        stream.once('error', (err) => {
-          console.error('[Recorder] Error during test recording:', err);
-          clearTimeout(timeout);
-          resolve(false);
-        });
-      });
-      
-      // Wait for data or timeout
-      await dataPromise;
-      
-      // Stop the test recorder
-      console.log('[Recorder] Stopping test recording');
-      testRecorder.stop();
-      
-      return dataReceived;
-    } catch (error) {
-      console.error('[Recorder] Error testing microphone access:', error);
-      return false;
-    }
+        // Listen for data events
+        testRecorder.stream()
+          .on('data', (data) => {
+            if (!dataReceived) {
+              logger.debug('Audio data received during test recording', { 
+                metadata: { dataSize: data.length } 
+              });
+              dataReceived = true;
+              
+              // Stop the test early once we've confirmed data is flowing
+              clearTimeout(timeout);
+              testRecorder.stop();
+              resolve(true);
+            }
+          })
+          .on('error', (err) => {
+            logger.error('Error during test recording:', { metadata: { error: err } });
+            clearTimeout(timeout);
+            testRecorder.stop();
+            reject(err);
+          });
+      } catch (error) {
+        logger.error('Failed to start test recording:', { metadata: { error } });
+        reject(error);
+      }
+    });
   }
 
   /**
    * Sets the current recording device
-   * @param {string} deviceId - The device ID to use
+   * @param {string} deviceId - The device ID to set
    * @returns {Promise<boolean>} - True if device was set successfully
    */
   async setDevice(deviceId) {
+    logger.info('Setting recording device...', { metadata: { deviceId } });
+    
     try {
-      console.log('Setting device:', deviceId);
+      // Validate access to the device
+      const hasAccess = await this.checkMicrophonePermission(deviceId);
       
-      // Validate device access
-      await this.checkMicrophonePermission(deviceId);
-      
-      // Store the device ID
-      this.currentDeviceId = deviceId;
-      
-      // Test the device by trying to open it
-      try {
-        const record = require('node-record-lpcm16');
-        const testRecorder = record.record({
-          sampleRate: 16000,
-          channels: 1,
-          audioType: 'raw',
-          device: deviceId === 'default' ? null : deviceId
-        });
-        
-        // If we can start recording, the device is valid
-        testRecorder.stream();
-        testRecorder.stop();
-        
-        console.log('Successfully tested device:', deviceId);
-      } catch (error) {
-        console.error('Failed to test device:', error);
-        this.currentDeviceId = 'default'; // Reset to default
-        throw new Error('Failed to access the selected microphone. Please try another device.');
+      if (!hasAccess) {
+        logger.warn('No access to requested device:', { metadata: { deviceId } });
+        return false;
       }
-
-      return true;
-    } catch (error) {
-      console.error('Error setting device:', error);
-      if (this.services) {
+      
+      // Test the device
+      const deviceWorks = await this.testMicrophoneAccess(deviceId);
+      
+      if (!deviceWorks) {
+        logger.warn('Device test failed:', { metadata: { deviceId } });
         this.services.notification.showNotification(
-          'Microphone Error',
-          error.message,
+          'Microphone Test Failed',
+          'Could not record audio with the selected microphone. Please try another device.',
           'error'
         );
+        return false;
       }
+      
+      // Set the device
+      this.currentDeviceId = deviceId;
+      logger.info('Device set successfully:', { metadata: { deviceId } });
+      return true;
+    } catch (error) {
+      logger.error('Error setting device:', { metadata: { error } });
+      this.services.notification.showNotification(
+        'Microphone Error',
+        error.message || 'Failed to set microphone device',
+        'error'
+      );
       return false;
     }
   }
 
   /**
    * Gets the current device ID
-   * @returns {string|null} - The current device ID
+   * @returns {string|null} - The current device ID or null
    */
   getCurrentDeviceId() {
     return this.currentDeviceId;

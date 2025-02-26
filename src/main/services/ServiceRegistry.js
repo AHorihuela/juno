@@ -81,7 +81,7 @@ class ServiceRegistry extends EventEmitter {
 
     // Initialize any remaining services not in the initOrder
     for (const [name, service] of this.services.entries()) {
-      if (!this.initOrder.includes(name)) {
+      if (!this.initOrder.includes(name) && !name.includes(':')) {
         logger.info(`Initializing additional service: ${name}`);
         try {
           await service.initialize(this);
@@ -125,7 +125,7 @@ class ServiceRegistry extends EventEmitter {
 
     // Shutdown any remaining services not in the initOrder
     for (const [name, service] of this.services.entries()) {
-      if (!this.initOrder.includes(name)) {
+      if (!this.initOrder.includes(name) && !name.includes(':')) {
         logger.info(`Shutting down additional service: ${name}`);
         try {
           await service.shutdown();

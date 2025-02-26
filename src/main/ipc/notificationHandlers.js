@@ -1,10 +1,16 @@
 const { ipcMain } = require('electron');
-const serviceRegistry = require('../services/ServiceRegistry');
+const LogManager = require('../utils/LogManager');
+
+// Get a logger for this module
+const logger = LogManager.getLogger('NotificationHandlers');
 
 /**
  * Sets up all notification-related IPC handlers
+ * @param {Object} serviceRegistry - The service registry instance
  */
-function setupNotificationHandlers() {
+function setupNotificationHandlers(serviceRegistry) {
+  logger.info('Setting up notification handlers...');
+  
   // Add notification handler
   ipcMain.on('show-notification', (_, notification) => {
     try {
@@ -15,9 +21,11 @@ function setupNotificationHandlers() {
         notification.type
       );
     } catch (error) {
-      console.error('Error showing notification:', error);
+      logger.error('Error showing notification:', { metadata: { error } });
     }
   });
+  
+  logger.info('Notification handlers setup complete');
 }
 
 module.exports = setupNotificationHandlers; 

@@ -1,10 +1,16 @@
 const { ipcMain, globalShortcut } = require('electron');
-const serviceRegistry = require('../services/ServiceRegistry');
+const LogManager = require('../utils/LogManager');
+
+// Get a logger for this module
+const logger = LogManager.getLogger('SettingsHandlers');
 
 /**
  * Sets up all settings-related IPC handlers
+ * @param {Object} serviceRegistry - The service registry instance
  */
-function setupSettingsHandlers() {
+function setupSettingsHandlers(serviceRegistry) {
+  logger.info('Setting up settings handlers...');
+  
   // Update settings handlers to use handle/invoke
   ipcMain.handle('save-settings', async (_, settings) => {
     try {
@@ -44,14 +50,16 @@ function setupSettingsHandlers() {
         // Re-register shortcuts when the keyboard shortcut changes
         const registerShortcuts = require('../utils/shortcutManager').registerShortcuts;
         globalShortcut.unregisterAll();
-        await registerShortcuts();
+        await registerShortcuts(serviceRegistry);
       }
       return { success: true };
     } catch (error) {
-      console.error('Error saving settings:', error);
+      logger.error('Error saving settings:', { metadata: { error } });
       throw new Error(`Failed to save settings: ${error.message}`);
     }
   });
+  
+  logger.info('Settings handlers setup complete');
 }
 
 module.exports = setupSettingsHandlers; 

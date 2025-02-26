@@ -1,8 +1,13 @@
 const { ipcMain, globalShortcut } = require('electron');
-const serviceRegistry = require('../services/ServiceRegistry');
 const { normalizeShortcut } = require('../utils/shortcutManager');
+const LogManager = require('../utils/LogManager');
 
-function setupIpcHandlers(mainWindow) {
+// Get a logger for this module
+const logger = LogManager.getLogger('IPCHandlers');
+
+function setupIpcHandlers(mainWindow, serviceRegistry) {
+  logger.info('Setting up IPC handlers with mainWindow and serviceRegistry');
+  
   // Recording status handlers
   const recorder = serviceRegistry.get('recorder');
   const tray = serviceRegistry.get('tray');
@@ -21,7 +26,7 @@ function setupIpcHandlers(mainWindow) {
         });
         escapeRegistered = true;
       } catch (error) {
-        console.error('[IPC] Error registering Escape shortcut:', error);
+        logger.error('Error registering Escape shortcut:', { metadata: { error } });
       }
     }
   });

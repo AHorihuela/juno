@@ -417,55 +417,22 @@ class MainWindowManager {
     try {
       if (!this.mainWindow || this.mainWindow.isDestroyed()) {
         const { createMainWindow } = require('../utils/windowManager');
-        const newWindow = createMainWindow();
         
-        if (!newWindow) {
-          console.error('[MainWindowManager] Failed to create new main window');
-          return false;
+        // Get the service registry from the WindowManager
+        const serviceRegistry = this.windowManager.registry;
+        
+        // Create a new window with the service registry
+        const newWindow = createMainWindow(serviceRegistry);
+        
+        if (newWindow) {
+          this.setMainWindow(newWindow);
+          return true;
         }
-        
-        this.mainWindow = newWindow;
-        
-        // Re-setup IPC handlers
-        const setupIpcHandlers = require('../ipc/handlers');
-        setupIpcHandlers(this.mainWindow);
-        
-        // Re-setup specialized IPC handlers
-        const setupMicrophoneHandlers = require('../ipc/microphoneHandlers');
-        const setupSettingsHandlers = require('../ipc/settingsHandlers');
-        const setupNotificationHandlers = require('../ipc/notificationHandlers');
-        const setupDictionaryIpcHandlers = require('../services/dictionaryIpcHandlers');
-        
-        setupMicrophoneHandlers();
-        setupSettingsHandlers();
-        setupNotificationHandlers();
-        setupDictionaryIpcHandlers();
-        
-        // Restore window state if available
-        if (this.lastWindowState) {
-          this.restoreFromState(this.lastWindowState);
-        }
-        
-        console.log('[MainWindowManager] Main window recreated successfully');
-        return true;
-      } else {
-        console.log('[MainWindowManager] Main window already exists and is valid');
-        return true;
       }
+      return false;
     } catch (error) {
-      console.error('[MainWindowManager] Error recreating main window:', {
-        error: error.message,
-        stack: error.stack
-      });
-      
-      this.windowManager.emitError('MainWindowManager', {
-        ...error,
-        operation: 'recreateMainWindow',
-        recovery: { type: 'fallback', action: 'createMinimal' }
-      });
-      
-      // As a last resort, try to create a minimal fallback window
-      return this.createFallbackWindow();
+      console.error('[MainWindowManager] Error recreating window:', error);
+      return false;
     }
   }
 }

@@ -1,37 +1,72 @@
-const { app } = require('electron');
-const serviceRegistry = require('../services/ServiceRegistry');
+const { app, dialog } = require('electron');
+const LogManager = require('../utils/LogManager');
+
+// Get a logger for this module
+const logger = LogManager.getLogger('ErrorHandlers');
 
 /**
  * Sets up global error handlers for the application
  * @param {BrowserWindow} mainWindow - The main application window
+ * @param {Object} serviceRegistry - The service registry instance
  */
-function setupErrorHandlers(mainWindow) {
+function setupErrorHandlers(mainWindow, serviceRegistry) {
   // Handle renderer process crashes
   app.on('render-process-crashed', (event, webContents, killed) => {
-    console.error('Renderer process crashed:', { killed });
+    logger.error('Renderer process crashed', { metadata: { killed } });
     
-    const notificationService = serviceRegistry.get('notification');
-    notificationService.showNotification(
-      'Application Error',
-      'A window crashed and will be restarted.',
-      'error'
-    );
+    // Only try to use services if they're available
+    if (serviceRegistry && serviceRegistry.initialized) {
+      try {
+        const notificationService = serviceRegistry.get('notification');
+        if (notificationService && notificationService.initialized) {
+          notificationService.showNotification(
+            'Application Error',
+            'A window crashed and will be restarted.',
+            'error'
+          );
+        }
 
-    // Recreate the window
-    const windowManager = serviceRegistry.get('windowManager');
-    windowManager.recreateMainWindow();
+        // Recreate the window
+        const windowManager = serviceRegistry.get('windowManager');
+        if (windowManager && windowManager.initialized) {
+          windowManager.recreateMainWindow();
+        }
+      } catch (error) {
+        logger.error('Error handling renderer crash', { metadata: { error } });
+        // Show a native dialog as fallback
+        dialog.showErrorBox(
+          'Application Error',
+          'A window crashed and could not be restarted automatically. Please restart the application.'
+        );
+      }
+    } else {
+      // Show a native dialog as fallback
+      dialog.showErrorBox(
+        'Application Error',
+        'A window crashed and could not be restarted automatically. Please restart the application.'
+      );
+    }
   });
 
   // Handle GPU process crashes
   app.on('gpu-process-crashed', (event, killed) => {
-    console.error('GPU process crashed:', { killed });
+    logger.error('GPU process crashed', { metadata: { killed } });
     
-    const notificationService = serviceRegistry.get('notification');
-    notificationService.showNotification(
-      'Application Error',
-      'The GPU process crashed. The application will restart.',
-      'error'
-    );
+    // Only try to use services if they're available
+    if (serviceRegistry && serviceRegistry.initialized) {
+      try {
+        const notificationService = serviceRegistry.get('notification');
+        if (notificationService && notificationService.initialized) {
+          notificationService.showNotification(
+            'Application Error',
+            'The GPU process crashed. The application will restart.',
+            'error'
+          );
+        }
+      } catch (error) {
+        logger.error('Error handling GPU crash', { metadata: { error } });
+      }
+    }
 
     // Restart the app
     setTimeout(() => {
@@ -42,21 +77,43 @@ function setupErrorHandlers(mainWindow) {
 
   // Handle uncaught exceptions
   process.on('uncaughtException', (error) => {
-    console.error('[Main] Uncaught exception:', error);
+    logger.error('Uncaught exception in main process', { metadata: { error } });
     
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('error', {
-        message: 'An unexpected error occurred',
-        error: error.message
-      });
+      try {
+        mainWindow.webContents.send('error', {
+          message: 'An unexpected error occurred',
+          error: error.message
+        });
+      } catch (sendError) {
+        logger.error('Error sending error to renderer', { metadata: { error: sendError } });
+      }
     }
     
-    const notificationService = serviceRegistry.get('notification');
-    if (notificationService) {
-      notificationService.showNotification(
+    // Only try to use services if they're available
+    if (serviceRegistry && serviceRegistry.initialized) {
+      try {
+        const notificationService = serviceRegistry.get('notification');
+        if (notificationService && notificationService.initialized) {
+          notificationService.showNotification(
+            'Application Error',
+            'An unexpected error occurred: ' + error.message,
+            'error'
+          );
+        }
+      } catch (notifyError) {
+        logger.error('Error showing notification', { metadata: { error: notifyError } });
+        // Show a native dialog as fallback
+        dialog.showErrorBox(
+          'Application Error',
+          'An unexpected error occurred: ' + error.message
+        );
+      }
+    } else {
+      // Show a native dialog as fallback
+      dialog.showErrorBox(
         'Application Error',
-        'An unexpected error occurred: ' + error.message,
-        'error'
+        'An unexpected error occurred: ' + error.message
       );
     }
   });

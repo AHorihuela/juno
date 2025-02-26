@@ -1,16 +1,20 @@
 const { ipcMain, systemPreferences } = require('electron');
-const serviceRegistry = require('../services/ServiceRegistry');
 const record = require('node-record-lpcm16');
+const LogManager = require('../utils/LogManager');
+
+// Get a logger for this module
+const logger = LogManager.getLogger('MicrophoneHandlers');
 
 /**
  * Sets up all microphone-related IPC handlers
+ * @param {Object} serviceRegistry - The service registry instance
  */
-function setupMicrophoneHandlers() {
-  console.log('[MicrophoneHandlers] Setting up microphone handlers...');
+function setupMicrophoneHandlers(serviceRegistry) {
+  logger.info('Setting up microphone handlers...');
   
   // Handle microphone selection
   ipcMain.handle('set-microphone', async (event, deviceId) => {
-    console.log('[MicrophoneHandlers] set-microphone called with deviceId:', deviceId);
+    logger.info('set-microphone called with deviceId:', { metadata: { deviceId } });
     try {
       // Update the recorder's device
       const success = await serviceRegistry.get('recorder').setDevice(deviceId);
@@ -23,31 +27,31 @@ function setupMicrophoneHandlers() {
       
       return { success: true };
     } catch (error) {
-      console.error('[MicrophoneHandlers] Error setting microphone:', error);
+      logger.error('Error setting microphone:', { metadata: { error } });
       throw error;
     }
   });
 
   // Handle microphone enumeration
   ipcMain.handle('get-microphones', async (event) => {
-    console.log('[MicrophoneHandlers] get-microphones called from renderer');
-    console.log('[MicrophoneHandlers] Event sender:', event.sender.getURL());
+    logger.info('get-microphones called from renderer');
+    logger.info('Event sender:', event.sender.getURL());
     
     try {
-      console.log('[MicrophoneHandlers] Enumerating audio devices...');
+      logger.info('Enumerating audio devices...');
       
       // Check microphone permission on macOS
       if (process.platform === 'darwin') {
         const status = systemPreferences.getMediaAccessStatus('microphone');
-        console.log('[MicrophoneHandlers] macOS microphone permission status:', status);
+        logger.info('macOS microphone permission status:', status);
         
         if (status !== 'granted') {
-          console.log('[MicrophoneHandlers] Requesting microphone permission...');
+          logger.info('Requesting microphone permission...');
           const granted = await systemPreferences.askForMediaAccess('microphone');
-          console.log('[MicrophoneHandlers] Permission request result:', granted);
+          logger.info('Permission request result:', granted);
           
           if (!granted) {
-            console.error('[MicrophoneHandlers] Microphone permission denied by user');
+            logger.error('Microphone permission denied by user');
             throw new Error('Microphone permission denied');
           }
         }
@@ -62,7 +66,7 @@ function setupMicrophoneHandlers() {
       
       // Test if we can actually record with the default microphone
       try {
-        console.log('[MicrophoneHandlers] Testing default microphone access...');
+        logger.info('Testing default microphone access...');
         
         // Create a test recorder
         const testRecorder = record.record({
@@ -72,31 +76,31 @@ function setupMicrophoneHandlers() {
         });
         
         // Start recording for a very short time
-        console.log('[MicrophoneHandlers] Starting test recording...');
+        logger.info('Starting test recording...');
         const stream = testRecorder.stream();
         
         // Wait for a short time to see if we get data
         await new Promise((resolve) => {
           const timeout = setTimeout(() => {
-            console.log('[MicrophoneHandlers] Test recording timeout - no data received');
+            logger.info('Test recording timeout - no data received');
             resolve(false);
           }, 500);
           
           stream.once('data', () => {
-            console.log('[MicrophoneHandlers] Successfully received audio data in test');
+            logger.info('Successfully received audio data in test');
             clearTimeout(timeout);
             resolve(true);
           });
           
           stream.once('error', (err) => {
-            console.error('[MicrophoneHandlers] Error during test recording:', err);
+            logger.error('Error during test recording:', err);
             clearTimeout(timeout);
             resolve(false);
           });
         });
         
         // Stop the test recorder
-        console.log('[MicrophoneHandlers] Stopping test recording');
+        logger.info('Stopping test recording');
         testRecorder.stop();
         
         // Add a built-in microphone option
@@ -107,15 +111,15 @@ function setupMicrophoneHandlers() {
         });
         
       } catch (error) {
-        console.error('[MicrophoneHandlers] Error testing microphone access:', error);
+        logger.error('Error testing microphone access:', error);
         // We'll still return the default microphone option
       }
       
-      console.log('[MicrophoneHandlers] Available microphones:', JSON.stringify(audioInputs, null, 2));
+      logger.info('Available microphones:', JSON.stringify(audioInputs, null, 2));
       
       return audioInputs;
     } catch (error) {
-      console.error('[MicrophoneHandlers] Failed to enumerate microphones:', error);
+      logger.error('Failed to enumerate microphones:', error);
       // Return at least the default microphone option instead of throwing
       return [{
         id: 'default',
@@ -127,19 +131,19 @@ function setupMicrophoneHandlers() {
 
   // Handle microphone change
   ipcMain.handle('change-microphone', async (_, deviceId) => {
-    console.log('[MicrophoneHandlers] change-microphone called with deviceId:', deviceId);
+    logger.info('change-microphone called with deviceId:', deviceId);
     try {
-      console.log('[MicrophoneHandlers] Changing microphone to:', deviceId);
+      logger.info('Changing microphone to:', deviceId);
       const recorder = serviceRegistry.get('recorder');
       const success = await recorder.setDevice(deviceId);
       return { success };
     } catch (error) {
-      console.error('[MicrophoneHandlers] Failed to change microphone:', error);
+      logger.error('Failed to change microphone:', error);
       throw new Error('Failed to change microphone: ' + error.message);
     }
   });
   
-  console.log('[MicrophoneHandlers] Microphone handlers setup complete');
+  logger.info('Microphone handlers setup complete');
 }
 
 module.exports = setupMicrophoneHandlers; 

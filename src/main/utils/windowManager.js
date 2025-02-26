@@ -11,13 +11,13 @@
  */
 const { BrowserWindow } = require('electron');
 const path = require('path');
-const serviceRegistry = require('../services/ServiceRegistry');
 
 /**
  * Creates the main application window
+ * @param {Object} serviceRegistry - The service registry instance
  * @returns {BrowserWindow} The created window
  */
-function createMainWindow() {
+function createMainWindow(serviceRegistry) {
   try {
     console.log('Creating window...');
     const mainWindow = new BrowserWindow({
@@ -110,8 +110,12 @@ function createMainWindow() {
 
     mainWindow.on('closed', () => {
       // Clear the reference in the window manager
-      const windowMgr = serviceRegistry.get('windowManager');
-      windowMgr.clearMainWindow();
+      if (serviceRegistry) {
+        const windowMgr = serviceRegistry.get('windowManager');
+        if (windowMgr) {
+          windowMgr.clearMainWindow();
+        }
+      }
     });
 
     return mainWindow;

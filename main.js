@@ -34,7 +34,7 @@ const textProcessingService = require('./src/main/services/textProcessing');
 const resourceManager = require('./src/main/services/resourceManager');
 const overlayService = require('./src/main/services/OverlayService');
 const loggingService = require('./src/main/services/LoggingService');
-const ipcRegistry = require('./src/main/ipc/IPCRegistry');
+const ipcService = require('./src/main/services/IPCService');
 
 // Import IPC handlers
 const setupIpcHandlers = require('./src/main/ipc/handlers');
@@ -91,7 +91,7 @@ async function initializeServices() {
     serviceRegistry
       .register('config', configService())
       .register('resource', resourceManager())
-      .register('ipc', ipcRegistry)
+      .register('ipc', ipcService())
       .register('logging', loggingService())
       .register('notification', notificationService())
       .register('dictionary', dictionaryService())
@@ -111,11 +111,14 @@ async function initializeServices() {
     // Initialize all services
     await serviceRegistry.initialize();
     
-    // Setup IPC handlers after services are initialized
-    setupAllIpcHandlers();
-    
     // Register global shortcuts
-    registerShortcuts(serviceRegistry);
+    try {
+      logger.info('Registering global shortcuts...');
+      const shortcutSuccess = await registerShortcuts(serviceRegistry);
+      logger.info('Global shortcuts registration result:', { metadata: { success: shortcutSuccess } });
+    } catch (error) {
+      logger.error('Failed to register global shortcuts:', { metadata: { error } });
+    }
     
     logger.info('Application initialization complete');
   } catch (error) {
@@ -124,10 +127,10 @@ async function initializeServices() {
   }
 }
 
-function setupAllIpcHandlers() {
+function setupAllIpcHandlers(mainWindow) {
   logger.info('Setting up IPC handlers...');
   
-  setupIpcHandlers(serviceRegistry);
+  setupIpcHandlers(mainWindow, serviceRegistry);
   setupDictionaryIpcHandlers(serviceRegistry);
   setupMicrophoneHandlers(serviceRegistry);
   setupSettingsHandlers(serviceRegistry);
@@ -141,14 +144,26 @@ function setupAllIpcHandlers() {
 app.whenReady().then(async () => {
   logger.info('Application ready');
   
-  // Setup error handlers
-  setupErrorHandlers();
-  
   // Initialize services
   await initializeServices();
   
   // Create main window
-  createMainWindow();
+  try {
+    console.log('Creating window...');
+    const mainWindow = createMainWindow(serviceRegistry);
+    
+    // Setup error handlers with the main window
+    setupErrorHandlers(mainWindow, serviceRegistry);
+    
+    // Setup IPC handlers with the main window
+    setupAllIpcHandlers(mainWindow);
+    
+    // Log success
+    logger.info('Main window created successfully');
+  } catch (error) {
+    logger.error('Failed to create main window', { metadata: { error } });
+    app.exit(1);
+  }
 });
 
 // Handle app activation (macOS)

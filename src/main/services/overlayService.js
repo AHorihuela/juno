@@ -9,6 +9,10 @@
 const BaseService = require('./BaseService');
 const overlayManager = require('../ui/overlay/OverlayManager');
 const { ipcMain } = require('electron');
+const LogManager = require('../utils/LogManager');
+
+// Get a logger for this module
+const logger = LogManager.getLogger('OverlayService');
 
 class OverlayService extends BaseService {
   constructor() {
@@ -17,16 +21,21 @@ class OverlayService extends BaseService {
   }
 
   async _initialize() {
-    console.log('[OverlayService] Initializing...');
+    logger.info('Initializing OverlayService...');
     // Nothing to initialize yet
   }
 
   async _shutdown() {
-    console.log('[OverlayService] Shutting down...');
-    this.destroyOverlay();
-    
-    // Remove IPC handlers
-    ipcMain.removeAllListeners('control-action');
+    logger.info('Shutting down OverlayService...');
+    try {
+      this.destroyOverlay();
+      
+      // Remove IPC handlers
+      ipcMain.removeAllListeners('control-action');
+      logger.info('OverlayService shutdown complete');
+    } catch (error) {
+      logger.error('Error during OverlayService shutdown:', { metadata: { error } });
+    }
   }
 
   /**
@@ -35,10 +44,18 @@ class OverlayService extends BaseService {
    */
   _setupIPCHandlers() {
     ipcMain.on('control-action', (event, data) => {
-      if (data && data.action) {
-        this._handleControlAction(data.action);
+      try {
+        if (data && data.action) {
+          this._handleControlAction(data.action);
+        } else {
+          logger.warn('Received control-action event with invalid data', { metadata: { data } });
+        }
+      } catch (error) {
+        logger.error('Error handling control-action event:', { metadata: { error } });
       }
     });
+    
+    logger.debug('OverlayService IPC handlers set up');
   }
 
   /**
@@ -47,26 +64,33 @@ class OverlayService extends BaseService {
    * @private
    */
   _handleControlAction(action) {
-    console.log('[OverlayService] Received control action:', action);
+    logger.info('Received control action:', { metadata: { action } });
     
-    const recorderService = this.getService('recorder');
-    if (!recorderService) {
-      console.error('[OverlayService] Recorder service not available');
-      return;
-    }
-    
-    switch (action) {
-      case 'pause':
-        recorderService.pause();
-        break;
-      case 'resume':
-        recorderService.resume();
-        break;
-      case 'cancel':
-        recorderService.cancel();
-        break;
-      default:
-        console.warn('[OverlayService] Unknown control action:', action);
+    try {
+      const recorderService = this.getService('recorder');
+      if (!recorderService) {
+        logger.error('Recorder service not available for control action');
+        return;
+      }
+      
+      switch (action) {
+        case 'pause':
+          logger.debug('Pausing recording via overlay control');
+          recorderService.pause();
+          break;
+        case 'resume':
+          logger.debug('Resuming recording via overlay control');
+          recorderService.resume();
+          break;
+        case 'cancel':
+          logger.debug('Cancelling recording via overlay control');
+          recorderService.cancel();
+          break;
+        default:
+          logger.warn('Unknown control action received:', { metadata: { action } });
+      }
+    } catch (error) {
+      logger.error('Error handling control action:', { metadata: { error, action } });
     }
   }
 
@@ -74,60 +98,103 @@ class OverlayService extends BaseService {
    * Create and show the overlay window
    */
   createOverlay() {
-    overlayManager.createOverlayWindow();
+    logger.debug('Creating overlay window');
+    try {
+      overlayManager.createOverlayWindow();
+    } catch (error) {
+      logger.error('Error creating overlay window:', { metadata: { error } });
+    }
   }
 
   /**
    * Show the overlay window
    */
   showOverlay() {
-    overlayManager.showOverlay();
+    logger.info('Showing overlay window');
+    try {
+      // Ensure overlay window is created before showing
+      if (!overlayManager.isOverlayVisible()) {
+        this.createOverlay();
+      }
+      overlayManager.showOverlay();
+    } catch (error) {
+      logger.error('Error showing overlay window:', { metadata: { error } });
+    }
   }
 
   /**
    * Hide the overlay window
    */
   hideOverlay() {
-    overlayManager.hideOverlay();
+    logger.info('Hiding overlay window');
+    try {
+      overlayManager.hideOverlay();
+    } catch (error) {
+      logger.error('Error hiding overlay window:', { metadata: { error } });
+    }
   }
 
   /**
    * Destroy the overlay window
    */
   destroyOverlay() {
-    overlayManager.destroyOverlay();
+    logger.info('Destroying overlay window');
+    try {
+      overlayManager.destroyOverlay();
+    } catch (error) {
+      logger.error('Error destroying overlay window:', { metadata: { error } });
+    }
   }
 
   /**
-   * Update the audio levels in the overlay
-   * @param {Array<number>} levels Array of audio level values between 0 and 1
+   * Update the audio levels displayed in the overlay
+   * @param {Array<number>} levels Array of audio level values (0-1)
    */
   updateOverlayAudioLevels(levels) {
-    overlayManager.updateOverlayAudioLevels(levels);
+    try {
+      overlayManager.updateOverlayAudioLevels(levels);
+    } catch (error) {
+      logger.error('Error updating overlay audio levels:', { metadata: { error } });
+    }
   }
 
   /**
-   * Update the state of the overlay
-   * @param {string} state The state to set ('idle', 'active', 'paused')
+   * Update the overlay state
+   * @param {string} state The new state ('idle', 'active', 'paused')
    */
   updateOverlayState(state) {
-    overlayManager.updateOverlayState(state);
+    logger.debug('Updating overlay state:', { metadata: { state } });
+    try {
+      overlayManager.updateOverlayState(state);
+    } catch (error) {
+      logger.error('Error updating overlay state:', { metadata: { error, state } });
+    }
   }
 
   /**
-   * Set the initial state of the overlay
-   * @param {string} state The state to set ('idle', 'active', 'paused')
+   * Set the overlay state
+   * @param {string} state The new state ('idle', 'active', 'paused')
    */
   setOverlayState(state) {
-    overlayManager.setOverlayState(state);
+    logger.debug('Setting overlay state:', { metadata: { state } });
+    try {
+      overlayManager.setOverlayState(state);
+    } catch (error) {
+      logger.error('Error setting overlay state:', { metadata: { error, state } });
+    }
   }
 
   /**
-   * Check if the overlay window exists and is visible
-   * @returns {boolean} True if the overlay exists and is visible
+   * Check if the overlay is currently visible
+   * @returns {boolean} True if the overlay is visible
    */
   isOverlayVisible() {
-    return overlayManager.isOverlayVisible();
+    try {
+      return overlayManager.isOverlayVisible();
+    } catch (error) {
+      logger.error('Error checking overlay visibility:', { metadata: { error } });
+      return false;
+    }
   }
 }
 

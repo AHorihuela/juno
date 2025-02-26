@@ -1,8 +1,8 @@
 const { ipcMain } = require('electron');
-const dictionaryServiceFactory = require('./dictionaryService');
-const dictionaryService = dictionaryServiceFactory();
-const configServiceFactory = require('./configService');
-const configService = configServiceFactory();
+const LogManager = require('../utils/LogManager');
+
+// Get a logger for this module
+const logger = LogManager.getLogger('DictionaryIpcHandlers');
 
 // Define our channel names at module level
 const CHANNELS = {
@@ -14,47 +14,67 @@ const CHANNELS = {
   REMOVE_ACTION_VERB: 'remove-action-verb'
 };
 
-function setupDictionaryIpcHandlers() {
-  console.log('[DictionaryIpcHandlers] Starting setup...');
-  console.log('[DictionaryIpcHandlers] ipcMain available:', !!ipcMain);
-  console.log('[DictionaryIpcHandlers] handle method available:', typeof ipcMain?.handle === 'function');
-  console.log('[DictionaryIpcHandlers] dictionaryService available:', !!dictionaryService);
+/**
+ * Sets up all dictionary-related IPC handlers
+ * @param {Object} serviceRegistry - The service registry instance
+ */
+function setupDictionaryIpcHandlers(serviceRegistry) {
+  logger.info('Starting setup...');
+  
+  if (!serviceRegistry) {
+    logger.error('ServiceRegistry not provided');
+    throw new Error('ServiceRegistry is required');
+  }
+  
+  const dictionaryService = serviceRegistry.get('dictionary');
+  const configService = serviceRegistry.get('config');
+  
+  logger.info('Services retrieved', { 
+    metadata: {
+      ipcMainAvailable: !!ipcMain,
+      handleMethodAvailable: typeof ipcMain?.handle === 'function',
+      dictionaryServiceAvailable: !!dictionaryService,
+      configServiceAvailable: !!configService
+    }
+  });
   
   if (dictionaryService) {
-    console.log('[DictionaryIpcHandlers] dictionaryService methods:', {
-      getAllWords: typeof dictionaryService.getAllWords === 'function',
-      addWord: typeof dictionaryService.addWord === 'function',
-      removeWord: typeof dictionaryService.removeWord === 'function'
+    logger.debug('DictionaryService methods available', {
+      metadata: {
+        getAllWords: typeof dictionaryService.getAllWords === 'function',
+        addWord: typeof dictionaryService.addWord === 'function',
+        removeWord: typeof dictionaryService.removeWord === 'function'
+      }
     });
   }
   
   if (!ipcMain || typeof ipcMain.handle !== 'function') {
-    console.error('[DictionaryIpcHandlers] Critical: ipcMain or handle method not available');
+    logger.error('Critical: ipcMain or handle method not available');
     throw new Error('ipcMain not properly initialized');
   }
 
   // Log current state
   const currentHandlers = ipcMain.eventNames();
-  console.log('[DictionaryIpcHandlers] Current handlers before setup:', currentHandlers);
+  logger.debug('Current handlers before setup:', { metadata: { handlers: currentHandlers } });
 
   // Remove existing handlers if any
   Object.values(CHANNELS).forEach(channel => {
     try {
-      console.log(`[DictionaryIpcHandlers] Removing handler for ${channel}`);
+      logger.debug(`Removing handler for ${channel}`);
       ipcMain.removeHandler(channel);
     } catch (error) {
-      console.log(`[DictionaryIpcHandlers] Error removing handler for ${channel}:`, error);
+      logger.warn(`Error removing handler for ${channel}:`, { metadata: { error } });
     }
   });
 
   try {
     // Register get-dictionary-words handler
-    console.log(`[DictionaryIpcHandlers] Registering handler for ${CHANNELS.GET_WORDS}`);
+    logger.debug(`Registering handler for ${CHANNELS.GET_WORDS}`);
     ipcMain.handle(CHANNELS.GET_WORDS, async () => {
-      console.log('[DictionaryIpcHandlers] Handling get-dictionary-words request');
+      logger.debug('Handling get-dictionary-words request');
       try {
         if (!dictionaryService || typeof dictionaryService.getAllWords !== 'function') {
-          console.error('[DictionaryIpcHandlers] dictionaryService or getAllWords method not available');
+          logger.error('dictionaryService or getAllWords method not available');
           throw new Error('Dictionary service not properly initialized');
         }
         
@@ -63,92 +83,92 @@ function setupDictionaryIpcHandlers() {
         
         // Verify we got an array
         if (!Array.isArray(words)) {
-          console.error('[DictionaryIpcHandlers] getAllWords did not return an array:', words);
+          logger.error('getAllWords did not return an array:', { metadata: { words } });
           return [];
         }
         
-        console.log('[DictionaryIpcHandlers] Retrieved words:', words);
+        logger.debug('Retrieved words', { metadata: { count: words.length } });
         return words;
       } catch (error) {
-        console.error('[DictionaryIpcHandlers] Error getting dictionary words:', error);
+        logger.error('Error getting dictionary words:', { metadata: { error } });
         // Return empty array instead of throwing to prevent UI errors
         return [];
       }
     });
 
     // Register add-dictionary-word handler
-    console.log(`[DictionaryIpcHandlers] Registering handler for ${CHANNELS.ADD_WORD}`);
+    logger.debug(`Registering handler for ${CHANNELS.ADD_WORD}`);
     ipcMain.handle(CHANNELS.ADD_WORD, async (event, word) => {
-      console.log('[DictionaryIpcHandlers] Handling add-dictionary-word request:', word);
+      logger.debug('Handling add-dictionary-word request:', { metadata: { word } });
       try {
         const result = await dictionaryService.addWord(word);
-        console.log('[DictionaryIpcHandlers] Word added successfully:', word);
+        logger.info('Word added successfully:', { metadata: { word } });
         return result;
       } catch (error) {
-        console.error('[DictionaryIpcHandlers] Error adding dictionary word:', error);
+        logger.error('Error adding dictionary word:', { metadata: { error, word } });
         throw error;
       }
     });
 
     // Register remove-dictionary-word handler
-    console.log(`[DictionaryIpcHandlers] Registering handler for ${CHANNELS.REMOVE_WORD}`);
+    logger.debug(`Registering handler for ${CHANNELS.REMOVE_WORD}`);
     ipcMain.handle(CHANNELS.REMOVE_WORD, async (event, word) => {
-      console.log('[DictionaryIpcHandlers] Handling remove-dictionary-word request:', word);
+      logger.debug('Handling remove-dictionary-word request:', { metadata: { word } });
       try {
         const result = await dictionaryService.removeWord(word);
-        console.log('[DictionaryIpcHandlers] Word removed successfully:', word);
+        logger.info('Word removed successfully:', { metadata: { word } });
         return result;
       } catch (error) {
-        console.error('[DictionaryIpcHandlers] Error removing dictionary word:', error);
+        logger.error('Error removing dictionary word:', { metadata: { error, word } });
         throw error;
       }
     });
 
     // Register get-action-verbs handler
-    console.log(`[DictionaryIpcHandlers] Registering handler for ${CHANNELS.GET_ACTION_VERBS}`);
+    logger.debug(`Registering handler for ${CHANNELS.GET_ACTION_VERBS}`);
     ipcMain.handle(CHANNELS.GET_ACTION_VERBS, async () => {
-      console.log('[DictionaryIpcHandlers] Handling get-action-verbs request');
+      logger.debug('Handling get-action-verbs request');
       try {
         const verbs = await configService.getActionVerbs();
-        console.log('[DictionaryIpcHandlers] Retrieved action verbs:', verbs);
+        logger.debug('Retrieved action verbs', { metadata: { count: verbs.length } });
         return verbs;
       } catch (error) {
-        console.error('[DictionaryIpcHandlers] Error getting action verbs:', error);
+        logger.error('Error getting action verbs:', { metadata: { error } });
         throw error;
       }
     });
 
     // Register add-action-verb handler
-    console.log(`[DictionaryIpcHandlers] Registering handler for ${CHANNELS.ADD_ACTION_VERB}`);
+    logger.debug(`Registering handler for ${CHANNELS.ADD_ACTION_VERB}`);
     ipcMain.handle(CHANNELS.ADD_ACTION_VERB, async (event, verb) => {
-      console.log('[DictionaryIpcHandlers] Handling add-action-verb request:', verb);
+      logger.debug('Handling add-action-verb request:', { metadata: { verb } });
       try {
         const result = await configService.addActionVerb(verb);
-        console.log('[DictionaryIpcHandlers] Action verb added successfully:', verb);
+        logger.info('Action verb added successfully:', { metadata: { verb } });
         return result;
       } catch (error) {
-        console.error('[DictionaryIpcHandlers] Error adding action verb:', error);
+        logger.error('Error adding action verb:', { metadata: { error, verb } });
         throw error;
       }
     });
 
     // Register remove-action-verb handler
-    console.log(`[DictionaryIpcHandlers] Registering handler for ${CHANNELS.REMOVE_ACTION_VERB}`);
+    logger.debug(`Registering handler for ${CHANNELS.REMOVE_ACTION_VERB}`);
     ipcMain.handle(CHANNELS.REMOVE_ACTION_VERB, async (event, verb) => {
-      console.log('[DictionaryIpcHandlers] Handling remove-action-verb request:', verb);
+      logger.debug('Handling remove-action-verb request:', { metadata: { verb } });
       try {
         const result = await configService.removeActionVerb(verb);
-        console.log('[DictionaryIpcHandlers] Action verb removed successfully:', verb);
+        logger.info('Action verb removed successfully:', { metadata: { verb } });
         return result;
       } catch (error) {
-        console.error('[DictionaryIpcHandlers] Error removing action verb:', error);
+        logger.error('Error removing action verb:', { metadata: { error, verb } });
         throw error;
       }
     });
 
-    console.log('[DictionaryIpcHandlers] Setup completed successfully');
+    logger.info('Setup completed successfully');
   } catch (error) {
-    console.error('[DictionaryIpcHandlers] Critical error during setup:', error);
+    logger.error('Critical error during setup:', { metadata: { error } });
     throw error;
   }
 }
