@@ -111,7 +111,7 @@ class TrayService extends BaseService {
         { type: 'separator' },
         {
           label: isRecording ? 'Stop Recording' : 'Start Recording',
-          accelerator: process.platform === 'darwin' ? '⌘⇧ Space' : 'CommandOrControl+Shift+Space',
+          accelerator: process.platform === 'darwin' ? 'Command+Shift+Space' : 'CommandOrControl+Shift+Space',
           click: () => {
             if (isRecording) {
               recorder.stop();
@@ -144,12 +144,11 @@ class TrayService extends BaseService {
         { type: 'separator' },
         {
           label: 'Quit',
-          accelerator: process.platform === 'darwin' ? '⌘Q' : 'CommandOrControl+Q',
+          accelerator: process.platform === 'darwin' ? 'Command+Q' : 'CommandOrControl+Q',
           click: () => {
             if (isRecording) {
               recorder.stop();
             }
-            app.isQuitting = true;
             app.quit();
           }
         }
@@ -157,7 +156,7 @@ class TrayService extends BaseService {
 
       this.tray.setContextMenu(contextMenu);
     } catch (error) {
-      this.emitError(error);
+      console.error('[TrayService] Error updating context menu:', error);
     }
   }
 

@@ -77,5 +77,6 @@ function unregisterAllShortcuts() {
 
 module.exports = {
   registerShortcuts,
-  unregisterAllShortcuts
+  unregisterAllShortcuts,
+  normalizeShortcut
 }; 

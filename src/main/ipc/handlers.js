@@ -1,5 +1,6 @@
 const { ipcMain, globalShortcut } = require('electron');
 const serviceRegistry = require('../services/ServiceRegistry');
+const { normalizeShortcut } = require('../utils/shortcutManager');
 
 function setupIpcHandlers(mainWindow) {
   // Recording status handlers
@@ -7,10 +8,35 @@ function setupIpcHandlers(mainWindow) {
   const tray = serviceRegistry.get('tray');
   const windowManager = serviceRegistry.get('windowManager');
   
+  let escapeRegistered = false;
+
+  ipcMain.on('recording-started', () => {
+    if (!escapeRegistered) {
+      try {
+        globalShortcut.register(normalizeShortcut('Escape'), () => {
+          const recorder = serviceRegistry.get('recorder');
+          if (recorder.isRecording()) {
+            recorder.stop();
+          }
+        });
+        escapeRegistered = true;
+      } catch (error) {
+        console.error('[IPC] Error registering Escape shortcut:', error);
+      }
+    }
+  });
+
+  ipcMain.on('recording-stopped', () => {
+    if (escapeRegistered) {
+      globalShortcut.unregister(normalizeShortcut('Escape'));
+      escapeRegistered = false;
+    }
+  });
+
   recorder.on('start', () => {
     console.log('Recording started, registering Escape key');
     // Register Escape key when recording starts
-    const escSuccess = globalShortcut.register('Escape', () => {
+    const escSuccess = globalShortcut.register(normalizeShortcut('Escape'), () => {
       console.log('Escape pressed, stopping recording');
       recorder.stop();
     });
@@ -27,7 +53,7 @@ function setupIpcHandlers(mainWindow) {
   recorder.on('stop', () => {
     console.log('Recording stopped, unregistering Escape key');
     // Unregister Escape key when recording stops
-    globalShortcut.unregister('Escape');
+    globalShortcut.unregister(normalizeShortcut('Escape'));
     
     // Only send status update if window exists, but don't activate it
     if (mainWindow && !mainWindow.isDestroyed()) {

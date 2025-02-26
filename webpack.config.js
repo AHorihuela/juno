@@ -88,10 +88,8 @@ module.exports = {
             },
             (assets) => {
               const source = fs.readFileSync(path.resolve(__dirname, 'src/renderer/init-logging.js'), 'utf8');
-              compilation.emitAsset('init-logging.js', {
-                source: () => source,
-                size: () => source.length
-              });
+              const newAsset = new compiler.webpack.sources.RawSource(source);
+              compilation.emitAsset('init-logging.js', newAsset);
             }
           );
         });
