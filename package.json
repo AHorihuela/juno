@@ -11,10 +11,10 @@
     "build": "cross-env NODE_ENV=production webpack --config webpack.config.js",
     "clean": "rimraf --glob \"dist\" \"build\" \"out\" \".webpack\" \"coverage\" \".nyc_output\"",
     "prebuild": "npm run clean",
-    "test": "jest",
-    "test:watch": "jest --watch",
+    "test": "jest --config config/jest.config.js",
+    "test:watch": "jest --config config/jest.config.js --watch",
     "test:coverage": "node scripts/test-coverage.js",
-    "test:critical": "jest --testPathPattern=\"(WindowManager|MemoryManager|memoryIpcHandlers|ServiceRegistry)\"",
+    "test:critical": "jest --config config/jest.config.js --testPathPattern=\"(WindowManager|MemoryManager|memoryIpcHandlers|ServiceRegistry)\"",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "postinstall": "electron-builder install-app-deps"
