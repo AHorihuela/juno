@@ -15,6 +15,7 @@ const MemoryManager = () => {
   const [filterType, setFilterType] = useState('all');
   const [sortBy, setSortBy] = useState('createdAt');
   const [sortOrder, setSortOrder] = useState('desc');
+  const [selectedItem, setSelectedItem] = useState(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -48,6 +49,9 @@ const MemoryManager = () => {
       try {
         await window.electron.invoke('memory:deleteItem', { id });
         setMemoryItems(memoryItems.filter(item => item.id !== id));
+        if (selectedItem && selectedItem.id === id) {
+          setSelectedItem(null);
+        }
       } catch (err) {
         console.error('Error deleting memory item:', err);
         setError('Failed to delete memory item. Please try again.');
@@ -60,6 +64,7 @@ const MemoryManager = () => {
       try {
         await window.electron.invoke('memory:clearMemory');
         setMemoryItems([]);
+        setSelectedItem(null);
         // Refresh stats
         const stats = await window.electron.invoke('memory:getStats');
         setMemoryStats(stats);
@@ -107,6 +112,20 @@ const MemoryManager = () => {
     });
   }, [memoryItems, searchTerm, filterType, sortBy, sortOrder]);
 
+  const handleSort = (field) => {
+    if (sortBy === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(field);
+      setSortOrder('desc');
+    }
+  };
+
+  const handleSelectItem = (item) => {
+    setSelectedItem(item);
+    setPreviewContent(JSON.stringify(item.content, null, 2));
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col space-y-4">
@@ -149,6 +168,17 @@ const MemoryManager = () => {
           <p className="text-sm mb-2">
             <strong>Memory vs. AI Rules:</strong> While AI Rules define how Juno should behave (preferences, writing style, etc.), 
             Memory contains actual conversation data and context that Juno can recall.
+          </p>
+          <p className="text-sm mb-2">
+            <strong>Memory Persistence:</strong> Juno uses a multi-tiered memory system:
+          </p>
+          <ul className="text-sm list-disc pl-5 mb-2">
+            <li><strong>Working Memory:</strong> Short-lived items from the last 5 minutes</li>
+            <li><strong>Short-Term Memory:</strong> Important items from your current session</li>
+            <li><strong>Long-Term Memory:</strong> Valuable information that persists across sessions</li>
+          </ul>
+          <p className="text-sm">
+            Items move between these tiers based on their relevance, usage, and importance.
           </p>
         </div>
 
@@ -210,7 +240,7 @@ const MemoryManager = () => {
           </div>
         </div>
 
-        {/* Memory Items */}
+        {/* Memory Items - Improved UI */}
         <div className="bg-white shadow rounded-lg overflow-hidden">
           <div className="p-6 border-b border-gray-200">
             <h3 className="text-lg font-medium text-gray-900">Memory Items</h3>
@@ -221,63 +251,153 @@ const MemoryManager = () => {
               No memory items found.
             </div>
           ) : (
-            <div className="overflow-x-auto max-w-full">
-              <table className="w-full divide-y divide-gray-200 table-fixed">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/5">
-                      ID
-                    </th>
-                    <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/5">
-                      Type
-                    </th>
-                    <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/5">
-                      Size
-                    </th>
-                    <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/5">
-                      Created
-                    </th>
-                    <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/5">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredAndSortedItems.map((item) => (
-                    <tr key={item.id} className="hover:bg-gray-50">
-                      <td className="px-3 py-3 text-sm font-medium text-gray-900 truncate">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-0">
+              {/* Left panel - Item list */}
+              <div className="col-span-1 border-r border-gray-200 max-h-[500px] overflow-y-auto">
+                <div className="sticky top-0 bg-gray-50 p-3 border-b border-gray-200 flex items-center text-xs font-medium text-gray-500 uppercase">
+                  <div className="flex-1 cursor-pointer" onClick={() => handleSort('id')}>
+                    ID {sortBy === 'id' && (sortOrder === 'asc' ? '↑' : '↓')}
+                  </div>
+                  <div className="flex-1 cursor-pointer" onClick={() => handleSort('type')}>
+                    Type {sortBy === 'type' && (sortOrder === 'asc' ? '↑' : '↓')}
+                  </div>
+                  <div className="flex-1 cursor-pointer text-right" onClick={() => handleSort('createdAt')}>
+                    Created {sortBy === 'createdAt' && (sortOrder === 'asc' ? '↑' : '↓')}
+                  </div>
+                </div>
+                {filteredAndSortedItems.map((item) => (
+                  <div 
+                    key={item.id}
+                    onClick={() => handleSelectItem(item)}
+                    className={`p-3 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors ${
+                      selectedItem && selectedItem.id === item.id ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''
+                    }`}
+                  >
+                    <div className="flex items-center">
+                      <div className="flex-1 truncate text-sm font-medium text-gray-900">
                         {item.id.substring(0, 8)}...
-                      </td>
-                      <td className="px-3 py-3 text-sm text-gray-500 truncate">
+                      </div>
+                      <div className="flex-1 truncate text-sm text-gray-500">
                         {item.type || 'Unknown'}
-                      </td>
-                      <td className="px-3 py-3 text-sm text-gray-500 truncate">
-                        {(item.size / 1024).toFixed(2)} KB
-                      </td>
-                      <td className="px-3 py-3 text-sm text-gray-500 truncate">
+                      </div>
+                      <div className="flex-1 text-right text-sm text-gray-500">
                         {item.createdAt ? formatDistanceToNow(new Date(item.createdAt), { addSuffix: true }) : 'Unknown'}
-                      </td>
-                      <td className="px-3 py-3 text-sm text-gray-500 flex space-x-2">
+                      </div>
+                    </div>
+                    {item.tier && (
+                      <div className="mt-1">
+                        <span className={`text-xs px-2 py-1 rounded-full ${
+                          item.tier === 'working' ? 'bg-yellow-100 text-yellow-800' :
+                          item.tier === 'short-term' ? 'bg-blue-100 text-blue-800' :
+                          'bg-green-100 text-green-800'
+                        }`}>
+                          {item.tier === 'working' ? 'Working' : 
+                           item.tier === 'short-term' ? 'Short-term' : 'Long-term'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              
+              {/* Right panel - Item details */}
+              <div className="col-span-2 max-h-[500px] overflow-y-auto">
+                {selectedItem ? (
+                  <div className="p-6">
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
+                        <h4 className="text-lg font-medium text-gray-900 mb-1">
+                          {selectedItem.id}
+                        </h4>
+                        <div className="flex items-center space-x-2 text-sm text-gray-500">
+                          <span>{selectedItem.type || 'Unknown'}</span>
+                          <span>•</span>
+                          <span>{(selectedItem.size / 1024).toFixed(2)} KB</span>
+                          <span>•</span>
+                          <span>
+                            {selectedItem.createdAt 
+                              ? formatDistanceToNow(new Date(selectedItem.createdAt), { addSuffix: true }) 
+                              : 'Unknown'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex space-x-2">
                         <button
                           onClick={() => {
-                            setPreviewContent(JSON.stringify(item.content, null, 2));
+                            setPreviewContent(JSON.stringify(selectedItem.content, null, 2));
                             setIsPreviewOpen(true);
                           }}
-                          className="text-blue-600 hover:text-blue-900 mr-2"
+                          className="px-3 py-1 bg-blue-50 text-blue-700 text-sm font-medium rounded-md hover:bg-blue-100 transition-colors"
                         >
-                          View
+                          View Full Content
                         </button>
                         <button
-                          onClick={() => handleDeleteItem(item.id)}
-                          className="text-red-600 hover:text-red-900"
+                          onClick={() => handleDeleteItem(selectedItem.id)}
+                          className="px-3 py-1 bg-red-50 text-red-700 text-sm font-medium rounded-md hover:bg-red-100 transition-colors"
                         >
                           Delete
                         </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </div>
+                    </div>
+                    
+                    <div className="bg-gray-50 p-4 rounded-lg mb-4">
+                      <h5 className="text-sm font-medium text-gray-700 mb-2">Content Preview</h5>
+                      <pre className="text-xs whitespace-pre-wrap break-words overflow-auto max-h-[200px]">
+                        {typeof selectedItem.content === 'string' 
+                          ? selectedItem.content.substring(0, 500) + (selectedItem.content.length > 500 ? '...' : '')
+                          : JSON.stringify(selectedItem.content, null, 2).substring(0, 500) + '...'}
+                      </pre>
+                    </div>
+                    
+                    {selectedItem.tier && (
+                      <div className="mb-4">
+                        <h5 className="text-sm font-medium text-gray-700 mb-2">Memory Tier</h5>
+                        <div className="flex items-center space-x-2">
+                          <span className={`px-2 py-1 rounded-full ${
+                            selectedItem.tier === 'working' ? 'bg-yellow-100 text-yellow-800' :
+                            selectedItem.tier === 'short-term' ? 'bg-blue-100 text-blue-800' :
+                            'bg-green-100 text-green-800'
+                          }`}>
+                            {selectedItem.tier === 'working' ? 'Working Memory' : 
+                             selectedItem.tier === 'short-term' ? 'Short-term Memory' : 'Long-term Memory'}
+                          </span>
+                          <span className="text-sm text-gray-500">
+                            {selectedItem.tier === 'working' 
+                              ? '(Expires after 5 minutes)' 
+                              : selectedItem.tier === 'short-term'
+                                ? '(Persists for current session)'
+                                : '(Persists across sessions)'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {(selectedItem.accessCount !== undefined || selectedItem.usefulnessScore !== undefined) && (
+                      <div>
+                        <h5 className="text-sm font-medium text-gray-700 mb-2">Usage Statistics</h5>
+                        <div className="grid grid-cols-2 gap-4">
+                          {selectedItem.accessCount !== undefined && (
+                            <div className="bg-gray-50 p-3 rounded-lg">
+                              <div className="text-sm text-gray-500">Access Count</div>
+                              <div className="text-lg font-medium">{selectedItem.accessCount}</div>
+                            </div>
+                          )}
+                          {selectedItem.usefulnessScore !== undefined && (
+                            <div className="bg-gray-50 p-3 rounded-lg">
+                              <div className="text-sm text-gray-500">Usefulness Score</div>
+                              <div className="text-lg font-medium">{selectedItem.usefulnessScore}/10</div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-full text-gray-500 p-6">
+                    Select a memory item to view details
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
