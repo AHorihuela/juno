@@ -5,9 +5,23 @@ const { v4: uuidv4 } = require('uuid');
 const logger = require('../utils/logger');
 
 /**
- * Manages a multi-tiered memory system for context storage
+ * MemoryManager class
+ * 
+ * Manages a multi-tiered memory system for context storage with three tiers:
+ * - Working Memory: Short-lived, high-relevance items (last 5 minutes)
+ * - Short-Term Memory: Items relevant to the current session
+ * - Long-Term Memory: Persistent items that are stored across sessions
+ * 
+ * The manager handles promotion/demotion between tiers based on relevance,
+ * usage patterns, and configured thresholds.
+ * 
+ * @class
  */
 class MemoryManager {
+  /**
+   * Creates a new MemoryManager instance
+   * @constructor
+   */
   constructor() {
     // Memory tiers
     this.workingMemory = []; // Short-lived, high-relevance (last 5 minutes)
@@ -58,6 +72,12 @@ class MemoryManager {
   
   /**
    * Initialize the memory manager
+   * 
+   * Sets up storage paths, loads long-term memory from disk,
+   * and initializes periodic memory management tasks.
+   * 
+   * @async
+   * @returns {Promise<void>}
    */
   async initialize() {
     if (this.initialized) return;
@@ -90,7 +110,9 @@ class MemoryManager {
   }
   
   /**
-   * Clean up resources
+   * Clean up resources and save state before shutdown
+   * 
+   * Clears intervals and saves long-term memory and stats to disk.
    */
   shutdown() {
     if (this.memoryManagementInterval) {
@@ -114,7 +136,13 @@ class MemoryManager {
   
   /**
    * Add a new context item to working memory
+   * 
+   * Adds an item to working memory and handles overflow by potentially
+   * promoting valuable items to short-term memory.
+   * 
    * @param {Object} item - Context item to add
+   * @param {string} item.content - The content of the memory item
+   * @returns {Object} The enriched item that was added
    */
   addItem(item) {
     if (!item || !item.content) return;
@@ -147,8 +175,11 @@ class MemoryManager {
   
   /**
    * Enrich a context item with additional metadata
+   * 
+   * Adds tracking information and identifiers to a memory item.
+   * 
    * @param {Object} item - Original context item
-   * @returns {Object} Enriched item
+   * @returns {Object} Enriched item with additional metadata
    */
   enrichItem(item) {
     return {
@@ -165,6 +196,10 @@ class MemoryManager {
   
   /**
    * Calculate a relevance score for an item
+   * 
+   * Computes a score from 0-100 based on recency, usage, usefulness,
+   * size appropriateness, and optional command relevance.
+   * 
    * @param {Object} item - Context item
    * @param {string} [command] - Optional command for context-specific scoring
    * @returns {number} Score from 0-100
@@ -216,6 +251,12 @@ class MemoryManager {
   
   /**
    * Manage memory tiers - move items between tiers based on relevance
+   * 
+   * Handles the promotion/demotion of items between memory tiers based on
+   * their relevance scores, age, and usage patterns.
+   * 
+   * @async
+   * @returns {Promise<void>}
    */
   async manageMemory() {
     try {

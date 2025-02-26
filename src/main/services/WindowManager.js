@@ -17,7 +17,16 @@ const { BrowserWindow, screen, app, ipcMain } = require('electron');
 const path = require('path');
 const BaseService = require('./BaseService');
 
+/**
+ * WindowManager service class responsible for managing application windows
+ * @class
+ * @extends BaseService
+ */
 class WindowManager extends BaseService {
+  /**
+   * Creates a new WindowManager instance
+   * @constructor
+   */
   constructor() {
     super('WindowManager');
     this.mainWindow = null;
@@ -26,11 +35,23 @@ class WindowManager extends BaseService {
     console.log('[WindowManager] Initialized with development mode:', this.isDev);
   }
 
+  /**
+   * Initialize the WindowManager service
+   * @async
+   * @private
+   * @returns {Promise<void>}
+   */
   async _initialize() {
     console.log('[WindowManager] Initializing...');
     // Nothing to initialize yet - we wait for setMainWindow to be called
   }
 
+  /**
+   * Shutdown the WindowManager service
+   * @async
+   * @private
+   * @returns {Promise<void>}
+   */
   async _shutdown() {
     console.log('[WindowManager] Shutting down...');
     
@@ -42,6 +63,10 @@ class WindowManager extends BaseService {
 
   // Main Window Management
   
+  /**
+   * Set the main application window and configure its properties
+   * @param {BrowserWindow} window - The Electron BrowserWindow instance
+   */
   setMainWindow(window) {
     try {
       console.log('[WindowManager] Setting main window with properties:', {
@@ -86,6 +111,9 @@ class WindowManager extends BaseService {
     }
   }
 
+  /**
+   * Show the main application window and bring it to focus
+   */
   showWindow() {
     try {
       if (!this.mainWindow || this.mainWindow.isDestroyed()) {
@@ -105,6 +133,9 @@ class WindowManager extends BaseService {
     }
   }
 
+  /**
+   * Hide the main application window
+   */
   hideWindow() {
     try {
       if (!this.mainWindow || this.mainWindow.isDestroyed()) {
@@ -123,6 +154,9 @@ class WindowManager extends BaseService {
     }
   }
 
+  /**
+   * Restore the main window to its default size and position
+   */
   restoreWindow() {
     try {
       if (!this.mainWindow || this.mainWindow.isDestroyed()) {
@@ -145,6 +179,9 @@ class WindowManager extends BaseService {
 
   // Overlay Window Management (delegated to OverlayService)
 
+  /**
+   * Create an overlay window using the OverlayService
+   */
   createOverlay() {
     try {
       const overlayService = this.getService('overlay');
@@ -163,6 +200,9 @@ class WindowManager extends BaseService {
     }
   }
 
+  /**
+   * Show the overlay window using the OverlayService
+   */
   showOverlay() {
     try {
       const overlayService = this.getService('overlay');
@@ -181,6 +221,9 @@ class WindowManager extends BaseService {
     }
   }
 
+  /**
+   * Hide the overlay window using the OverlayService
+   */
   hideOverlay() {
     try {
       const overlayService = this.getService('overlay');
@@ -199,6 +242,9 @@ class WindowManager extends BaseService {
     }
   }
 
+  /**
+   * Destroy the overlay window using the OverlayService
+   */
   destroyOverlay() {
     try {
       const overlayService = this.getService('overlay');
@@ -217,6 +263,10 @@ class WindowManager extends BaseService {
     }
   }
 
+  /**
+   * Update the audio levels displayed in the overlay
+   * @param {Object} levels - Audio level data to display in the overlay
+   */
   updateOverlayAudioLevels(levels) {
     try {
       const overlayService = this.getService('overlay');
@@ -235,6 +285,10 @@ class WindowManager extends BaseService {
     }
   }
   
+  /**
+   * Update the state of the overlay window
+   * @param {Object} state - State data to update in the overlay
+   */
   updateOverlayState(state) {
     try {
       const overlayService = this.getService('overlay');
