@@ -117,6 +117,27 @@ const GeneralSettings = () => {
             </select>
           </div>
 
+          <div className="flex items-center justify-between">
+            <label htmlFor="pause-background-audio" className="text-sm font-medium text-gray-700">
+              Pause background audio during recording (auto-resumes when done)
+            </label>
+            <div className="relative inline-block w-10 mr-2 align-middle select-none">
+              <input
+                id="pause-background-audio"
+                type="checkbox"
+                checked={settings.pauseBackgroundAudio}
+                onChange={(e) => updateSetting('pauseBackgroundAudio', e.target.checked)}
+                className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"
+              />
+              <label
+                htmlFor="pause-background-audio"
+                className={`toggle-label block overflow-hidden h-6 rounded-full cursor-pointer ${
+                  settings.pauseBackgroundAudio ? 'bg-indigo-500' : 'bg-gray-300'
+                }`}
+              ></label>
+            </div>
+          </div>
+
           <div>
             <label 
               htmlFor="default-microphone"

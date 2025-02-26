@@ -128,6 +128,10 @@ class ConfigService extends BaseService {
             keyboardShortcut: {
               type: 'string',
               default: 'CommandOrControl+Shift+Space'
+            },
+            pauseBackgroundAudio: {
+              type: 'boolean',
+              default: false
             }
           },
         });
@@ -217,6 +221,10 @@ class ConfigService extends BaseService {
               keyboardShortcut: {
                 type: 'string',
                 default: 'CommandOrControl+Shift+Space'
+              },
+              pauseBackgroundAudio: {
+                type: 'boolean',
+                default: false
               }
             },
           });

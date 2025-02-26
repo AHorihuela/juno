@@ -62,4 +62,24 @@
   .form-section-title {
     @apply text-lg font-medium text-gray-900 mb-4;
   }
+
+  .toggle-checkbox {
+    @apply right-0 border-2 border-gray-300;
+    transition: transform 0.3s ease-in-out;
+    z-index: 1;
+    top: 0;
+    margin: 0;
+    height: 1.5rem;
+    width: 1.5rem;
+  }
+
+  .toggle-checkbox:checked {
+    @apply transform translate-x-full border-indigo-500;
+  }
+
+  .toggle-label {
+    @apply block overflow-hidden h-6 rounded-full;
+    transition: background-color 0.3s ease-in-out;
+    width: 2.5rem;
+  }
 } 
