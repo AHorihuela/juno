@@ -1,4 +1,4 @@
-const { BrowserWindow, screen, app } = require('electron');
+const { BrowserWindow, screen, app, ipcMain } = require('electron');
 const path = require('path');
 const BaseService = require('./BaseService');
 
@@ -10,6 +10,9 @@ class WindowManager extends BaseService {
     this.isRecording = false;
     this.isDev = process.env.NODE_ENV === 'development';
     console.log('[WindowManager] Initialized with development mode:', this.isDev);
+    
+    // Set up IPC handlers
+    this._setupIPCHandlers();
   }
 
   async _initialize() {
@@ -25,6 +28,17 @@ class WindowManager extends BaseService {
       this.mainWindow = null;
     }
     console.log('[WindowManager] Windows cleared');
+    
+    // Remove IPC handlers
+    ipcMain.removeAllListeners('control-action');
+  }
+  
+  _setupIPCHandlers() {
+    ipcMain.on('control-action', (event, data) => {
+      if (data && data.action) {
+        this._handleControlAction(data.action);
+      }
+    });
   }
 
   // Main Window Management
@@ -138,6 +152,22 @@ class WindowManager extends BaseService {
       this.overlayWindow = this._createOverlayWindow();
       this.overlayWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(this._getOverlayHTML())}`);
       this._setupOverlayBehavior();
+
+      // Set up IPC handlers for the overlay window
+      this.overlayWindow.webContents.on('did-finish-load', () => {
+        this.overlayWindow.webContents.executeJavaScript(`
+          // Set up message handler for control actions
+          window.addEventListener('message', (event) => {
+            const { type, action } = event.data;
+            if (type === 'control-action') {
+              // Forward to main process via IPC
+              window.ipcRenderer.send('control-action', { action });
+            }
+          });
+        `).catch(err => {
+          console.error('[WindowManager] Error setting up overlay message handler:', err);
+        });
+      });
     } catch (error) {
       console.error('[WindowManager] Error creating overlay:', {
         error: error.message,
@@ -153,8 +183,8 @@ class WindowManager extends BaseService {
       
       // Create a new BrowserWindow for the overlay
       this.overlayWindow = new BrowserWindow({
-        width: 200,
-        height: 80,
+        width: 280,
+        height: 60,
         frame: false,
         transparent: true,
         hasShadow: false,
@@ -205,7 +235,7 @@ class WindowManager extends BaseService {
       const { workArea } = screen.getPrimaryDisplay();
       this.overlayWindow.setPosition(
         Math.floor(workArea.x + (workArea.width - this.overlayWindow.getSize()[0]) / 2),
-        workArea.height - 120
+        workArea.height - 100 // Moved up from 120 to be less intrusive
       );
       
       // Set initial state
@@ -234,9 +264,22 @@ class WindowManager extends BaseService {
               <div class="record-icon"></div>
             </div>
             <div class="visualization-container">
-              ${Array(24).fill('<div class="bar"></div>').join('')}
+              ${Array(20).fill('<div class="bar"></div>').join('')}
             </div>
             <div class="timer">00:00</div>
+            <div class="controls">
+              <button class="control-button pause-button" title="Pause recording">
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                  <rect x="2" y="2" width="2" height="6" rx="0.5" fill="white"/>
+                  <rect x="6" y="2" width="2" height="6" rx="0.5" fill="white"/>
+                </svg>
+              </button>
+              <button class="control-button cancel-button" title="Cancel recording">
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                  <path d="M2.5 2.5L7.5 7.5M7.5 2.5L2.5 7.5" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+              </button>
+            </div>
           </div>
         </body>
       </html>
@@ -261,13 +304,13 @@ class WindowManager extends BaseService {
       
       .container {
         background: linear-gradient(135deg, rgba(30, 30, 30, 0.85) 0%, rgba(10, 10, 10, 0.95) 100%);
-        border-radius: 24px;
-        padding: 0 16px;
+        border-radius: 28px;
+        padding: 0 14px;
         display: flex;
         justify-content: space-between;
         align-items: center;
-        height: 48px;
-        min-width: 320px;
+        height: 40px;
+        min-width: 280px;
         box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
         backdrop-filter: blur(12px);
         -webkit-backdrop-filter: blur(12px);
@@ -278,12 +321,12 @@ class WindowManager extends BaseService {
       .recording-indicator {
         display: flex;
         align-items: center;
-        margin-right: 12px;
+        margin-right: 10px;
       }
       
       .record-icon {
-        width: 12px;
-        height: 12px;
+        width: 10px;
+        height: 10px;
         border-radius: 50%;
         background-color: #ff3b30;
         animation: pulse 2s infinite;
@@ -294,16 +337,16 @@ class WindowManager extends BaseService {
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 3px;
-        height: 32px;
+        gap: 2px;
+        height: 28px;
         overflow: hidden;
       }
       
       .bar {
         flex: 1;
-        height: 32px;
+        height: 28px;
         background: linear-gradient(to top, rgba(255, 59, 48, 0.5), rgba(255, 59, 48, 0.9));
-        border-radius: 3px;
+        border-radius: 4px;
         transition: transform 0.1s cubic-bezier(0.4, 0.0, 0.2, 1);
         transform-origin: bottom;
         transform: scaleY(0.15);
@@ -311,12 +354,51 @@ class WindowManager extends BaseService {
       }
       
       .timer {
-        font-size: 14px;
+        font-size: 12px;
         font-weight: 500;
         color: white;
-        margin-left: 12px;
-        min-width: 45px;
+        margin-left: 10px;
+        min-width: 40px;
         text-align: right;
+      }
+      
+      .controls {
+        display: flex;
+        align-items: center;
+        margin-left: 12px;
+        gap: 8px;
+      }
+      
+      .control-button {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background-color: rgba(255, 255, 255, 0.15);
+        border: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        padding: 0;
+        transition: background-color 0.2s ease, transform 0.1s ease;
+        outline: none;
+      }
+      
+      .control-button:hover {
+        background-color: rgba(255, 255, 255, 0.25);
+      }
+      
+      .control-button:active {
+        transform: scale(0.95);
+        background-color: rgba(255, 255, 255, 0.3);
+      }
+      
+      .pause-button {
+        margin-right: 2px;
+      }
+      
+      .cancel-button svg {
+        stroke: rgba(255, 255, 255, 0.9);
       }
       
       @keyframes pulse {
@@ -324,7 +406,7 @@ class WindowManager extends BaseService {
           box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.7);
         }
         70% {
-          box-shadow: 0 0 0 6px rgba(255, 59, 48, 0);
+          box-shadow: 0 0 0 5px rgba(255, 59, 48, 0);
         }
         100% {
           box-shadow: 0 0 0 0 rgba(255, 59, 48, 0);
@@ -340,6 +422,9 @@ class WindowManager extends BaseService {
       let startTime = 0;
       let currentState = 'idle';
       let animationFrameId;
+      let isPaused = false;
+      let pauseStartTime = 0;
+      let totalPausedTime = 0;
       
       const states = {
         idle: () => {
@@ -374,10 +459,12 @@ class WindowManager extends BaseService {
           for (let i = 0; i < enhancedLevels.length; i++) {
             // Randomly boost some levels to create more dynamic peaks
             if (Math.random() < 0.3) {
-              enhancedLevels[i] = Math.min(1, enhancedLevels[i] * 1.5);
+              enhancedLevels[i] = Math.min(1, enhancedLevels[i] * 1.8); // Increased boost from 1.5 to 1.8
             }
           }
           
+          // Create a wave-like pattern by adding a sine wave to the levels
+          const now = Date.now() / 1000;
           for (let i = 0; i < barsCount; i++) {
             // Map the bar index to a level index with some overlap for smoother visualization
             const levelIdx = Math.min(levelsCount - 1, Math.floor(i * levelsCount / barsCount));
@@ -386,14 +473,19 @@ class WindowManager extends BaseService {
             const randomFactor = 0.85 + Math.random() * 0.4;
             
             // Apply a stronger curve to emphasize peaks
-            const level = Math.pow(enhancedLevels[levelIdx] * randomFactor, 0.8);
+            let level = Math.pow(enhancedLevels[levelIdx] * randomFactor, 0.75); // More aggressive curve (0.75 instead of 0.8)
+            
+            // Add a subtle sine wave for more fluid motion
+            const waveOffset = Math.sin((now * 3) + (i * 0.2)) * 0.05;
+            level = Math.min(1, level + waveOffset);
+            
             expandedLevels.push(level);
           }
           
           // Apply smoothed levels to bars with minimal delay for more responsive animation
           bars.forEach((bar, i) => {
             // Reduced delay for more responsive animation
-            const delay = i * 5; 
+            const delay = i * 4; // Further reduced from 5 to 4
             setTimeout(() => {
               // Ensure minimum scale for better visibility
               const scale = Math.max(0.25, Math.min(1, expandedLevels[i] || 0));
@@ -410,13 +502,40 @@ class WindowManager extends BaseService {
           
           // Update timer
           updateTimer();
+        },
+        paused: () => {
+          // Subtle pulsing animation for paused state
+          const now = Date.now() / 1000;
+          bars.forEach((bar, i) => {
+            const offset = i * 0.1;
+            const pulse = Math.sin(now * 1.5 + offset) * 0.05;
+            const scale = 0.15 + pulse;
+            
+            bar.style.transform = \`scaleY(\${scale})\`;
+            
+            // Blue-ish color for paused state
+            bar.style.background = \`linear-gradient(to top, 
+              rgba(59, 130, 246, 0.5), 
+              rgba(59, 130, 246, 0.9))\`;
+          });
+          
+          // Keep timer frozen at paused time
+          updateTimer();
         }
       };
 
       function updateTimer() {
         if (!timerElement) return;
         
-        const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+        let elapsedSeconds;
+        if (isPaused) {
+          // When paused, show the time at which we paused
+          elapsedSeconds = Math.floor((pauseStartTime - startTime - totalPausedTime) / 1000);
+        } else {
+          // When active, calculate current elapsed time minus any paused time
+          elapsedSeconds = Math.floor((Date.now() - startTime - totalPausedTime) / 1000);
+        }
+        
         const minutes = Math.floor(elapsedSeconds / 60);
         const seconds = elapsedSeconds % 60;
         
@@ -426,7 +545,19 @@ class WindowManager extends BaseService {
       function updateState(state, levels) {
         if (state === 'active' && currentState !== 'active') {
           // Starting recording
-          startTime = Date.now();
+          if (!startTime) {
+            startTime = Date.now();
+          } else if (isPaused) {
+            // Resuming from pause
+            totalPausedTime += (Date.now() - pauseStartTime);
+            isPaused = false;
+            updatePauseButtonUI();
+          }
+        } else if (state === 'paused' && currentState !== 'paused') {
+          // Pausing recording
+          isPaused = true;
+          pauseStartTime = Date.now();
+          updatePauseButtonUI();
         }
         
         currentState = state;
@@ -446,6 +577,46 @@ class WindowManager extends BaseService {
         
         animate();
       }
+      
+      function updatePauseButtonUI() {
+        const pauseButton = document.querySelector('.pause-button');
+        if (!pauseButton) return;
+        
+        if (isPaused) {
+          // Show play icon when paused
+          pauseButton.innerHTML = \`
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <path d="M3.5 2.5L7.5 5L3.5 7.5V2.5Z" fill="white" stroke="white" stroke-width="0.5" stroke-linejoin="round"/>
+            </svg>
+          \`;
+          pauseButton.title = "Resume recording";
+        } else {
+          // Show pause icon when active
+          pauseButton.innerHTML = \`
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <rect x="2" y="2" width="2" height="6" rx="0.5" fill="white"/>
+              <rect x="6" y="2" width="2" height="6" rx="0.5" fill="white"/>
+            </svg>
+          \`;
+          pauseButton.title = "Pause recording";
+        }
+      }
+      
+      function handlePauseClick() {
+        if (isPaused) {
+          // Resume recording
+          window.postMessage({ type: 'control-action', action: 'resume' }, '*');
+          updateState('active');
+        } else {
+          // Pause recording
+          window.postMessage({ type: 'control-action', action: 'pause' }, '*');
+          updateState('paused');
+        }
+      }
+      
+      function handleCancelClick() {
+        window.postMessage({ type: 'control-action', action: 'cancel' }, '*');
+      }
 
       // Expose updateState globally so it can be called from the main process
       window.updateState = updateState;
@@ -453,6 +624,18 @@ class WindowManager extends BaseService {
       document.addEventListener('DOMContentLoaded', () => {
         bars = Array.from(document.querySelectorAll('.bar'));
         timerElement = document.querySelector('.timer');
+        
+        // Set up button event listeners
+        const pauseButton = document.querySelector('.pause-button');
+        const cancelButton = document.querySelector('.cancel-button');
+        
+        if (pauseButton) {
+          pauseButton.addEventListener('click', handlePauseClick);
+        }
+        
+        if (cancelButton) {
+          cancelButton.addEventListener('click', handleCancelClick);
+        }
         
         // Start with idle animation
         updateState('idle');
@@ -462,7 +645,9 @@ class WindowManager extends BaseService {
           const { type, data } = event.data;
           
           if (type === 'update-levels' && data.levels) {
-            updateState('active', data.levels);
+            if (!isPaused) {
+              updateState('active', data.levels);
+            }
           } else if (type === 'set-state') {
             updateState(data.state);
           }
@@ -496,6 +681,30 @@ class WindowManager extends BaseService {
       });
     } catch (error) {
       console.error('[WindowManager] Error in updateOverlayAudioLevels:', error);
+      this.emitError(error);
+    }
+  }
+
+  updateOverlayState(state) {
+    try {
+      if (!this.overlayWindow || this.overlayWindow.isDestroyed()) {
+        console.log('[WindowManager] Cannot update overlay state - no valid overlay window');
+        return;
+      }
+      
+      console.log('[WindowManager] Updating overlay state to:', state);
+      this.overlayWindow.webContents.executeJavaScript(`
+        if (window.updateState) {
+          window.updateState('${state}');
+        } else {
+          window.postMessage({ type: 'set-state', data: { state: '${state}' } }, '*');
+        }
+      `).catch(err => {
+        console.error('[WindowManager] Error updating overlay state:', err);
+        this.emitError(err);
+      });
+    } catch (error) {
+      console.error('[WindowManager] Error in updateOverlayState:', error);
       this.emitError(error);
     }
   }
@@ -687,6 +896,30 @@ class WindowManager extends BaseService {
       setupSettingsHandlers();
       setupNotificationHandlers();
       setupDictionaryIpcHandlers();
+    }
+  }
+
+  _handleControlAction(action) {
+    console.log('[WindowManager] Received control action:', action);
+    
+    const recorderService = this.getService('recorder');
+    if (!recorderService) {
+      console.error('[WindowManager] Recorder service not available');
+      return;
+    }
+    
+    switch (action) {
+      case 'pause':
+        recorderService.pause();
+        break;
+      case 'resume':
+        recorderService.resume();
+        break;
+      case 'cancel':
+        recorderService.cancel();
+        break;
+      default:
+        console.warn('[WindowManager] Unknown control action:', action);
     }
   }
 }

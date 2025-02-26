@@ -7,6 +7,7 @@ class RecorderService extends BaseService {
   constructor() {
     super('Recorder');
     this.recording = false;
+    this.paused = false;
     this.recorder = null;
     this.audioData = [];
     this.hasAudioContent = false;
@@ -14,6 +15,9 @@ class RecorderService extends BaseService {
     this.currentDeviceId = null;
     this.levelSmoothingFactor = 0.7;
     this.currentLevels = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    this.recordingStartTime = null;
+    this.totalPausedTime = 0;
+    this.pauseStartTime = null;
   }
 
   async _initialize() {
@@ -218,6 +222,9 @@ class RecorderService extends BaseService {
       // Reset audio data buffer and flags
       this.audioData = [];
       this.hasAudioContent = false;
+      this.paused = false;
+      this.recordingStartTime = Date.now();
+      this.totalPausedTime = 0;
 
       // Start tracking recording session in context service
       this.getService('context').startRecording();
@@ -279,6 +286,8 @@ class RecorderService extends BaseService {
   }
 
   checkAudioLevels(buffer) {
+    if (!buffer || this.paused) return false;
+    
     // Convert buffer to 16-bit samples
     const samples = new Int16Array(buffer.buffer);
     
@@ -311,16 +320,16 @@ class RecorderService extends BaseService {
     
     const rms = Math.sqrt(sum / samples.length);
     
-    // Much more sensitive normalization (reduced from 3000 to 2000)
-    // Apply a stronger non-linear curve to significantly amplify quieter sounds
-    // The power of 0.6 makes the curve more aggressive for low values
-    const normalizedLevel = Math.min(1, Math.pow(rms / 2000, 0.6));
+    // Even more sensitive normalization (reduced from 2000 to 1800)
+    // Apply an even stronger non-linear curve to significantly amplify quieter sounds
+    // The power of 0.5 makes the curve more aggressive for low values
+    const normalizedLevel = Math.min(1, Math.pow(rms / 1800, 0.5));
     
     // Update smoothed levels with enhanced randomization for more visual interest
     for (let i = 0; i < this.currentLevels.length; i++) {
-      // Higher minimum level (0.25) to ensure bars are always visibly moving
-      // Add more randomization (0.5 + Math.random() * 0.7) for more dynamic visualization
-      const targetLevel = Math.max(0.25, normalizedLevel * (0.5 + Math.random() * 0.7));
+      // Higher minimum level (0.28) to ensure bars are always visibly moving
+      // Add more randomization for more dynamic visualization
+      const targetLevel = Math.max(0.28, normalizedLevel * (0.6 + Math.random() * 0.8));
       
       // Apply smoothing with the updated factor
       this.currentLevels[i] = this.currentLevels[i] * (1 - this.levelSmoothingFactor) +
@@ -335,7 +344,7 @@ class RecorderService extends BaseService {
     const percentageAboveThreshold = (samplesAboveThreshold / samples.length) * 100;
     
     // Lower thresholds to detect more subtle audio
-    return percentageAboveThreshold > 10 && maxConsecutiveSamplesAboveThreshold > 30;
+    return percentageAboveThreshold > 8 && maxConsecutiveSamplesAboveThreshold > 25;
   }
 
   async stop() {
@@ -348,6 +357,7 @@ class RecorderService extends BaseService {
         this.recorder = null;
       }
       this.recording = false;
+      this.paused = false;
 
       // Stop tracking recording session in context service
       this.getService('context').stopRecording();
@@ -417,6 +427,75 @@ class RecorderService extends BaseService {
       );
       this.emit('error', error);
     }
+  }
+
+  async pause() {
+    if (!this.recording || this.paused) return;
+    
+    console.log('Pausing recording');
+    this.paused = true;
+    this.pauseStartTime = Date.now();
+    
+    if (this.recorder) {
+      // Stop the recorder temporarily
+      this.recorder.pause();
+    }
+    
+    // Update the overlay to show paused state
+    this.getService('windowManager').updateOverlayState('paused');
+    
+    // Emit pause event
+    this.emit('paused');
+  }
+  
+  async resume() {
+    if (!this.recording || !this.paused) return;
+    
+    console.log('Resuming recording');
+    this.paused = false;
+    
+    // Calculate total paused time
+    if (this.pauseStartTime) {
+      this.totalPausedTime += (Date.now() - this.pauseStartTime);
+      this.pauseStartTime = null;
+    }
+    
+    if (this.recorder) {
+      // Resume the recorder
+      this.recorder.resume();
+    }
+    
+    // Update the overlay to show active state
+    this.getService('windowManager').updateOverlayState('active');
+    
+    // Emit resume event
+    this.emit('resumed');
+  }
+
+  async cancel() {
+    if (!this.recording) return;
+    
+    console.log('Cancelling recording');
+    this.recording = false;
+    this.paused = false;
+    
+    if (this.recorder) {
+      this.recorder.stop();
+      this.recorder = null;
+    }
+    
+    // Clear the audio data without saving
+    this.audioData = [];
+    this.hasAudioContent = false;
+    
+    // Hide the overlay
+    this.getService('windowManager').hideOverlay();
+    
+    // Emit cancel event
+    this.emit('cancelled');
+    
+    // Update context service
+    this.getService('context').cancelRecording();
   }
 
   isRecording() {
