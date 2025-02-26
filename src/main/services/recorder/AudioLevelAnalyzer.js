@@ -144,7 +144,7 @@ class AudioLevelAnalyzer {
     
     // More stringent check for audio content - requires both percentage above threshold
     // and minimum RMS value to consider it valid speech
-    const hasRealSpeech = percentageAboveThreshold > 15 && averageRMS > 300;
+    const hasRealSpeech = percentageAboveThreshold > 15 && averageRMS > 250;
     
     return {
       hasRealSpeech,

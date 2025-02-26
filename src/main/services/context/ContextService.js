@@ -33,9 +33,6 @@ class ContextService extends BaseService {
     this.contextUpdateInterval = 1000; // 1 second
     this.lastContextUpdate = 0;
     this.pendingContextUpdate = null;
-    
-    // Memory manager reference
-    this.memoryManager = null;
   }
 
   /**
@@ -43,23 +40,13 @@ class ContextService extends BaseService {
    * @private
    */
   async _initialize() {
-    // Initialize memory manager
-    this.memoryManager = this.getService('memoryManager');
-    if (this.memoryManager) {
-      await this.memoryManager.initialize(this.getServices());
-      console.log('[ContextService] Memory manager initialized');
-      
-      // Migrate existing context history to memory manager
-      this.migrateContextHistoryToMemoryManager();
-    } else {
-      console.warn('[ContextService] Memory manager not available, using legacy context storage');
-    }
+    console.warn('[ContextService] Using legacy context storage');
     
     // Initialize context retrieval
     this.contextRetrieval = new ContextRetrieval({
       clipboardManager: this.clipboardManager,
       contextHistory: this.contextHistory,
-      memoryManager: this.memoryManager,
+      memoryManager: null,
       contextCacheTTL: 2000 // 2 seconds
     });
     
@@ -94,22 +81,7 @@ class ContextService extends BaseService {
       // Add to context history if it's substantial (more than just a few characters)
       // and not too similar to existing items
       if (content.length > 10 && !this.contextHistory.isSimilarToExisting(content, 'clipboard')) {
-        // Add to memory manager if available
-        if (this.memoryManager) {
-          console.log('[ContextService] Adding clipboard content to memory manager:', 
-            content.substring(0, 50) + (content.length > 50 ? '...' : ''));
-          
-          // For SimpleMemoryManager, we need to use addMemoryItem with await
-          this.memoryManager.addMemoryItem(content, {
-            source: 'clipboard',
-            application,
-            timestamp
-          }).catch(err => {
-            console.error('[ContextService] Error adding clipboard to memory:', err);
-          });
-        }
-        
-        // Also add to legacy context history for backward compatibility
+        // Add to legacy context history
         this.contextHistory.addItem({
           type: 'clipboard',
           content,
@@ -148,32 +120,6 @@ class ContextService extends BaseService {
   }
 
   /**
-   * Migrate existing context history to memory manager
-   * @private
-   */
-  async migrateContextHistoryToMemoryManager() {
-    if (!this.memoryManager || this.contextHistory.size() === 0) return;
-    
-    try {
-      console.log('[ContextService] Migrating context history to memory manager');
-      
-      // Add each history item to memory manager
-      const historyItems = this.contextHistory.getAll();
-      for (const item of historyItems) {
-        await this.memoryManager.addMemoryItem(item.content, {
-          source: item.source || 'legacy',
-          application: item.application,
-          timestamp: item.timestamp
-        });
-      }
-      
-      console.log(`[ContextService] Migrated ${historyItems.length} items to memory manager`);
-    } catch (error) {
-      console.error('[ContextService] Error migrating context history:', error);
-    }
-  }
-
-  /**
    * Start an internal clipboard operation
    */
   startInternalOperation() {
@@ -202,23 +148,7 @@ class ContextService extends BaseService {
       
       console.log('[ContextService] Recording started at:', this.recordingStartTime, 'with highlighted text:', this.highlightedText);
       
-      // Add highlighted text to memory manager if available and text is not empty
-      if (this.memoryManager && this.highlightedText && this.highlightedText.trim()) {
-        console.log('[ContextService] Adding highlighted text to memory manager:', 
-          this.highlightedText.substring(0, 50) + (this.highlightedText.length > 50 ? '...' : ''));
-        
-        try {
-          await this.memoryManager.addMemoryItem(this.highlightedText, {
-            source: 'highlighted_text',
-            application: this.clipboardManager.activeApplication,
-            timestamp: this.recordingStartTime
-          });
-        } catch (err) {
-          console.error('[ContextService] Error adding highlighted text to memory:', err);
-        }
-      }
-      
-      // Also add to legacy context history if not too similar to existing items
+      // Add to legacy context history if not too similar to existing items
       if (this.highlightedText && !this.contextHistory.isSimilarToExisting(this.highlightedText, 'highlight')) {
         this.contextHistory.addItem({
           type: 'highlight',
@@ -306,15 +236,10 @@ class ContextService extends BaseService {
    */
   getMemoryStats() {
     try {
-      if (!this.memoryManager) {
-        return {
-          error: 'Memory manager not available',
-          contextHistorySize: this.contextHistory.size()
-        };
-      }
-      
-      // Get stats from the simplified memory manager
-      return this.memoryManager.getMemoryStats();
+      return {
+        contextHistorySize: this.contextHistory.size(),
+        items: this.contextHistory.getAll()
+      };
     } catch (error) {
       console.error('[ContextService] Error getting memory stats:', error);
       return {
@@ -337,11 +262,6 @@ class ContextService extends BaseService {
       // Invalidate context cache
       this.contextRetrieval.invalidateContextCache();
       
-      // If we have a memory manager, delete from there too
-      if (this.memoryManager) {
-        await this.memoryManager.deleteItem(id);
-      }
-      
       return true;
     } catch (error) {
       console.error('[ContextService] Error deleting memory item:', error);
@@ -361,11 +281,6 @@ class ContextService extends BaseService {
       
       // Invalidate context cache
       this.contextRetrieval.invalidateContextCache();
-      
-      // If we have a memory manager, clear it too
-      if (this.memoryManager) {
-        await this.memoryManager.clearAllMemory();
-      }
       
       return true;
     } catch (error) {
@@ -401,16 +316,6 @@ class ContextService extends BaseService {
    * @returns {Object} Serializable context history
    */
   exportContextHistory() {
-    // If memory manager is available, let it handle persistence
-    if (this.memoryManager) {
-      // Memory manager handles its own persistence
-      return {
-        usingMemoryManager: true,
-        legacyHistory: this.contextHistory.getAll(),
-        timestamp: Date.now()
-      };
-    }
-    
     // Legacy export
     return this.contextHistory.export();
   }
@@ -428,7 +333,7 @@ class ContextService extends BaseService {
       
       // Handle memory manager format
       if (data.usingMemoryManager) {
-        // Memory manager handles its own persistence
+        // Handle legacy format from memory manager
         if (data.legacyHistory && Array.isArray(data.legacyHistory)) {
           // Create a compatible format for the context history
           const historyData = {

@@ -106,12 +106,18 @@ class AudioFeedbackService extends BaseService {
       const startTime = Date.now();
       console.log('[AudioFeedback] Playing stop sound from:', this.stopPath);
       
-      await player.play({
+      // Play asynchronously to avoid blocking the transcription process
+      player.play({
         path: this.stopPath,
-        sync: true
+        sync: false // Changed to async
+      }).then(() => {
+        console.log('[AudioFeedback] Stop sound completed, duration:', Date.now() - startTime, 'ms');
+      }).catch(error => {
+        console.error('[AudioFeedback] Error in async stop sound playback:', error);
       });
       
-      console.log('[AudioFeedback] Stop sound completed, duration:', Date.now() - startTime, 'ms');
+      // Return immediately without waiting for sound to complete
+      return Promise.resolve();
     } catch (error) {
       console.error('[AudioFeedback] Error playing stop sound:', error);
       throw this.emitError(error);

@@ -162,22 +162,6 @@ describe('ContextService', () => {
     });
   });
 
-  describe('Memory Management', () => {
-    it('clears memory', async () => {
-      const result = await contextService.clearMemory();
-      
-      expect(result).toBe(true);
-      expect(contextService.contextHistory.clear).toHaveBeenCalled();
-    });
-
-    it('deletes memory item', async () => {
-      const result = await contextService.deleteMemoryItem('test-id');
-      
-      expect(result).toBe(true);
-      expect(contextService.contextHistory.deleteItem).toHaveBeenCalledWith('test-id');
-    });
-  });
-
   describe('Clipboard Operations', () => {
     it('starts internal clipboard operation', () => {
       contextService.startInternalOperation();

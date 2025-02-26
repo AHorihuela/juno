@@ -10,7 +10,6 @@ import Settings from './components/Settings';
 import TranscriptionHistory from './components/TranscriptionHistory';
 import DictionaryManager from './components/DictionaryManager';
 import AIRules from './components/AIRules';
-import MemoryManager from './components/MemoryManager';
 
 const App = () => {
   const [isRecording, setIsRecording] = useState(false);
@@ -110,7 +109,6 @@ const App = () => {
         <Route path="/dictionary" element={<DictionaryManager />} />
         <Route path="/ai-rules" element={<AIRules />} />
         <Route path="/history" element={<TranscriptionHistory />} />
-        <Route path="/memory" element={<MemoryManager />} />
         <Route path="/settings/*" element={<Settings />} />
       </Routes>
     </MainLayout>

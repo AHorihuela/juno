@@ -65,6 +65,13 @@ module.exports = {
         generator: {
           filename: 'assets/images/[name][ext]'
         }
+      },
+      {
+        test: /init-logging\.js$/,
+        type: 'asset/resource',
+        generator: {
+          filename: 'init-logging.js'
+        }
       }
     ]
   },
@@ -77,24 +84,7 @@ module.exports = {
       filename: 'index.html',
       inject: 'head',
       scriptLoading: 'defer'
-    }),
-    {
-      apply: (compiler) => {
-        compiler.hooks.compilation.tap('CopyInitLogging', (compilation) => {
-          compilation.hooks.processAssets.tap(
-            {
-              name: 'CopyInitLogging',
-              stage: compiler.webpack.Compilation.PROCESS_ASSETS_STAGE_ADDITIONAL
-            },
-            (assets) => {
-              const source = fs.readFileSync(path.resolve(__dirname, 'src/renderer/init-logging.js'), 'utf8');
-              const newAsset = new compiler.webpack.sources.RawSource(source);
-              compilation.emitAsset('init-logging.js', newAsset);
-            }
-          );
-        });
-      }
-    }
+    })
   ],
   watch: process.env.NODE_ENV === 'development'
 } 

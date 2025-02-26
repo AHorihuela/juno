@@ -341,6 +341,7 @@ class TranscriptionService extends BaseService {
    */
   async prepareAudioData(audioBuffer) {
     console.log('[Transcription] Converting PCM to WAV format...');
+    // Use synchronous conversion to reduce overhead
     return this.convertPcmToWav(audioBuffer);
   }
 
@@ -353,9 +354,16 @@ class TranscriptionService extends BaseService {
     const tempFile = path.join(os.tmpdir(), `whisper-${Date.now()}.wav`);
     console.log('[Transcription] Creating temp WAV file:', tempFile);
     
-    await fs.promises.writeFile(tempFile, wavData);
-    const fileSize = fs.statSync(tempFile).size;
-    console.log('[Transcription] WAV file written, size:', fileSize);
+    // Use writeFileSync for smaller files to reduce overhead
+    if (wavData.length < 10 * 1024 * 1024) { // Less than 10MB
+      fs.writeFileSync(tempFile, wavData);
+      const fileSize = fs.statSync(tempFile).size;
+      console.log('[Transcription] WAV file written synchronously, size:', fileSize);
+    } else {
+      await fs.promises.writeFile(tempFile, wavData);
+      const fileSize = fs.statSync(tempFile).size;
+      console.log('[Transcription] WAV file written asynchronously, size:', fileSize);
+    }
     
     return tempFile;
   }
@@ -389,106 +397,24 @@ class TranscriptionService extends BaseService {
       
       console.log(`[Transcription] Estimated audio duration: ${audioLengthSeconds.toFixed(2)}s`);
       
-      // Skip dictionary prompt for very short recordings (less than 1.5 seconds)
-      // Short recordings are more likely to be just ambient noise
-      let dictionaryPrompt = '';
-      if (audioLengthSeconds >= 1.5) {
-        // Start preparing the API request while dictionary prompt is being generated
-        const fileStream = fs.createReadStream(tempFile);
-        
-        // Generate dictionary prompt in parallel
-        dictionaryPrompt = await this.getService('dictionary').generateWhisperPrompt();
-        
-        // Create API request with parameters to reduce hallucinations
-        const response = await openai.audio.transcriptions.create({
-          file: fileStream,
-          model: 'whisper-1',
-          language: 'en',
-          prompt: dictionaryPrompt,
-          temperature: 0.0,  // Lower temperature reduces hallucinations
-          response_format: 'verbose_json'  // Get confidence scores
-        });
+      // Generate dictionary prompt for better accuracy
+      const dictionaryPrompt = await this.getService('dictionary').generateWhisperPrompt();
+      
+      // Create file stream
+      const fileStream = fs.createReadStream(tempFile);
+      
+      // Create API request with optimized parameters
+      const response = await openai.audio.transcriptions.create({
+        file: fileStream,
+        model: 'whisper-1',
+        language: 'en',
+        prompt: dictionaryPrompt,
+        temperature: 0.0,  // Lower temperature reduces hallucinations
+        response_format: 'json'  // Use simple JSON format for faster processing
+      });
 
-        console.log('[Transcription] Response received:', response);
-        
-        // Check confidence - if very low confidence, likely no real speech or hallucination
-        if (response.segments && response.segments.length > 0) {
-          const avgConfidence = response.segments.reduce((sum, segment) => sum + segment.confidence, 0) / response.segments.length;
-          const avgLogprob = response.segments.reduce((sum, segment) => sum + segment.avg_logprob, 0) / response.segments.length;
-          const noSpeechProb = response.segments[0].no_speech_prob || 0;
-          
-          console.log(`[Transcription] Confidence metrics:
-            Average confidence: ${avgConfidence ? avgConfidence.toFixed(4) : 'N/A'}
-            Average log probability: ${avgLogprob.toFixed(4)}
-            No speech probability: ${noSpeechProb.toFixed(4)}`);
-          
-          // If confidence is very low or no_speech_prob is high, likely hallucination or no real speech
-          if ((avgLogprob < -1.0 || noSpeechProb > 0.35) && audioLengthSeconds < 4) {
-            console.log('[Transcription] Low confidence transcription, likely hallucination or no real speech');
-            
-            // Try a second pass with different parameters
-            console.log('[Transcription] Attempting second pass with different parameters...');
-            
-            // Create a new file stream for the second attempt
-            const secondFileStream = fs.createReadStream(tempFile);
-            
-            try {
-              // Use a slightly higher temperature for the second attempt
-              const secondResponse = await openai.audio.transcriptions.create({
-                file: secondFileStream,
-                model: 'whisper-1',
-                language: 'en',
-                prompt: dictionaryPrompt,
-                temperature: 0.2,  // Slightly higher temperature for second attempt
-                response_format: 'verbose_json'
-              });
-              
-              console.log('[Transcription] Second pass response:', secondResponse);
-              
-              // Check if second attempt has better confidence
-              if (secondResponse.segments && secondResponse.segments.length > 0) {
-                const secondAvgLogprob = secondResponse.segments.reduce((sum, segment) => sum + segment.avg_logprob, 0) / secondResponse.segments.length;
-                const secondNoSpeechProb = secondResponse.segments[0].no_speech_prob || 0;
-                
-                console.log(`[Transcription] Second pass metrics:
-                  Average log probability: ${secondAvgLogprob.toFixed(4)}
-                  No speech probability: ${secondNoSpeechProb.toFixed(4)}`);
-                
-                // If second attempt is better, use it
-                if (secondAvgLogprob > avgLogprob && secondNoSpeechProb < noSpeechProb) {
-                  console.log('[Transcription] Second pass has better confidence, using it');
-                  return secondResponse;
-                }
-              }
-            } catch (secondError) {
-              console.error('[Transcription] Error in second pass:', secondError);
-              // Continue with original response if second attempt fails
-            }
-            
-            // If confidence is extremely low, return empty text
-            if (avgLogprob < -1.5 || noSpeechProb > 0.45) {
-              console.log('[Transcription] Extremely low confidence, returning empty text');
-              return { text: '' };
-            }
-          }
-        }
-        
-        return response;
-      } else {
-        console.log('[Transcription] Audio too short, skipping dictionary prompt');
-        
-        // For very short recordings, use a simpler request
-        const response = await openai.audio.transcriptions.create({
-          file: fs.createReadStream(tempFile),
-          model: 'whisper-1',
-          language: 'en',
-          temperature: 0.0,
-          response_format: 'verbose_json'
-        });
-        
-        console.log('[Transcription] Response received:', response);
-        return response;
-      }
+      console.log('[Transcription] Response received:', response);
+      return response;
     } catch (error) {
       console.error('[Transcription] Error details:', error);
       throw error;

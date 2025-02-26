@@ -278,17 +278,18 @@ class RecorderService extends BaseService {
         hadAudioContent: hasAudioContent
       });
       
-      // Get transcription
-      try {
-        console.log('Sending audio for transcription...');
-        const transcription = await this.getService('transcription').transcribeAudio(completeAudioData);
-        this.emit('transcription', transcription);
-        console.log('Transcription received:', transcription);
-      } catch (error) {
-        console.error('Transcription error:', error);
-        this.getService('notification').showTranscriptionError(error);
-        this.emit('error', error);
-      }
+      // Start transcription process immediately without waiting for stop sound to complete
+      console.log('Sending audio for transcription...');
+      this.getService('transcription').transcribeAudio(completeAudioData)
+        .then(transcription => {
+          this.emit('transcription', transcription);
+          console.log('Transcription received:', transcription);
+        })
+        .catch(error => {
+          console.error('Transcription error:', error);
+          this.getService('notification').showTranscriptionError(error);
+          this.emit('error', error);
+        });
 
       this.emit('stop');
       console.log('Recording stopped');

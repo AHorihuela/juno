@@ -59,13 +59,6 @@ This refactoring improves:
 - Testability: Modules can be tested independently
 - Extensibility: New features can be added to the appropriate module
 
-### MemoryManager
-
-The MemoryManager service optimizes application memory usage by:
-- Monitoring memory consumption
-- Implementing garbage collection strategies
-- Managing resource cleanup
-
 ### ServiceRegistry
 
 The ServiceRegistry manages service lifecycle and dependencies:
