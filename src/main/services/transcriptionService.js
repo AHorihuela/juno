@@ -9,7 +9,11 @@ const BaseService = require('./BaseService');
 const { detectAICommand, logCommandDetection } = require('../utils/commandDetection');
 const AudioUtils = require('./utils/AudioUtils');
 const WhisperAPIClient = require('./api/WhisperAPIClient');
-const { APIError } = require('../utils/ErrorManager');
+const { APIError, ErrorManager } = require('../utils/ErrorManager');
+const LogManager = require('../utils/LogManager');
+
+// Get a logger for this module
+const logger = LogManager.getLogger('TranscriptionService');
 
 class TranscriptionService extends BaseService {
   constructor() {
@@ -35,11 +39,12 @@ class TranscriptionService extends BaseService {
       this.getService('config'),
       this.getService('dictionary')
     );
-    console.log('[TranscriptionService] Initialized WhisperAPIClient');
+    logger.info('Initialized WhisperAPIClient');
   }
 
   async _shutdown() {
     // Nothing to clean up
+    logger.debug('Shutting down TranscriptionService');
   }
 
   /**
@@ -51,80 +56,66 @@ class TranscriptionService extends BaseService {
   }
 
   /**
-   * Process transcribed text to determine if it's an AI command
-   * @param {string} text - Transcribed text to process
-   * @returns {Promise<Object>} Processing result with command detection
+   * Process transcribed text
+   * @param {string} text - Raw transcribed text
+   * @returns {Object} Processing result with text and metadata
    */
-  async processTranscribedText(text) {
-    console.log('[Transcription] Processing transcribed text:', text);
+  async processText(text) {
+    logger.debug('Processing transcribed text', { metadata: { text } });
     
     if (!text || text.trim() === '') {
-      console.log('[Transcription] Empty text, skipping processing');
-      return { 
-        isCommand: false,
-        text: ''
+      logger.debug('Empty text, skipping processing');
+      return {
+        text: '',
+        isAICommand: false,
+        confidence: 0
       };
     }
     
     try {
-      // Get configuration
-      const configService = this.getService('config');
-      const actionVerbs = await configService.getActionVerbs();
-      const actionVerbsEnabled = await configService.getActionVerbsEnabled();
-      const aiTriggerWord = await configService.getAITriggerWord();
+      // Check if this is an AI command
+      const commandDetection = await detectAICommand(text);
+      const isAICommand = commandDetection.isCommand;
       
-      // Get user context
-      const userContext = {
-        hasHighlightedText: await this.getService('context').hasHighlightedText(),
-        isLongDictation: text.split(/\s+/).length > 30, // Consider it long if > 30 words
-        recentAICommands: this.processingStats.aiCommandCount > 0 ? 1 : 0
-      };
+      // Log command detection for analytics
+      await logCommandDetection(text, commandDetection);
       
-      // Detect if this is an AI command
-      const commandDetection = detectAICommand(
-        text, 
-        actionVerbs, 
-        actionVerbsEnabled, 
-        aiTriggerWord, 
-        userContext
-      );
-      
-      // Log detection results for debugging
-      logCommandDetection(commandDetection, text);
-      
-      // If it's a command or needs confirmation, handle accordingly
-      if (commandDetection.isCommand) {
-        console.log('[Transcription] AI command detected with confidence:', commandDetection.confidenceScore);
-        this.processingStats.aiCommandCount++;
+      if (isAICommand && commandDetection.confidenceScore >= 0.8) {
+        logger.info('AI command detected with confidence', { 
+          metadata: { 
+            confidence: commandDetection.confidenceScore,
+            command: commandDetection.command
+          }
+        });
         
         return {
-          isCommand: true,
-          text: text,
-          commandInfo: commandDetection
+          text: commandDetection.command,
+          isAICommand: true,
+          confidence: commandDetection.confidenceScore
         };
-      } else if (commandDetection.needsConfirmation) {
-        console.log('[Transcription] Possible AI command detected, needs confirmation');
-        // For now, we'll treat this as not a command, but in the future
-        // we could implement a confirmation UI
+      } else if (isAICommand && commandDetection.confidenceScore >= 0.5) {
+        logger.info('Possible AI command detected, needs confirmation', {
+          metadata: { 
+            confidence: commandDetection.confidenceScore,
+            command: commandDetection.command
+          }
+        });
+      } else {
+        logger.debug('Not an AI command, treating as normal transcription');
       }
       
-      // Not a command, just return the processed text
-      console.log('[Transcription] Not an AI command, treating as normal transcription');
-      this.processingStats.normalTranscriptionCount++;
-      
       return {
-        isCommand: false,
-        text: text
+        text,
+        isAICommand: false,
+        confidence: 0
       };
     } catch (error) {
-      console.error('[Transcription] Error processing text:', error);
-      this.processingStats.errorCount++;
-      
-      // Return the original text on error
+      logger.error('Error processing text', { metadata: { error } });
       return {
-        isCommand: false,
-        text: text,
-        error: error.message
+        text,
+        isAICommand: false,
+        confidence: 0,
+        error
       };
     }
   }
@@ -143,23 +134,23 @@ class TranscriptionService extends BaseService {
         throw new Error('TranscriptionService not initialized');
       }
 
-      console.log('[TranscriptionService] Starting text processing pipeline');
-      console.log('[TranscriptionService] Raw text:', text);
+      logger.info('Starting text processing pipeline');
+      logger.debug('Raw text:', text);
 
       // Skip processing if text is empty or just whitespace
       if (!text || !text.trim()) {
-        console.log('[TranscriptionService] Empty text, skipping processing');
+        logger.debug('Empty text, skipping processing');
         return '';
       }
 
       // Get selected text if any - use the optimized selection service
       const selectionService = this.getService('selection');
       const highlightedText = await selectionService.getSelectedText();
-      console.log('[TranscriptionService] Selected text:', highlightedText);
+      logger.debug('Selected text:', highlightedText);
       
       // Preload app name for future operations
       selectionService.preloadAppName().catch(err => {
-        console.error('[TranscriptionService] Error preloading app name:', err);
+        logger.error('Error preloading app name:', err);
       });
       
       // Store the highlighted text in context service for future reference
@@ -171,7 +162,7 @@ class TranscriptionService extends BaseService {
       // First check if this is an AI command
       const aiService = this.getService('ai');
       isAICommand = await aiService.isAICommand(text);
-      console.log('[TranscriptionService] Is AI command:', isAICommand);
+      logger.debug('Is AI command:', isAICommand);
 
       if (isAICommand) {
         try {
@@ -183,16 +174,16 @@ class TranscriptionService extends BaseService {
             timeout: 2000
           });
           
-          console.log('[TranscriptionService] Processing as AI command');
+          logger.info('Processing as AI command');
           const aiResponse = await aiService.processCommand(text, highlightedText);
           
           // Check if the AI request was cancelled or failed
           if (!aiResponse) {
-            console.log('[TranscriptionService] AI request was cancelled or failed');
+            logger.info('AI request was cancelled or failed');
             return '';
           }
           
-          console.log('[TranscriptionService] AI response:', aiResponse);
+          logger.info('AI response:', aiResponse);
           
           // Show context usage feedback
           if (aiResponse.contextUsed) {
@@ -207,10 +198,10 @@ class TranscriptionService extends BaseService {
           
           return aiResponse.text;
         } catch (aiError) {
-          console.error('[TranscriptionService] Error processing AI command:', aiError);
+          logger.error('Error processing AI command:', aiError);
           
           // Fall back to normal text processing if AI fails
-          console.log('[TranscriptionService] Falling back to normal text processing due to AI error');
+          logger.info('Falling back to normal text processing due to AI error');
           
           // Show notification to user
           this.getService('notification').showNotification({
@@ -227,16 +218,16 @@ class TranscriptionService extends BaseService {
       }
 
       // If not an AI command or AI processing failed, proceed with normal text processing
-      console.log('[TranscriptionService] Processing as normal text');
+      logger.info('Processing as normal text');
 
       // First apply dictionary processing
       const dictionaryProcessed = await this.getService('dictionary').processTranscribedText(text);
-      console.log('[TranscriptionService] After dictionary processing:', dictionaryProcessed);
+      logger.debug('After dictionary processing:', dictionaryProcessed);
 
       // Then continue with other text processing
       const textProcessing = this.getService('textProcessing');
       const processed = textProcessing.processText(dictionaryProcessed);
-      console.log('[TranscriptionService] Final processed text:', processed);
+      logger.debug('Final processed text:', processed);
 
       // Insert the processed text
       await this.getService('textInsertion').insertText(processed, highlightedText);
@@ -246,7 +237,7 @@ class TranscriptionService extends BaseService {
       
       return processed;
     } catch (error) {
-      console.error('[TranscriptionService] Error in processAndInsertText:', error);
+      logger.error('Error in processAndInsertText:', error);
       
       // Show notification to user
       this.getService('notification').showNotification({
@@ -267,7 +258,7 @@ class TranscriptionService extends BaseService {
       const processingTime = Date.now() - startTime;
       this.updateProcessingStats(processingTime, isAICommand);
       
-      console.log('[TranscriptionService] Processing completed in', processingTime, 'ms');
+      logger.info('Processing completed in', processingTime, 'ms');
     }
   }
   
@@ -315,7 +306,7 @@ class TranscriptionService extends BaseService {
         0.2 * processingTime;
     }
     
-    console.log('[TranscriptionService] Updated processing stats:', {
+    logger.info('Updated processing stats:', {
       lastTime: processingTime,
       avgTime: this.processingStats.averageProcessingTime,
       count: this.processingStats.processedCount,
@@ -342,7 +333,7 @@ class TranscriptionService extends BaseService {
    * @returns {Promise<Buffer>} WAV formatted audio data
    */
   async prepareAudioData(audioBuffer) {
-    console.log('[Transcription] Converting PCM to WAV format...');
+    logger.info('Converting PCM to WAV format...');
     // Use synchronous conversion to reduce overhead
     return AudioUtils.convertPcmToWav(audioBuffer);
   }
@@ -366,17 +357,17 @@ class TranscriptionService extends BaseService {
     const dictStats = this.getService('dictionary').getStats();
     
     // Log effectiveness summary
-    console.log('\n[Transcription] Dictionary effectiveness summary:');
-    console.log('  - Dictionary size:', dictStats.dictionarySize, 'words');
-    console.log('  - Exact match rate:', dictStats.effectiveness.exactMatchRate);
-    console.log('  - Fuzzy match rate:', dictStats.effectiveness.fuzzyMatchRate);
-    console.log('  - Unmatched rate:', dictStats.effectiveness.unmatchedRate);
+    logger.info('\nDictionary effectiveness summary:');
+    logger.info('  - Dictionary size:', dictStats.dictionarySize, 'words');
+    logger.info('  - Exact match rate:', dictStats.effectiveness.exactMatchRate);
+    logger.info('  - Fuzzy match rate:', dictStats.effectiveness.fuzzyMatchRate);
+    logger.info('  - Unmatched rate:', dictStats.effectiveness.unmatchedRate);
     
     // Compare original vs processed
     if (originalText !== processedText) {
-      console.log('\n[Transcription] Text changes:');
-      console.log('  Original:', originalText);
-      console.log('  Processed:', processedText);
+      logger.info('\nText changes:');
+      logger.info('  Original:', originalText);
+      logger.info('  Processed:', processedText);
     }
   }
 
@@ -388,7 +379,7 @@ class TranscriptionService extends BaseService {
    */
   async _learnFromTranscription(transcribedText) {
     // Automatic word learning is disabled
-    console.log('[Transcription] Automatic word learning is disabled');
+    logger.info('Automatic word learning is disabled');
     return;
     
     // The code below is kept for reference but will not execute
@@ -401,7 +392,7 @@ class TranscriptionService extends BaseService {
       // Get dictionary service
       const dictionaryService = this.getService('dictionary');
       if (!dictionaryService) {
-        console.log('[Transcription] Dictionary service not available for learning');
+        logger.info('Dictionary service not available for learning');
         return;
       }
       
@@ -429,13 +420,13 @@ class TranscriptionService extends BaseService {
       
       // Add proper nouns to dictionary
       for (const word of properNouns) {
-        console.log(`[Transcription] Learning new proper noun: "${word}"`);
+        logger.info('Learning new proper noun:', word);
         await dictionaryService.addWord(word);
       }
       
-      console.log(`[Transcription] Learning complete: ${properNouns.length} new words added to dictionary`);
+      logger.info('Learning complete:', properNouns.length, 'new words added to dictionary');
     } catch (error) {
-      console.error('[Transcription] Error learning from transcription:', error);
+      logger.error('Error learning from transcription:', error);
       // Continue without learning if there's an error
     }
     */
@@ -482,7 +473,7 @@ class TranscriptionService extends BaseService {
       
       // If transcription is empty, show notification and return early
       if (!transcribedText || transcribedText.trim() === '') {
-        console.log('[Transcription] Empty transcription received, skipping processing');
+        logger.info('Empty transcription received, skipping processing');
         this.getService('notification').showNotification({
           title: 'No Speech Detected',
           body: 'The recording contained no recognizable speech.',
@@ -507,21 +498,21 @@ class TranscriptionService extends BaseService {
       
       // Automatic word learning is disabled - this call is kept for compatibility
       this._learnFromTranscription(transcribedText).catch(err => {
-        console.error('[Transcription] Error in learning process:', err);
+        logger.error('Error in learning process:', err);
       });
 
       // Log metrics in the background without waiting
       this.logTranscriptionMetrics(transcribedText, processedText).catch(err => {
-        console.error('[Transcription] Error logging metrics:', err);
+        logger.error('Error logging metrics:', err);
       });
       
       // Log performance
       const totalTime = Date.now() - startTime;
-      console.log(`[Transcription] Total processing time: ${totalTime}ms`);
+      logger.info(`Total processing time: ${totalTime}ms`);
 
       return processedText;
     } catch (error) {
-      console.error('[Transcription] Error in transcription:', error);
+      logger.error('Error in transcription:', error);
       
       // Update error stats
       this.processingStats.errorCount++;
@@ -541,7 +532,7 @@ class TranscriptionService extends BaseService {
       // Clean up temp file if it was created
       if (tempFile) {
         this.cleanupTempFile(tempFile).catch(err => {
-          console.error('[Transcription] Error cleaning up temp file:', err);
+          logger.error('Error cleaning up temp file:', err);
         });
       }
       
@@ -567,7 +558,7 @@ class TranscriptionService extends BaseService {
   clearAPICache() {
     if (this.apiClient) {
       this.apiClient.clearCache();
-      console.log('[TranscriptionService] API cache cleared');
+      logger.info('API cache cleared');
     }
   }
 
@@ -591,7 +582,7 @@ class TranscriptionService extends BaseService {
         0.2 * processingTime;
     }
     
-    console.log('[TranscriptionService] Updated processing stats:', {
+    logger.info('Updated processing stats:', {
       lastTime: processingTime,
       avgTime: this.processingStats.averageProcessingTime,
       count: this.processingStats.processedCount,

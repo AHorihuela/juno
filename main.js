@@ -1,8 +1,20 @@
 const { app } = require('electron');
 const path = require('path');
 
+// Import LogManager for centralized logging
+const LogManager = require('./src/main/utils/LogManager');
+
+// Initialize LogManager early
+LogManager.initialize({
+  logLevel: process.env.NODE_ENV === 'development' ? 'DEBUG' : 'INFO'
+});
+
+// Get a logger for the main process
+const logger = LogManager.getLogger('Main');
+
 // Import service registry
-const serviceRegistry = require('./src/main/services/ServiceRegistry');
+const ServiceRegistry = require('./src/main/services/ServiceRegistry');
+const serviceRegistry = new ServiceRegistry();
 
 // Import service factories
 const configService = require('./src/main/services/configService');
@@ -21,6 +33,8 @@ const windowManager = require('./src/main/services/WindowManager');
 const textProcessingService = require('./src/main/services/textProcessing');
 const resourceManager = require('./src/main/services/resourceManager');
 const overlayService = require('./src/main/services/OverlayService');
+const loggingService = require('./src/main/services/LoggingService');
+const ipcRegistry = require('./src/main/ipc/IPCRegistry');
 
 // Import IPC handlers
 const setupIpcHandlers = require('./src/main/ipc/handlers');
@@ -36,9 +50,9 @@ const { createMainWindow } = require('./src/main/utils/windowManager');
 const { registerShortcuts, unregisterAllShortcuts } = require('./src/main/utils/shortcutManager');
 
 // First log to verify process start
-console.log('[Main] Main process starting...');
-console.log('[Main] Environment:', process.env.NODE_ENV);
-console.log('[Main] Current working directory:', process.cwd());
+logger.info('Main process starting...');
+logger.info('Environment: ' + process.env.NODE_ENV);
+logger.info('Current working directory: ' + process.cwd());
 
 // Set application name
 app.name = 'Juno';
@@ -48,124 +62,126 @@ app.setName('Juno');
 if (process.platform === 'darwin') {
   app.dock.setIcon(path.join(__dirname, 'assets/icon.png'));
   // Prevent app from exiting when all windows are closed
-  app.setActivationPolicy('regular');
+  app.dock.hide();
 }
 
-// Handle creating/removing shortcuts on Windows when installing/uninstalling
-if (require('electron-squirrel-startup')) {
+// Only allow a single instance of the app
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  logger.warn('Another instance is already running. Exiting...');
   app.quit();
+  return;
 }
 
-// Main window reference
-let mainWindow = null;
+// Handle second instance
+app.on('second-instance', () => {
+  logger.info('Second instance detected, focusing main window');
+  const mainWindowService = serviceRegistry.get('windowManager');
+  if (mainWindowService) {
+    mainWindowService.showMainWindow();
+  }
+});
 
-/**
- * Initializes all services in the service registry
- */
+// Initialize services
 async function initializeServices() {
-  console.log('Initializing services...');
-  
-  // Register all services
-  serviceRegistry
-    .register('config', configService())
-    .register('resource', resourceManager())
-    .register('notification', notificationService())
-    .register('dictionary', dictionaryService())
-    .register('textProcessing', textProcessingService())
-    .register('audio', audioFeedbackService())
-    .register('recorder', recorderService())
-    .register('transcription', transcriptionService())
-    .register('ai', aiService())
-    .register('context', contextService())
-    .register('selection', selectionService())
-    .register('textInsertion', textInsertionService())
-    .register('tray', trayService())
-    .register('windowManager', windowManager())
-    .register('transcriptionHistory', transcriptionHistoryService())
-    .register('overlay', overlayService());
-
-  // Initialize all services
-  await serviceRegistry.initialize();
-  console.log('All services initialized');
-}
-
-/**
- * Sets up all IPC handlers for communication with the renderer process
- */
-function setupAllIpcHandlers() {
-  // Setup core IPC handlers
-  setupIpcHandlers(mainWindow);
-  
-  // Setup specialized IPC handlers
-  setupDictionaryIpcHandlers();
-  setupMicrophoneHandlers();
-  setupSettingsHandlers();
-  setupNotificationHandlers();
-  setupRecordingHandlers();
-}
-
-// This method will be called when Electron has finished initialization
-app.whenReady().then(async () => {
-  console.log('App ready, initializing...');
-  
   try {
-    // Initialize all services first
-    await initializeServices();
+    logger.info('Registering services...');
     
-    // Create the main window
-    mainWindow = createMainWindow();
+    // Register all services
+    serviceRegistry
+      .register('config', configService())
+      .register('resource', resourceManager())
+      .register('ipc', ipcRegistry)
+      .register('logging', loggingService())
+      .register('notification', notificationService())
+      .register('dictionary', dictionaryService())
+      .register('textProcessing', textProcessingService())
+      .register('audio', audioFeedbackService())
+      .register('recorder', recorderService())
+      .register('transcription', transcriptionService())
+      .register('ai', aiService())
+      .register('context', contextService())
+      .register('selection', selectionService())
+      .register('textInsertion', textInsertionService())
+      .register('history', transcriptionHistoryService())
+      .register('tray', trayService())
+      .register('windowManager', windowManager())
+      .register('overlay', overlayService());
     
-    // Setup IPC handlers
+    // Initialize all services
+    await serviceRegistry.initialize();
+    
+    // Setup IPC handlers after services are initialized
     setupAllIpcHandlers();
     
-    // Setup error handlers
-    setupErrorHandlers(mainWindow);
+    // Register global shortcuts
+    registerShortcuts(serviceRegistry);
     
-    // Register keyboard shortcuts
-    await registerShortcuts();
-    
-    console.log('Application initialization completed');
+    logger.info('Application initialization complete');
   } catch (error) {
-    console.error('Failed to initialize application:', error);
-    app.quit();
+    logger.error('Failed to initialize services', { metadata: { error } });
+    app.exit(1);
   }
+}
+
+function setupAllIpcHandlers() {
+  logger.info('Setting up IPC handlers...');
+  
+  setupIpcHandlers(serviceRegistry);
+  setupDictionaryIpcHandlers(serviceRegistry);
+  setupMicrophoneHandlers(serviceRegistry);
+  setupSettingsHandlers(serviceRegistry);
+  setupNotificationHandlers(serviceRegistry);
+  setupRecordingHandlers(serviceRegistry);
+  
+  logger.info('IPC handlers setup complete');
+}
+
+// Handle app ready event
+app.whenReady().then(async () => {
+  logger.info('Application ready');
+  
+  // Setup error handlers
+  setupErrorHandlers();
+  
+  // Initialize services
+  await initializeServices();
+  
+  // Create main window
+  createMainWindow();
 });
 
-// Quit when all windows are closed, except on macOS
-app.on('window-all-closed', async () => {
-  if (process.platform !== 'darwin') {
-    await serviceRegistry.shutdown();
-    app.quit();
-  } else {
-    // On macOS, keep the app in the dock even when all windows are closed
-    // This allows users to reopen the app by clicking on the dock icon
-    console.log('[Main] Window closed but app remains active in dock');
-  }
-});
-
-// On macOS, re-create the window when the dock icon is clicked
+// Handle app activation (macOS)
 app.on('activate', () => {
-  if (mainWindow === null) {
-    mainWindow = createMainWindow();
-    setupAllIpcHandlers();
-  } else {
-    // If window exists but is hidden, show it
-    mainWindow.show();
+  logger.info('Application activated');
+  const mainWindowService = serviceRegistry.get('windowManager');
+  if (mainWindowService) {
+    mainWindowService.showMainWindow();
   }
 });
 
-// Set flag when quitting to prevent tray from keeping app alive
-app.on('before-quit', () => {
-  app.isQuitting = true;
-});
-
-// Clean up before quitting
-app.on('will-quit', async () => {
+// Handle app before-quit event
+app.on('before-quit', async (event) => {
+  logger.info('Application quitting...');
+  
+  // Unregister all shortcuts
   unregisterAllShortcuts();
-  await serviceRegistry.shutdown();
+  
+  // Shutdown all services
+  try {
+    await serviceRegistry.shutdown();
+    logger.info('Services shutdown complete');
+  } catch (error) {
+    logger.error('Error during service shutdown', { metadata: { error } });
+  }
 });
 
-// Log when app is quitting
-app.on('quit', () => {
-  console.log('[Main] Application quitting...');
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught exception in main process', { metadata: { error } });
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason) => {
+  logger.error('Unhandled promise rejection in main process', { metadata: { reason } });
 }); 

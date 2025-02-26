@@ -5,6 +5,9 @@
  * consistent error handling throughout the application.
  */
 
+const LogManager = require('./LogManager');
+const logger = LogManager.getLogger('ErrorManager');
+
 /**
  * Base application error class
  */
@@ -102,6 +105,30 @@ class IPCError extends AppError {
 }
 
 /**
+ * Database errors
+ */
+class DatabaseError extends AppError {
+  constructor(message, options = {}) {
+    super(message, {
+      code: options.code || 'ERR_DATABASE',
+      metadata: options.metadata || {}
+    });
+  }
+}
+
+/**
+ * Validation errors
+ */
+class ValidationError extends AppError {
+  constructor(message, options = {}) {
+    super(message, {
+      code: options.code || 'ERR_VALIDATION',
+      metadata: options.metadata || {}
+    });
+  }
+}
+
+/**
  * Centralized error handler
  */
 class ErrorManager {
@@ -109,29 +136,47 @@ class ErrorManager {
    * Handle an error
    * @param {Error} error - Error to handle
    * @param {Object} context - Error context
+   * @param {boolean} [rethrow=false] - Whether to rethrow the error after handling
    * @returns {Object} Processed error information
    */
-  static handleError(error, context = {}) {
+  static handleError(error, context = {}, rethrow = false) {
     // Convert standard errors to AppError
+    let appError;
     if (!(error instanceof AppError)) {
-      error = new AppError(error.message, {
+      appError = new AppError(error.message, {
         code: error.code || 'ERR_UNKNOWN',
         metadata: { originalError: error, ...context }
       });
+    } else {
+      appError = error;
+      
+      // Add context to metadata if provided
+      if (context && Object.keys(context).length > 0) {
+        appError.metadata = { ...appError.metadata, ...context };
+      }
     }
 
-    // Log the error
-    console.error(`[ErrorManager] ${error.toString()}`);
-    if (error.metadata && Object.keys(error.metadata).length > 0) {
-      console.error('[ErrorManager] Error metadata:', error.metadata);
-    }
+    // Log the error using LogManager
+    logger.error(appError.toString(), {
+      metadata: {
+        error: appError.toJSON(),
+        context
+      }
+    });
 
     // Return processed error information
-    return {
-      error: error.toJSON(),
+    const result = {
+      error: appError.toJSON(),
       handled: true,
       timestamp: new Date()
     };
+    
+    // Rethrow if requested
+    if (rethrow) {
+      throw appError;
+    }
+    
+    return result;
   }
 
   /**
@@ -151,9 +196,43 @@ class ErrorManager {
         return new ConfigError(message, options);
       case 'ipc':
         return new IPCError(message, options);
+      case 'database':
+        return new DatabaseError(message, options);
+      case 'validation':
+        return new ValidationError(message, options);
       default:
         return new AppError(message, options);
     }
+  }
+  
+  /**
+   * Log an error without throwing it
+   * @param {string} type - Error type
+   * @param {string} message - Error message
+   * @param {Object} options - Error options
+   * @returns {AppError} Created error instance
+   */
+  static logError(type, message, options = {}) {
+    const error = this.createError(type, message, options);
+    this.handleError(error);
+    return error;
+  }
+  
+  /**
+   * Wrap a function with error handling
+   * @param {Function} fn - Function to wrap
+   * @param {Object} context - Error context
+   * @param {boolean} [rethrow=false] - Whether to rethrow errors
+   * @returns {Function} Wrapped function
+   */
+  static wrapWithErrorHandler(fn, context = {}, rethrow = false) {
+    return async (...args) => {
+      try {
+        return await fn(...args);
+      } catch (error) {
+        return this.handleError(error, context, rethrow);
+      }
+    };
   }
 }
 
@@ -163,5 +242,7 @@ module.exports = {
   APIError,
   FileSystemError,
   ConfigError,
-  IPCError
+  IPCError,
+  DatabaseError,
+  ValidationError
 }; 

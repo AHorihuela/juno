@@ -1,4 +1,8 @@
 const { EventEmitter } = require('events');
+const LogManager = require('../utils/LogManager');
+
+// Get a logger for this module
+const logger = LogManager.getLogger('ServiceRegistry');
 
 class ServiceRegistry extends EventEmitter {
   constructor() {
@@ -8,6 +12,8 @@ class ServiceRegistry extends EventEmitter {
     this.initOrder = [
       'config',
       'resource',
+      'ipc',
+      'logging',
       'notification',
       'dictionary',
       'textProcessing',
@@ -28,6 +34,7 @@ class ServiceRegistry extends EventEmitter {
     if (this.services.has(name)) {
       throw new Error(`Service ${name} is already registered`);
     }
+    logger.debug(`Registering service: ${name}`);
     this.services.set(name, service);
     return this;
   }
@@ -35,6 +42,7 @@ class ServiceRegistry extends EventEmitter {
   get(name) {
     const service = this.services.get(name);
     if (!service) {
+      logger.error(`Service not found: ${name}`);
       throw new Error(`Service ${name} not found`);
     }
     return service;
@@ -50,60 +58,89 @@ class ServiceRegistry extends EventEmitter {
 
   async initialize() {
     if (this.initialized) {
+      logger.warn('ServiceRegistry is already initialized');
       return;
     }
 
-    console.log('Initializing services...');
+    logger.info('Initializing services...');
     
-    try {
-      for (const serviceName of this.initOrder) {
-        const service = this.services.get(serviceName);
-        if (!service) {
-          console.warn(`Warning: Service ${serviceName} not registered but in initialization order`);
-          continue;
-        }
-
-        console.log(`Initializing ${serviceName} service...`);
-        if (typeof service.initialize === 'function') {
+    // Initialize services in order
+    for (const serviceName of this.initOrder) {
+      const service = this.services.get(serviceName);
+      if (service) {
+        logger.info(`Initializing service: ${serviceName}`);
+        try {
           await service.initialize(this);
+          logger.info(`Service initialized: ${serviceName}`);
+        } catch (error) {
+          logger.error(`Failed to initialize service: ${serviceName}`, { metadata: { error } });
+          throw error;
         }
-        console.log(`${serviceName} service initialized`);
       }
-
-      this.initialized = true;
-      this.emit('initialized');
-      console.log('All services initialized successfully');
-    } catch (error) {
-      console.error('Service initialization failed:', error);
-      this.emit('error', error);
-      throw error;
     }
+
+    // Initialize any remaining services not in the initOrder
+    for (const [name, service] of this.services.entries()) {
+      if (!this.initOrder.includes(name)) {
+        logger.info(`Initializing additional service: ${name}`);
+        try {
+          await service.initialize(this);
+          logger.info(`Additional service initialized: ${name}`);
+        } catch (error) {
+          logger.error(`Failed to initialize additional service: ${name}`, { metadata: { error } });
+          throw error;
+        }
+      }
+    }
+
+    this.initialized = true;
+    logger.info('All services initialized successfully');
+    this.emit('initialized');
   }
 
   async shutdown() {
-    console.log('Shutting down services...');
+    if (!this.initialized) {
+      logger.warn('ServiceRegistry is not initialized, nothing to shut down');
+      return;
+    }
+
+    logger.info('Shutting down services...');
     
     // Shutdown in reverse order
-    for (const serviceName of [...this.initOrder].reverse()) {
+    const reverseOrder = [...this.initOrder].reverse();
+    
+    for (const serviceName of reverseOrder) {
       const service = this.services.get(serviceName);
-      if (!service) continue;
-
-      try {
-        if (typeof service.shutdown === 'function') {
-          console.log(`Shutting down ${serviceName} service...`);
+      if (service) {
+        logger.info(`Shutting down service: ${serviceName}`);
+        try {
           await service.shutdown();
-          console.log(`${serviceName} service shut down`);
+          logger.info(`Service shut down: ${serviceName}`);
+        } catch (error) {
+          logger.error(`Error shutting down service: ${serviceName}`, { metadata: { error } });
+          // Continue shutting down other services even if one fails
         }
-      } catch (error) {
-        console.error(`Error shutting down ${serviceName} service:`, error);
       }
     }
 
-    this.services.clear();
+    // Shutdown any remaining services not in the initOrder
+    for (const [name, service] of this.services.entries()) {
+      if (!this.initOrder.includes(name)) {
+        logger.info(`Shutting down additional service: ${name}`);
+        try {
+          await service.shutdown();
+          logger.info(`Additional service shut down: ${name}`);
+        } catch (error) {
+          logger.error(`Error shutting down additional service: ${name}`, { metadata: { error } });
+          // Continue shutting down other services even if one fails
+        }
+      }
+    }
+
     this.initialized = false;
+    logger.info('All services shut down');
     this.emit('shutdown');
-    console.log('All services shut down');
   }
 }
 
-module.exports = new ServiceRegistry(); 
+module.exports = ServiceRegistry; 
