@@ -368,19 +368,22 @@ class TranscriptionService extends BaseService {
   async callWhisperAPI(tempFile) {
     console.log('[Transcription] Sending request to Whisper API...');
     
-    // Show notification to user
+    // Show notification to user - but don't wait for it to complete
     this.getService('notification').showNotification({
       title: 'Transcribing Audio',
-      body: 'Sending audio to Whisper API...',
+      body: 'Processing your recording...',
       type: 'info',
       timeout: 3000
     });
     
-    const openai = await this.getService('resource').getOpenAIClient();
+    // Prepare OpenAI client in parallel with file stats
+    const [openai, fileStats] = await Promise.all([
+      this.getService('resource').getOpenAIClient(),
+      fs.promises.stat(tempFile)
+    ]);
 
     try {
-      // Get file stats to check duration
-      const fileStats = fs.statSync(tempFile);
+      // Calculate audio duration
       const fileSize = fileStats.size;
       const audioLengthSeconds = (fileSize - 44) / (16000 * 2); // Approximate duration in seconds
       
@@ -390,36 +393,52 @@ class TranscriptionService extends BaseService {
       // Short recordings are more likely to be just ambient noise
       let dictionaryPrompt = '';
       if (audioLengthSeconds >= 1.5) {
+        // Start preparing the API request while dictionary prompt is being generated
+        const fileStream = fs.createReadStream(tempFile);
+        
+        // Generate dictionary prompt in parallel
         dictionaryPrompt = await this.getService('dictionary').generateWhisperPrompt();
+        
+        // Create API request with parameters to reduce hallucinations
+        const response = await openai.audio.transcriptions.create({
+          file: fileStream,
+          model: 'whisper-1',
+          language: 'en',
+          prompt: dictionaryPrompt,
+          temperature: 0.0,  // Lower temperature reduces hallucinations
+          response_format: 'verbose_json'  // Get confidence scores
+        });
+
+        console.log('[Transcription] Response received:', response);
+        
+        // Check confidence - if very low confidence, likely no real speech
+        if (response.segments && response.segments.length > 0) {
+          const avgConfidence = response.segments.reduce((sum, segment) => sum + segment.confidence, 0) / response.segments.length;
+          console.log(`[Transcription] Average confidence: ${avgConfidence.toFixed(4)}`);
+          
+          // If confidence is very low and audio is short, likely no real speech
+          if (avgConfidence < 0.5 && audioLengthSeconds < 3) {
+            console.log('[Transcription] Low confidence transcription, likely no real speech');
+            return { text: '' };  // Return empty text
+          }
+        }
+        
+        return response;
       } else {
         console.log('[Transcription] Audio too short, skipping dictionary prompt');
-      }
-      
-      // Create API request with parameters to reduce hallucinations
-      const response = await openai.audio.transcriptions.create({
-        file: fs.createReadStream(tempFile),
-        model: 'whisper-1',
-        language: 'en',
-        prompt: dictionaryPrompt,
-        temperature: 0.0,  // Lower temperature reduces hallucinations
-        response_format: 'verbose_json'  // Get confidence scores
-      });
-
-      console.log('[Transcription] Response received:', response);
-      
-      // Check confidence - if very low confidence, likely no real speech
-      if (response.segments && response.segments.length > 0) {
-        const avgConfidence = response.segments.reduce((sum, segment) => sum + segment.confidence, 0) / response.segments.length;
-        console.log(`[Transcription] Average confidence: ${avgConfidence.toFixed(4)}`);
         
-        // If confidence is very low and audio is short, likely no real speech
-        if (avgConfidence < 0.5 && audioLengthSeconds < 3) {
-          console.log('[Transcription] Low confidence transcription, likely no real speech');
-          return { text: '' };  // Return empty text
-        }
+        // For very short recordings, use a simpler request
+        const response = await openai.audio.transcriptions.create({
+          file: fs.createReadStream(tempFile),
+          model: 'whisper-1',
+          language: 'en',
+          temperature: 0.0,
+          response_format: 'verbose_json'
+        });
+        
+        console.log('[Transcription] Response received:', response);
+        return response;
       }
-      
-      return response;
     } catch (error) {
       console.error('[Transcription] Error details:', error);
       throw error;
@@ -458,63 +477,77 @@ class TranscriptionService extends BaseService {
    */
   async transcribeAudio(audioBuffer, highlightedText = '') {
     const startTime = Date.now();
+    let tempFile = null;
     
     try {
       if (!this.initialized) {
         throw new Error('TranscriptionService not initialized');
       }
 
-      // Prepare audio data
-      const wavData = await this.prepareAudioData(audioBuffer);
-      const tempFile = await this.createTempFile(wavData);
+      // Start preparing audio data immediately
+      const wavDataPromise = this.prepareAudioData(audioBuffer);
+      
+      // Show initial notification while processing
+      this.getService('notification').showNotification({
+        title: 'Processing Audio',
+        body: 'Preparing your recording...',
+        type: 'info',
+        timeout: 2000
+      });
+      
+      // Wait for audio data preparation
+      const wavData = await wavDataPromise;
+      tempFile = await this.createTempFile(wavData);
 
-      try {
-        // Make API request
-        const response = await this.callWhisperAPI(tempFile);
-        const transcribedText = response.text;
-        
-        // If transcription is empty, show notification and return early
-        if (!transcribedText || transcribedText.trim() === '') {
-          console.log('[Transcription] Empty transcription received, skipping processing');
-          this.getService('notification').showNotification({
-            title: 'No Speech Detected',
-            body: 'The recording contained no recognizable speech.',
-            type: 'info',
-            timeout: 2000
-          });
-          return '';
-        }
-        
-        // Show transcription success notification
+      // Make API request
+      const response = await this.callWhisperAPI(tempFile);
+      const transcribedText = response.text;
+      
+      // If transcription is empty, show notification and return early
+      if (!transcribedText || transcribedText.trim() === '') {
+        console.log('[Transcription] Empty transcription received, skipping processing');
         this.getService('notification').showNotification({
-          title: 'Transcription Complete',
-          body: 'Processing transcribed text...',
-          type: 'success',
+          title: 'No Speech Detected',
+          body: 'The recording contained no recognizable speech.',
+          type: 'info',
           timeout: 2000
         });
-
-        // Process and insert the transcribed text
-        const processedText = await this.processAndInsertText(transcribedText);
-
-        // Log metrics
-        await this.logTranscriptionMetrics(transcribedText, processedText);
-        
-        // Log performance
-        const totalTime = Date.now() - startTime;
-        console.log(`[Transcription] Total processing time: ${totalTime}ms`);
-
-        return processedText;
-      } finally {
-        // Clean up temp file
-        await this.cleanupTempFile(tempFile);
+        return '';
       }
+      
+      // Process the transcribed text in parallel with showing notification
+      const processTextPromise = this.processAndInsertText(transcribedText);
+      
+      this.getService('notification').showNotification({
+        title: 'Transcription Complete',
+        body: 'Processing transcribed text...',
+        type: 'success',
+        timeout: 2000
+      });
+
+      // Wait for text processing to complete
+      const processedText = await processTextPromise;
+
+      // Log metrics in the background without waiting
+      this.logTranscriptionMetrics(transcribedText, processedText).catch(err => {
+        console.error('[Transcription] Error logging metrics:', err);
+      });
+      
+      // Log performance
+      const totalTime = Date.now() - startTime;
+      console.log(`[Transcription] Total processing time: ${totalTime}ms`);
+
+      return processedText;
     } catch (error) {
-      this.getService('notification').showTranscriptionError(error);
-      
-      // Update error stats
-      this.processingStats.errorCount++;
-      
-      throw this.emitError(error);
+      console.error('[Transcription] Error in transcription:', error);
+      throw error;
+    } finally {
+      // Clean up temp file if it was created
+      if (tempFile) {
+        this.cleanupTempFile(tempFile).catch(err => {
+          console.error('[Transcription] Error cleaning up temp file:', err);
+        });
+      }
     }
   }
 }

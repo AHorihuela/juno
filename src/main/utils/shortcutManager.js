@@ -2,7 +2,7 @@ const { globalShortcut } = require('electron');
 const serviceRegistry = require('../services/ServiceRegistry');
 
 // Constants
-const FN_DOUBLE_TAP_DELAY = 300; // ms
+const FN_DOUBLE_TAP_DELAY = 200; // ms (reduced from 300ms for faster response)
 
 // State variables
 let lastFnKeyPress = 0;

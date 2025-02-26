@@ -121,35 +121,46 @@ class RecorderService extends BaseService {
       
       console.log('Starting recording with settings:', recordingOptions);
       
-      // Start tracking recording session in context service
-      this.getService('context').startRecording();
-
-      // Show the overlay
-      const overlayService = this.getService('overlay');
-      if (overlayService) {
-        overlayService.showOverlay();
-        overlayService.setOverlayState('idle');
-      }
-
-      // Check if we should pause background audio
-      const shouldPauseBackgroundAudio = await this.backgroundAudio.shouldPauseBackgroundAudio();
-      
-      if (shouldPauseBackgroundAudio) {
-        this.backgroundAudio.pauseBackgroundAudio();
-      }
-
-      // Play start sound BEFORE starting the recorder
-      try {
-        console.log('Playing start sound before recording...');
-        await this.getService('audio').playStartSound();
-        console.log('Start sound completed, now starting recorder');
-      } catch (soundError) {
-        console.error('Error playing start sound:', soundError);
-        // Continue with recording even if sound fails
-      }
-
-      // Initialize and start the recorder AFTER the sound has played
+      // Start the recorder immediately to reduce latency
       this.recorder = record.record(recordingOptions);
+      this.recording = true;
+      
+      // Perform these operations in parallel after recording has started
+      Promise.all([
+        // Start tracking recording session in context service
+        this.getService('context').startRecording(),
+        
+        // Show the overlay
+        (async () => {
+          const overlayService = this.getService('overlay');
+          if (overlayService) {
+            overlayService.showOverlay();
+            overlayService.setOverlayState('idle');
+          }
+        })(),
+        
+        // Handle background audio
+        (async () => {
+          const shouldPauseBackgroundAudio = await this.backgroundAudio.shouldPauseBackgroundAudio();
+          if (shouldPauseBackgroundAudio) {
+            this.backgroundAudio.pauseBackgroundAudio();
+          }
+        })(),
+        
+        // Play start sound in parallel with recording start
+        (async () => {
+          try {
+            console.log('Playing start sound...');
+            await this.getService('audio').playStartSound();
+            console.log('Start sound completed');
+          } catch (soundError) {
+            console.error('Error playing start sound:', soundError);
+            // Continue with recording even if sound fails
+          }
+        })()
+      ]).catch(error => {
+        console.error('Error in parallel operations:', error);
+      });
 
       // Log audio data for testing
       this.recorder.stream()
@@ -177,7 +188,6 @@ class RecorderService extends BaseService {
           this.stop();
         });
 
-      this.recording = true;
       this.emit('start');
       console.log('Recording started');
     } catch (error) {
