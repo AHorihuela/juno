@@ -5,19 +5,19 @@
 const { v4: uuidv4 } = require('uuid');
 const fs = require('fs');
 const path = require('path');
-const MemoryManager = require('../../../main/services/memory/MemoryManager');
-const MemoryTierManager = require('../../../main/services/memory/MemoryTierManager');
-const MemoryPersistence = require('../../../main/services/memory/MemoryPersistence');
-const MemoryScoring = require('../../../main/services/memory/MemoryScoring');
-const MemoryStats = require('../../../main/services/memory/MemoryStats');
-const AIUsageTracker = require('../../../main/services/memory/AIUsageTracker');
-const { MemoryError } = require('../../../main/services/memory/MemoryErrors');
+const MemoryManager = require('../../../../main/services/memory/MemoryManager');
+const MemoryTierManager = require('../../../../main/services/memory/MemoryTierManager');
+const MemoryPersistence = require('../../../../main/services/memory/MemoryPersistence');
+const MemoryScoring = require('../../../../main/services/memory/MemoryScoring');
+const MemoryStats = require('../../../../main/services/memory/MemoryStats');
+const AIUsageTracker = require('../../../../main/services/memory/AIUsageTracker');
+const { MemoryError } = require('../../../../main/services/memory/MemoryErrors');
 
 // Mock dependencies
 jest.mock('uuid');
 jest.mock('fs');
 jest.mock('path');
-jest.mock('../../../main/utils/logger', () => ({
+jest.mock('../../../../main/utils/logger', () => ({
   info: jest.fn(),
   error: jest.fn(),
   debug: jest.fn(),
@@ -25,11 +25,11 @@ jest.mock('../../../main/utils/logger', () => ({
 }));
 
 // Mock the sub-modules
-jest.mock('../../../main/services/memory/MemoryTierManager');
-jest.mock('../../../main/services/memory/MemoryPersistence');
-jest.mock('../../../main/services/memory/MemoryScoring');
-jest.mock('../../../main/services/memory/MemoryStats');
-jest.mock('../../../main/services/memory/AIUsageTracker');
+jest.mock('../../../../main/services/memory/MemoryTierManager');
+jest.mock('../../../../main/services/memory/MemoryPersistence');
+jest.mock('../../../../main/services/memory/MemoryScoring');
+jest.mock('../../../../main/services/memory/MemoryStats');
+jest.mock('../../../../main/services/memory/AIUsageTracker');
 
 describe('MemoryManager', () => {
   let memoryManager;

@@ -40,6 +40,14 @@ class ServiceRegistry extends EventEmitter {
     return service;
   }
 
+  getAll() {
+    const servicesObject = {};
+    this.services.forEach((service, name) => {
+      servicesObject[name] = service;
+    });
+    return servicesObject;
+  }
+
   async initialize() {
     if (this.initialized) {
       return;

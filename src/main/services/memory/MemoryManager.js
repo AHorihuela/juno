@@ -73,20 +73,21 @@ class MemoryManager {
       // Initialize persistence first (needed for loading data)
       await this.persistence.initialize(services);
       
-      // Initialize stats tracking
-      this.stats.initialize();
+      // Initialize tier manager first
+      this.tierManager.initialize({
+        memoryScoring: this.scoring
+      });
+      
+      // Initialize stats tracking with tier manager
+      await this.stats.initialize({
+        tierManager: this.tierManager
+      });
       
       // Initialize AI usage tracker
       await this.aiUsageTracker.initialize(services);
       
       // Load long-term memory from disk
       const longTermMemory = await this.persistence.loadLongTermMemory();
-      
-      // Initialize tier manager
-      this.tierManager.initialize({
-        memoryStats: this.stats,
-        memoryScoring: this.scoring
-      });
       
       // Set memory tiers with loaded data
       if (longTermMemory && longTermMemory.length > 0) {
@@ -117,7 +118,10 @@ class MemoryManager {
         throw new MemoryError('Memory manager not initialized');
       }
       
-      const item = this.tierManager.addToMemory(content, metadata);
+      const item = await this.tierManager.addItem({
+        content,
+        ...metadata
+      });
       return item;
     } catch (error) {
       const wrappedError = new MemoryError('Failed to add memory item', { cause: error });
@@ -364,7 +368,8 @@ class MemoryManager {
         throw new MemoryError('Memory manager not initialized');
       }
       
-      this.tierManager.clearAllMemory();
+      // Use clearMemory with no tier parameter to clear all memory
+      this.tierManager.clearMemory();
       
       // Also clear from context service
       await this.contextService.clearMemory('all');

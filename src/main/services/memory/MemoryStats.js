@@ -81,26 +81,26 @@ class MemoryStats {
    */
   async updateMemoryStats() {
     try {
-      if (!this.initialized) {
-        throw new MemoryStatsError('Memory stats not initialized');
+      if (!this.tierManager) {
+        throw new MemoryStatsError('Tier manager is required');
       }
       
       // Get all memory items from tier manager
       const allItems = await this.tierManager.getAllMemoryItems();
       
       // Update item counts
-      this.stats.itemsByTier.working = allItems.working.length;
-      this.stats.itemsByTier.shortTerm = allItems.shortTerm.length;
-      this.stats.itemsByTier.longTerm = allItems.longTerm.length;
+      this.stats.itemsByTier.working = Array.isArray(allItems.working) ? allItems.working.length : 0;
+      this.stats.itemsByTier.shortTerm = Array.isArray(allItems.shortTerm) ? allItems.shortTerm.length : 0;
+      this.stats.itemsByTier.longTerm = Array.isArray(allItems.longTerm) ? allItems.longTerm.length : 0;
       this.stats.totalItems = 
         this.stats.itemsByTier.working + 
         this.stats.itemsByTier.shortTerm + 
         this.stats.itemsByTier.longTerm;
       
       // Calculate average scores
-      this.stats.averageScores.working = this.calculateAverageScore(allItems.working);
-      this.stats.averageScores.shortTerm = this.calculateAverageScore(allItems.shortTerm);
-      this.stats.averageScores.longTerm = this.calculateAverageScore(allItems.longTerm);
+      this.stats.averageScores.working = this.calculateAverageScore(allItems.working || []);
+      this.stats.averageScores.shortTerm = this.calculateAverageScore(allItems.shortTerm || []);
+      this.stats.averageScores.longTerm = this.calculateAverageScore(allItems.longTerm || []);
       
       // Update timestamp
       this.stats.lastUpdated = Date.now();

@@ -165,7 +165,7 @@ function setupIpcHandlers(mainWindow) {
     try {
       console.log('Deleting memory item:', itemId);
       const memoryManager = serviceRegistry.get('memoryManager');
-      const success = memoryManager.deleteItem(itemId);
+      const success = await memoryManager.deleteItem(itemId);
       return { success };
     } catch (error) {
       console.error('Error deleting memory item:', error);
@@ -175,10 +175,13 @@ function setupIpcHandlers(mainWindow) {
   
   ipcMain.handle('memory:clearMemory', async (event, tier) => {
     try {
-      console.log('Clearing memory tier:', tier);
+      console.log('Clearing all memory');
       const memoryManager = serviceRegistry.get('memoryManager');
-      memoryManager.clearMemory(tier);
-      return { success: true };
+      
+      // SimpleMemoryManager only has clearAllMemory, no tiers
+      const success = await memoryManager.clearAllMemory();
+      
+      return { success };
     } catch (error) {
       console.error('Error clearing memory:', error);
       throw new Error(`Failed to clear memory: ${error.message}`);
@@ -189,7 +192,7 @@ function setupIpcHandlers(mainWindow) {
     try {
       console.log('Getting memory manager stats...');
       const memoryManager = serviceRegistry.get('memoryManager');
-      return memoryManager.stats;
+      return memoryManager.getMemoryStats();
     } catch (error) {
       console.error('Error getting memory manager stats:', error);
       throw new Error(`Failed to get memory manager stats: ${error.message}`);

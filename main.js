@@ -20,7 +20,7 @@ const transcriptionHistoryService = require('./src/main/services/transcriptionHi
 const windowManager = require('./src/main/services/WindowManager');
 const textProcessingService = require('./src/main/services/textProcessing');
 const resourceManager = require('./src/main/services/resourceManager');
-const memoryManager = require('./src/main/services/MemoryManager');
+const SimpleMemoryManager = require('./src/main/services/memory/SimpleMemoryManager');
 const overlayService = require('./src/main/services/OverlayService');
 
 // Import IPC handlers
@@ -70,7 +70,7 @@ async function initializeServices() {
     .register('dictionary', dictionaryService())
     .register('textProcessing', textProcessingService())
     .register('audio', audioFeedbackService())
-    .register('memoryManager', memoryManager())
+    .register('memoryManager', new SimpleMemoryManager())
     .register('recorder', recorderService())
     .register('transcription', transcriptionService())
     .register('ai', aiService())

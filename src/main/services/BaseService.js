@@ -66,6 +66,14 @@ class BaseService extends EventEmitter {
     return this.registry.get(name);
   }
 
+  // Helper method to get all services
+  getServices() {
+    if (!this.registry) {
+      throw new Error('Service registry not available');
+    }
+    return this.registry.getAll();
+  }
+
   // Helper method to emit errors with consistent format
   emitError(error) {
     const wrappedError = new Error(`${this.name}Service error: ${error.message}`);
