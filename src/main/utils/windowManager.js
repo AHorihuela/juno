@@ -1,3 +1,14 @@
+/**
+ * Window creation utility for the Juno application.
+ * 
+ * This module is responsible for creating the main application window with the correct
+ * configuration. It is used by the WindowManager service (src/main/services/WindowManager.js)
+ * which manages the window lifecycle and provides additional functionality.
+ * 
+ * The separation of concerns allows for cleaner code organization:
+ * - This utility handles the initial window creation and configuration
+ * - The WindowManager service manages the window lifecycle and state
+ */
 const { BrowserWindow } = require('electron');
 const path = require('path');
 const serviceRegistry = require('../services/ServiceRegistry');

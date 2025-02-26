@@ -1,3 +1,18 @@
+/**
+ * Window Manager Service for the Juno application.
+ * 
+ * This service is responsible for managing the application windows, including:
+ * - Main window lifecycle (show, hide, restore)
+ * - Overlay window management (delegated to OverlayService)
+ * - Window state management
+ * 
+ * It works in conjunction with the windowManager utility (src/main/utils/windowManager.js)
+ * which handles the initial window creation with specific configuration.
+ * 
+ * The separation of concerns allows for cleaner code organization:
+ * - The utility handles the initial window creation and configuration
+ * - This service manages the window lifecycle and state
+ */
 const { BrowserWindow, screen, app, ipcMain } = require('electron');
 const path = require('path');
 const BaseService = require('./BaseService');
