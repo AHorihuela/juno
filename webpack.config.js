@@ -80,13 +80,20 @@ module.exports = {
     }),
     {
       apply: (compiler) => {
-        compiler.hooks.emit.tapAsync('CopyInitLogging', (compilation, callback) => {
-          const source = fs.readFileSync(path.resolve(__dirname, 'src/renderer/init-logging.js'), 'utf8');
-          compilation.assets['init-logging.js'] = {
-            source: () => source,
-            size: () => source.length
-          };
-          callback();
+        compiler.hooks.compilation.tap('CopyInitLogging', (compilation) => {
+          compilation.hooks.processAssets.tap(
+            {
+              name: 'CopyInitLogging',
+              stage: compiler.webpack.Compilation.PROCESS_ASSETS_STAGE_ADDITIONAL
+            },
+            (assets) => {
+              const source = fs.readFileSync(path.resolve(__dirname, 'src/renderer/init-logging.js'), 'utf8');
+              compilation.emitAsset('init-logging.js', {
+                source: () => source,
+                size: () => source.length
+              });
+            }
+          );
         });
       }
     }

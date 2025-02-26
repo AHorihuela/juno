@@ -9,14 +9,31 @@ let lastFnKeyPress = 0;
 let fnKeyTimeout = null;
 
 /**
+ * Normalizes a keyboard shortcut to ensure it uses ASCII characters
+ * @param {string} shortcut - The keyboard shortcut to normalize
+ * @returns {string} - The normalized shortcut
+ */
+function normalizeShortcut(shortcut) {
+  // Replace macOS symbols with their ASCII equivalents
+  return shortcut
+    .replace('⌘', 'Command')
+    .replace('⇧', 'Shift')
+    .replace('⌥', 'Alt')
+    .replace('⌃', 'Control');
+}
+
+/**
  * Registers all global shortcuts for the application
  */
 async function registerShortcuts() {
   console.log('Registering shortcuts...');
   
   // Get configured shortcut
-  const shortcut = await serviceRegistry.get('config').getKeyboardShortcut();
-  console.log('Using keyboard shortcut:', shortcut);
+  const rawShortcut = await serviceRegistry.get('config').getKeyboardShortcut();
+  const shortcut = normalizeShortcut(rawShortcut);
+  
+  console.log('Using keyboard shortcut:', rawShortcut);
+  console.log('Normalized shortcut:', shortcut);
   
   // Register configured shortcut for toggle
   const success = globalShortcut.register(shortcut, () => {

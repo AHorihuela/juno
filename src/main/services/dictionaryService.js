@@ -154,7 +154,10 @@ class DictionaryService extends BaseService {
     }
 
     this.stats.promptsGenerated++;
-    const prompt = `The following special terms may appear in the audio: ${words.join(', ')}. Please ensure these terms are transcribed exactly as shown.`;
+    
+    // Modified prompt format to avoid confusion with transcription
+    // Using a more directive format that won't be mistaken as content
+    const prompt = `Transcribe the audio accurately. If any of these special terms appear: ${words.join(', ')}, transcribe them exactly as written.`;
     
     console.log('[Dictionary] Generated prompt with', words.length, 'words');
     console.log('[Dictionary] Prompt:', prompt);
