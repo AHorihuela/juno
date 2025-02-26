@@ -379,8 +379,21 @@ class TranscriptionService extends BaseService {
     const openai = await this.getService('resource').getOpenAIClient();
 
     try {
-      // Get dictionary prompt
-      const dictionaryPrompt = await this.getService('dictionary').generateWhisperPrompt();
+      // Get file stats to check duration
+      const fileStats = fs.statSync(tempFile);
+      const fileSize = fileStats.size;
+      const audioLengthSeconds = (fileSize - 44) / (16000 * 2); // Approximate duration in seconds
+      
+      console.log(`[Transcription] Estimated audio duration: ${audioLengthSeconds.toFixed(2)}s`);
+      
+      // Skip dictionary prompt for very short recordings (less than 1.5 seconds)
+      // Short recordings are more likely to be just ambient noise
+      let dictionaryPrompt = '';
+      if (audioLengthSeconds >= 1.5) {
+        dictionaryPrompt = await this.getService('dictionary').generateWhisperPrompt();
+      } else {
+        console.log('[Transcription] Audio too short, skipping dictionary prompt');
+      }
       
       // Create API request with parameters to reduce hallucinations
       const response = await openai.audio.transcriptions.create({
@@ -389,10 +402,23 @@ class TranscriptionService extends BaseService {
         language: 'en',
         prompt: dictionaryPrompt,
         temperature: 0.0,  // Lower temperature reduces hallucinations
-        response_format: 'json'
+        response_format: 'verbose_json'  // Get confidence scores
       });
 
       console.log('[Transcription] Response received:', response);
+      
+      // Check confidence - if very low confidence, likely no real speech
+      if (response.segments && response.segments.length > 0) {
+        const avgConfidence = response.segments.reduce((sum, segment) => sum + segment.confidence, 0) / response.segments.length;
+        console.log(`[Transcription] Average confidence: ${avgConfidence.toFixed(4)}`);
+        
+        // If confidence is very low and audio is short, likely no real speech
+        if (avgConfidence < 0.5 && audioLengthSeconds < 3) {
+          console.log('[Transcription] Low confidence transcription, likely no real speech');
+          return { text: '' };  // Return empty text
+        }
+      }
+      
       return response;
     } catch (error) {
       console.error('[Transcription] Error details:', error);
@@ -446,6 +472,18 @@ class TranscriptionService extends BaseService {
         // Make API request
         const response = await this.callWhisperAPI(tempFile);
         const transcribedText = response.text;
+        
+        // If transcription is empty, show notification and return early
+        if (!transcribedText || transcribedText.trim() === '') {
+          console.log('[Transcription] Empty transcription received, skipping processing');
+          this.getService('notification').showNotification({
+            title: 'No Speech Detected',
+            body: 'The recording contained no recognizable speech.',
+            type: 'info',
+            timeout: 2000
+          });
+          return '';
+        }
         
         // Show transcription success notification
         this.getService('notification').showNotification({

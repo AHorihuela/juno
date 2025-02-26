@@ -155,10 +155,9 @@ class DictionaryService extends BaseService {
 
     this.stats.promptsGenerated++;
     
-    // Using a technical format that won't be mistaken as content
-    // Format based on Whisper documentation - initial_prompt is interpreted as
-    // "what came just before in the audio" not as instructions
-    const prompt = `[VOCAB_TERMS] ${words.join(', ')} [/VOCAB_TERMS]`;
+    // Using a very technical format that won't be mistaken as content
+    // Based on Whisper documentation - using XML-like tags that are unlikely to be in natural speech
+    const prompt = `<dictionary>${words.join('|')}</dictionary>`;
     
     console.log('[Dictionary] Generated prompt with', words.length, 'words');
     console.log('[Dictionary] Prompt:', prompt);

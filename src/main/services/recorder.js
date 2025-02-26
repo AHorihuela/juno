@@ -199,41 +199,41 @@ class RecorderService extends BaseService {
     }
   }
 
-  async start() {
+  async start(deviceId = null) {
     if (this.recording) return;
     
     try {
-      // Check microphone permission
-      await this.checkMicrophonePermission(this.currentDeviceId);
-
-      // Get the configured device ID
-      if (!this.currentDeviceId) {
-        this.currentDeviceId = await this.getService('config').getDefaultMicrophone() || 'default';
+      // Reset recording state
+      this.audioData = [];
+      this.hasAudioContent = false;
+      this.recordingStartTime = Date.now();
+      this.totalPausedTime = 0;
+      this.pauseStartTime = null;
+      
+      // Use the specified device or default
+      const selectedDeviceId = deviceId || this.currentDeviceId;
+      if (selectedDeviceId) {
+        console.log('Using selected device for recording:', selectedDeviceId);
+      } else {
+        console.log('Using system default device for recording');
       }
-
+      
+      // Check microphone permission
+      await this.checkMicrophonePermission(selectedDeviceId);
+      
+      // Configure recording options
       const recordingOptions = {
         sampleRate: 16000,
         channels: 1,
         audioType: 'raw'
       };
-
-      // Add device selection if not using default
-      if (this.currentDeviceId && this.currentDeviceId !== 'default') {
-        recordingOptions.device = this.currentDeviceId;
-        console.log('Using specific device for recording:', this.currentDeviceId);
-      } else {
-        console.log('Using system default device for recording');
+      
+      if (selectedDeviceId) {
+        recordingOptions.device = selectedDeviceId;
       }
-
+      
       console.log('Starting recording with settings:', recordingOptions);
       
-      // Reset audio data buffer and flags
-      this.audioData = [];
-      this.hasAudioContent = false;
-      this.paused = false;
-      this.recordingStartTime = Date.now();
-      this.totalPausedTime = 0;
-
       // Start tracking recording session in context service
       this.getService('context').startRecording();
 
@@ -413,6 +413,10 @@ class RecorderService extends BaseService {
       // Play stop sound
       await this.getService('audio').playStopSound();
 
+      // Calculate recording duration
+      const recordingDuration = this.recordingStartTime ? 
+        (Date.now() - this.recordingStartTime - this.totalPausedTime) / 1000 : 0;
+      
       // Calculate final audio metrics
       const totalSamples = this.audioData.reduce((sum, chunk) => sum + chunk.length, 0);
       const samplesAboveThreshold = this.audioData.reduce((sum, chunk) => {
@@ -435,20 +439,35 @@ class RecorderService extends BaseService {
       // and minimum RMS value to consider it valid speech
       const hasRealSpeech = percentageAboveThreshold > 15 && averageRMS > 300;
       
+      // Check for minimum recording duration (at least 1.5 seconds)
+      const hasMinimumDuration = recordingDuration >= 1.5;
+      
       console.log('Final audio analysis:', {
         totalDuration: (totalSamples / 16000).toFixed(2) + 's',
+        recordingDuration: recordingDuration.toFixed(2) + 's',
         percentageAboveThreshold: Math.round(percentageAboveThreshold) + '%',
         totalChunks: this.audioData.length,
         hasAudioContent: this.hasAudioContent,
         averageRMS,
-        hasRealSpeech
+        hasRealSpeech,
+        hasMinimumDuration
       });
 
-      // Skip transcription if no real audio content detected
-      // Using both the real-time detection (this.hasAudioContent) and the final analysis (hasRealSpeech)
-      if (!this.hasAudioContent || !hasRealSpeech) {
-        console.log('No significant audio content detected, skipping transcription');
-        this.getService('notification').showNoAudioDetected();
+      // Skip transcription if no real audio content detected or recording is too short
+      if (!this.hasAudioContent || !hasRealSpeech || !hasMinimumDuration) {
+        console.log('No significant audio content detected or recording too short, skipping transcription');
+        
+        // Show different messages based on the issue
+        if (!hasMinimumDuration) {
+          this.getService('notification').showNotification({
+            title: 'Recording Too Short',
+            body: 'Please record for at least 1.5 seconds.',
+            type: 'info'
+          });
+        } else {
+          this.getService('notification').showNoAudioDetected();
+        }
+        
         this.emit('stop');
         return;
       }
