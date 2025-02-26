@@ -34,20 +34,32 @@ jest.mock('node-record-lpcm16');
 
 // Import dependencies after mocks
 const { systemPreferences } = require('electron');
-const recorder = require('../recorder');
+const recorderFactory = require('../recorder');
 const transcriptionService = require('../transcriptionService');
 const notificationService = require('../notificationService');
 const contextService = require('../contextService');
 const { EventEmitter } = require('events');
 const record = require('node-record-lpcm16');
+const AudioLevelAnalyzer = require('../recorder/AudioLevelAnalyzer');
 
 describe('AudioRecorder', () => {
   let mockRecorder;
   let mockStream;
+  let recorder;
+  let audioAnalyzer;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    
+    // Create a new AudioLevelAnalyzer instance for direct testing
+    audioAnalyzer = new AudioLevelAnalyzer({
+      overlay: {
+        updateOverlayAudioLevels: jest.fn()
+      }
+    });
+    
     // Reset recorder state
+    recorder = recorderFactory();
     recorder.recording = false;
     recorder.recorder = null;
     recorder.audioData = [];
@@ -458,17 +470,21 @@ describe('AudioRecorder', () => {
   describe('audio level detection', () => {
     it('detects silence', () => {
       const silentBuffer = Buffer.alloc(8192);
-      mockStream.emit('data', silentBuffer);
-      expect(recorder.hasAudioContent).toBe(false);
+      // Test directly with the AudioLevelAnalyzer
+      const result = audioAnalyzer.processBuffer(silentBuffer);
+      expect(result).toBe(false);
+      expect(audioAnalyzer.hasDetectedAudioContent()).toBe(false);
     });
 
     it('detects sound', () => {
       const buffer = Buffer.alloc(8192);
       for (let i = 0; i < buffer.length; i += 2) {
-        buffer.writeInt16LE(1000, i); // Write values above threshold
+        buffer.writeInt16LE(5000, i); // Write higher values to exceed the new thresholds
       }
-      mockStream.emit('data', buffer);
-      expect(recorder.hasAudioContent).toBe(true);
+      // Test directly with the AudioLevelAnalyzer
+      const result = audioAnalyzer.processBuffer(buffer);
+      expect(result).toBe(true);
+      expect(audioAnalyzer.hasDetectedAudioContent()).toBe(true);
     });
   });
 }); 
