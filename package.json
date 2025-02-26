@@ -13,7 +13,8 @@
     "prebuild": "npm run clean",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage",
+    "test:coverage": "node scripts/test-coverage.js",
+    "test:critical": "jest --testPathPattern=\"(WindowManager|MemoryManager|memoryIpcHandlers|ServiceRegistry)\"",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "postinstall": "electron-builder install-app-deps"
