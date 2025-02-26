@@ -25,7 +25,10 @@ contextBridge.exposeInMainWorld(
         // Microphone-related channels
         'get-microphones',
         'set-microphone',
-        'change-microphone'
+        'change-microphone',
+        // Recording-related channels
+        'start-recording',
+        'stop-recording'
       ];
       
       if (validChannels.includes(channel)) {
