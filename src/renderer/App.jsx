@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, useNavigate } from 'react-router-dom';
 import { getIpcRenderer } from './utils/electron';
 import { runIpcTest } from './utils/test-ipc';
 
@@ -17,6 +17,7 @@ const App = () => {
   const [transcription, setTranscription] = useState('');
   const [settings, setSettings] = useState({});
   const [testResult, setTestResult] = useState(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     // Run IPC test
@@ -64,6 +65,12 @@ const App = () => {
       ipcRenderer.on('transcription', (text) => {
         setTranscription(text);
       });
+
+      // Listen for navigation events from the main process
+      ipcRenderer.on('navigate', (route) => {
+        console.log('[App] Navigating to route:', route);
+        navigate(route);
+      });
     } catch (err) {
       console.error('[App] Error setting up event listeners:', err);
       setError(`Failed to set up event listeners: ${err.message}`);
@@ -77,12 +84,13 @@ const App = () => {
           ipcRenderer.removeAllListeners('recording-error');
           ipcRenderer.removeAllListeners('error');
           ipcRenderer.removeAllListeners('transcription');
+          ipcRenderer.removeAllListeners('navigate');
         } catch (err) {
           console.error('[App] Error removing event listeners:', err);
         }
       }
     };
-  }, []);
+  }, [navigate]);
 
   return (
     <MainLayout>

@@ -40,6 +40,10 @@ console.log('[Main] Main process starting...');
 console.log('[Main] Environment:', process.env.NODE_ENV);
 console.log('[Main] Current working directory:', process.cwd());
 
+// Set application name
+app.name = 'Juno';
+app.setName('Juno');
+
 // Ensure app appears in dock on macOS
 if (process.platform === 'darwin') {
   app.dock.setIcon(path.join(__dirname, 'assets/icon.png'));

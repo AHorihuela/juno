@@ -44,7 +44,7 @@ function createMainWindow() {
       minimizable: true,
       maximizable: false,
       closable: true,
-      title: 'Juno - AI Dictation',
+      title: 'Juno',
       icon: path.join(__dirname, '../../../assets/icon.png')
     });
 

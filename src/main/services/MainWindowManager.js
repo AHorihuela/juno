@@ -43,26 +43,20 @@ class MainWindowManager {
       console.log('[MainWindowManager] Configuring window properties...');
       this.mainWindow.setFullScreenable(false);
       
-      // Set specific window type for macOS
-      if (process.platform === 'darwin') {
-        console.log('[MainWindowManager] Applying macOS-specific settings');
-        this.mainWindow.setWindowButtonVisibility(true);
+      // Ensure window close button only hides the window instead of quitting the app
+      this.mainWindow.on('close', (event) => {
+        // If app is explicitly quitting, allow the close
+        if (require('electron').app.isQuitting) return;
         
-        // Ensure window close button only hides the window instead of quitting the app
-        this.mainWindow.on('close', (event) => {
-          // If app is explicitly quitting, allow the close
-          if (require('electron').app.isQuitting) return;
-          
-          // Otherwise prevent default close behavior
-          event.preventDefault();
-          
-          // Hide the window instead
-          this.hideWindow();
-          
-          // Return false to prevent the window from being closed
-          return false;
-        });
-      }
+        // Otherwise prevent default close behavior
+        event.preventDefault();
+        
+        // Hide the window instead
+        this.hideWindow();
+        
+        // Return false to prevent the window from being closed
+        return false;
+      });
       
       console.log('[MainWindowManager] Window properties configured successfully');
       

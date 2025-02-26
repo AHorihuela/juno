@@ -43,7 +43,8 @@ contextBridge.exposeInMainWorld(
         'recording-error',
         'transcription',
         'transcription-history',
-        'transcription-history-error'
+        'transcription-history-error',
+        'navigate'
       ];
       
       if (validChannels.includes(channel)) {
@@ -76,7 +77,8 @@ contextBridge.exposeInMainWorld(
         'transcription',
         'transcription-history',
         'transcription-history-error',
-        'error'
+        'error',
+        'navigate'
       ];
       
       if (validChannels.includes(channel)) {

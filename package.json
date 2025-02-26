@@ -71,7 +71,7 @@
   },
   "build": {
     "appId": "com.dictation.tool",
-    "productName": "Juno AI Dictation",
+    "productName": "Juno",
     "directories": {
       "output": "dist"
     },
