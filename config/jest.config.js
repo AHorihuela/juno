@@ -19,7 +19,7 @@ module.exports = {
   moduleFileExtensions: ['js', 'jsx'],
   verbose: true,
   transformIgnorePatterns: [
-    '/node_modules/(?!(electron-store)/)'
+    '/node_modules/(?!(electron-store|chai|sinon)/)'
   ],
   collectCoverageFrom: [
     'src/**/*.{js,jsx}',

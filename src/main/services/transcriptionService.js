@@ -7,12 +7,9 @@ const os = require('os');
 const path = require('path');
 const BaseService = require('./BaseService');
 const { detectAICommand, logCommandDetection } = require('../utils/commandDetection');
-
-// WAV header constants
-const RIFF_HEADER_SIZE = 44;
-const SAMPLE_RATE = 16000;
-const NUM_CHANNELS = 1;
-const BITS_PER_SAMPLE = 16;
+const AudioUtils = require('./utils/AudioUtils');
+const WhisperAPIClient = require('./api/WhisperAPIClient');
+const { APIError } = require('../utils/ErrorManager');
 
 class TranscriptionService extends BaseService {
   constructor() {
@@ -27,10 +24,18 @@ class TranscriptionService extends BaseService {
       normalTranscriptionCount: 0,
       errorCount: 0
     };
+    
+    this.apiClient = null;
   }
 
   async _initialize() {
-    // Nothing to initialize yet
+    // Initialize the WhisperAPIClient
+    this.apiClient = new WhisperAPIClient(
+      this.getService('resource'),
+      this.getService('config'),
+      this.getService('dictionary')
+    );
+    console.log('[TranscriptionService] Initialized WhisperAPIClient');
   }
 
   async _shutdown() {
@@ -38,79 +43,11 @@ class TranscriptionService extends BaseService {
   }
 
   /**
-   * Create a WAV header for the given PCM data
-   * @param {number} dataLength - Length of the PCM data in bytes
-   * @returns {Buffer} - WAV header buffer
-   */
-  createWavHeader(dataLength) {
-    const buffer = Buffer.alloc(RIFF_HEADER_SIZE);
-    
-    // RIFF identifier
-    buffer.write('RIFF', 0);
-    // file length minus RIFF identifier length and file description length
-    buffer.writeUInt32LE(dataLength + RIFF_HEADER_SIZE - 8, 4);
-    // WAVE identifier
-    buffer.write('WAVE', 8);
-    // format chunk identifier
-    buffer.write('fmt ', 12);
-    // format chunk length
-    buffer.writeUInt32LE(16, 16);
-    // sample format (1 is PCM)
-    buffer.writeUInt16LE(1, 20);
-    // number of channels
-    buffer.writeUInt16LE(NUM_CHANNELS, 22);
-    // sample rate
-    buffer.writeUInt32LE(SAMPLE_RATE, 24);
-    // byte rate (sample rate * block align)
-    buffer.writeUInt32LE(SAMPLE_RATE * NUM_CHANNELS * BITS_PER_SAMPLE / 8, 28);
-    // block align (channel count * bytes per sample)
-    buffer.writeUInt16LE(NUM_CHANNELS * BITS_PER_SAMPLE / 8, 32);
-    // bits per sample
-    buffer.writeUInt16LE(BITS_PER_SAMPLE, 34);
-    // data chunk identifier
-    buffer.write('data', 36);
-    // data chunk length
-    buffer.writeUInt32LE(dataLength, 40);
-    
-    return buffer;
-  }
-
-  /**
-   * Convert raw PCM data to WAV format
-   * @param {Buffer} pcmData - Raw PCM audio data
-   * @returns {Buffer} - WAV format audio data
-   */
-  convertPcmToWav(pcmData) {
-    const header = this.createWavHeader(pcmData.length);
-    return Buffer.concat([header, pcmData]);
-  }
-
-  /**
-   * Save audio buffer to a temporary file
-   * @param {Buffer} audioData - Raw audio data
-   * @returns {Promise<string>} Path to temporary file
-   */
-  async saveToTempFile(audioData) {
-    const tempDir = os.tmpdir();
-    const tempFile = path.join(tempDir, `whisper-${Date.now()}.wav`);
-    await fs.promises.writeFile(tempFile, audioData);
-    return tempFile;
-  }
-
-  /**
    * Clean up temporary file
    * @param {string} filePath - Path to file to delete
    */
   async cleanupTempFile(filePath) {
-    try {
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-        return true;
-      }
-    } catch (error) {
-      console.error('[Transcription] Error cleaning up temp file:', error);
-    }
-    return false;
+    return AudioUtils.cleanupTempFile(filePath);
   }
 
   /**
@@ -400,21 +337,6 @@ class TranscriptionService extends BaseService {
   }
 
   /**
-   * Validate and retrieve OpenAI API key
-   * @returns {Promise<string>} API key
-   * @throws {Error} If API key is not configured
-   */
-  async validateAndGetApiKey() {
-    const apiKey = await this.getService('config').getOpenAIApiKey();
-    console.log('[Transcription] Retrieved OpenAI API key');
-    
-    if (!apiKey) {
-      throw new Error('OpenAI API key not configured');
-    }
-    return apiKey;
-  }
-
-  /**
    * Prepare audio data for transcription
    * @param {Buffer} audioBuffer - Raw audio buffer
    * @returns {Promise<Buffer>} WAV formatted audio data
@@ -422,7 +344,7 @@ class TranscriptionService extends BaseService {
   async prepareAudioData(audioBuffer) {
     console.log('[Transcription] Converting PCM to WAV format...');
     // Use synchronous conversion to reduce overhead
-    return this.convertPcmToWav(audioBuffer);
+    return AudioUtils.convertPcmToWav(audioBuffer);
   }
 
   /**
@@ -431,74 +353,7 @@ class TranscriptionService extends BaseService {
    * @returns {Promise<string>} Path to temporary file
    */
   async createTempFile(wavData) {
-    const tempFile = path.join(os.tmpdir(), `whisper-${Date.now()}.wav`);
-    console.log('[Transcription] Creating temp WAV file:', tempFile);
-    
-    // Use writeFileSync for smaller files to reduce overhead
-    if (wavData.length < 10 * 1024 * 1024) { // Less than 10MB
-      fs.writeFileSync(tempFile, wavData);
-      const fileSize = fs.statSync(tempFile).size;
-      console.log('[Transcription] WAV file written synchronously, size:', fileSize);
-    } else {
-      await fs.promises.writeFile(tempFile, wavData);
-      const fileSize = fs.statSync(tempFile).size;
-      console.log('[Transcription] WAV file written asynchronously, size:', fileSize);
-    }
-    
-    return tempFile;
-  }
-
-  /**
-   * Make request to Whisper API
-   * @param {string} tempFile - Path to temporary WAV file
-   * @returns {Promise<Object>} API response data
-   */
-  async callWhisperAPI(tempFile) {
-    console.log('[Transcription] Sending request to Whisper API...');
-    
-    // Show notification to user - but don't wait for it to complete
-    this.getService('notification').showNotification({
-      title: 'Transcribing Audio',
-      body: 'Processing your recording...',
-      type: 'info',
-      timeout: 3000
-    });
-    
-    // Prepare OpenAI client in parallel with file stats
-    const [openai, fileStats] = await Promise.all([
-      this.getService('resource').getOpenAIClient(),
-      fs.promises.stat(tempFile)
-    ]);
-
-    try {
-      // Calculate audio duration
-      const fileSize = fileStats.size;
-      const audioLengthSeconds = (fileSize - 44) / (16000 * 2); // Approximate duration in seconds
-      
-      console.log(`[Transcription] Estimated audio duration: ${audioLengthSeconds.toFixed(2)}s`);
-      
-      // Generate dictionary prompt for better accuracy
-      const dictionaryPrompt = await this.getService('dictionary').generateWhisperPrompt();
-      
-      // Create file stream
-      const fileStream = fs.createReadStream(tempFile);
-      
-      // Create API request with optimized parameters
-      const response = await openai.audio.transcriptions.create({
-        file: fileStream,
-        model: 'whisper-1',
-        language: 'en',
-        prompt: dictionaryPrompt,
-        temperature: 0.0,  // Lower temperature reduces hallucinations
-        response_format: 'json'  // Use simple JSON format for faster processing
-      });
-
-      console.log('[Transcription] Response received:', response);
-      return response;
-    } catch (error) {
-      console.error('[Transcription] Error details:', error);
-      throw error;
-    }
+    return AudioUtils.createTempFile(wavData);
   }
 
   /**
@@ -616,8 +471,13 @@ class TranscriptionService extends BaseService {
       const wavData = await wavDataPromise;
       tempFile = await this.createTempFile(wavData);
 
-      // Make API request
-      const response = await this.callWhisperAPI(tempFile);
+      // Make API request using the WhisperAPIClient
+      const response = await this.apiClient.transcribeAudio(tempFile, {
+        useCache: true,
+        language: 'en',
+        temperature: 0.0
+      });
+      
       const transcribedText = response.text;
       
       // If transcription is empty, show notification and return early
@@ -662,6 +522,20 @@ class TranscriptionService extends BaseService {
       return processedText;
     } catch (error) {
       console.error('[Transcription] Error in transcription:', error);
+      
+      // Update error stats
+      this.processingStats.errorCount++;
+      
+      // Show error notification
+      this.getService('notification').showNotification({
+        title: 'Transcription Failed',
+        body: error instanceof APIError 
+          ? `API Error: ${error.message}` 
+          : 'Failed to transcribe audio. Please try again.',
+        type: 'error',
+        timeout: 3000
+      });
+      
       throw error;
     } finally {
       // Clean up temp file if it was created
@@ -670,7 +544,61 @@ class TranscriptionService extends BaseService {
           console.error('[Transcription] Error cleaning up temp file:', err);
         });
       }
+      
+      // Update processing stats
+      this._updateProcessingStats(Date.now() - startTime);
     }
+  }
+  
+  /**
+   * Get API client cache statistics
+   * @returns {Object} Cache statistics
+   */
+  getAPIStats() {
+    if (!this.apiClient) {
+      return { initialized: false };
+    }
+    return this.apiClient.getCacheStats();
+  }
+  
+  /**
+   * Clear API client cache
+   */
+  clearAPICache() {
+    if (this.apiClient) {
+      this.apiClient.clearCache();
+      console.log('[TranscriptionService] API cache cleared');
+    }
+  }
+
+  /**
+   * Update processing statistics with new processing time
+   * @param {number} processingTime - Time taken to process in milliseconds
+   * @private
+   */
+  _updateProcessingStats(processingTime) {
+    this.processingStats.lastProcessingTime = processingTime;
+    this.processingStats.processedCount++;
+    
+    // Update average processing time with weighted average
+    if (this.processingStats.processedCount === 1) {
+      // First processing, just set the average
+      this.processingStats.averageProcessingTime = processingTime;
+    } else {
+      // Use a weight of 0.2 for the new value
+      this.processingStats.averageProcessingTime = 
+        0.8 * this.processingStats.averageProcessingTime + 
+        0.2 * processingTime;
+    }
+    
+    console.log('[TranscriptionService] Updated processing stats:', {
+      lastTime: processingTime,
+      avgTime: this.processingStats.averageProcessingTime,
+      count: this.processingStats.processedCount,
+      aiCount: this.processingStats.aiCommandCount,
+      normalCount: this.processingStats.normalTranscriptionCount,
+      errorCount: this.processingStats.errorCount
+    });
   }
 }
 
