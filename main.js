@@ -44,6 +44,8 @@ console.log('[Main] Current working directory:', process.cwd());
 // Ensure app appears in dock on macOS
 if (process.platform === 'darwin') {
   app.dock.setIcon(path.join(__dirname, 'assets/icon.png'));
+  // Prevent app from exiting when all windows are closed
+  app.setActivationPolicy('regular');
 }
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling
@@ -132,6 +134,10 @@ app.on('window-all-closed', async () => {
   if (process.platform !== 'darwin') {
     await serviceRegistry.shutdown();
     app.quit();
+  } else {
+    // On macOS, keep the app in the dock even when all windows are closed
+    // This allows users to reopen the app by clicking on the dock icon
+    console.log('[Main] Window closed but app remains active in dock');
   }
 });
 
@@ -140,6 +146,9 @@ app.on('activate', () => {
   if (mainWindow === null) {
     mainWindow = createMainWindow();
     setupAllIpcHandlers();
+  } else {
+    // If window exists but is hidden, show it
+    mainWindow.show();
   }
 });
 

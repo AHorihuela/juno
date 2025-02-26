@@ -8,6 +8,7 @@ class DictionaryService extends BaseService {
     super('Dictionary');
     this.words = new Set();
     this.dictionaryPath = path.join(app.getPath('userData'), 'userDictionary.json');
+    this.store = null;
     this.stats = {
       promptsGenerated: 0,
       exactMatches: 0,
@@ -18,36 +19,166 @@ class DictionaryService extends BaseService {
   }
 
   async _initialize() {
-    await this.initializeDictionary();
+    await this.initializeStore();
+    await this.loadDictionary();
   }
 
   async _shutdown() {
-    // Save dictionary on shutdown
-    await this.saveDictionary();
+    // No need to explicitly save with electron-store as it's done automatically
+    // Just clear any intervals we might have
+    if (this.autosaveInterval) {
+      clearInterval(this.autosaveInterval);
+      this.autosaveInterval = null;
+    }
   }
 
-  async initializeDictionary() {
-    console.log('Initializing dictionary at:', this.dictionaryPath);
+  async initializeStore() {
     try {
-      if (!fs.existsSync(this.dictionaryPath)) {
-        console.log('Dictionary file does not exist, creating...');
-        await fs.promises.writeFile(this.dictionaryPath, JSON.stringify([], null, 2), 'utf8');
+      // If store is already initialized, return it
+      if (this.store) {
+        console.log('Dictionary store already initialized');
+        return this.store;
       }
-      await this.loadDictionary();
+      
+      console.log('Initializing dictionary store...');
+      
+      // Import electron-store dynamically to avoid issues during initialization
+      let Store;
+      try {
+        Store = (await import('electron-store')).default;
+      } catch (error) {
+        console.error('Error importing electron-store:', error);
+        throw new Error('Failed to import electron-store module');
+      }
+      
+      // Get encryption key from config service if available
+      let encryptionKey = null;
+      try {
+        const configService = this.getService('config');
+        if (configService) {
+          encryptionKey = await configService.getEncryptionKey();
+          console.log('Retrieved encryption key for dictionary store');
+        }
+      } catch (error) {
+        console.error('Error getting encryption key, proceeding without encryption:', error);
+      }
+      
+      // Create store with schema
+      try {
+        this.store = new Store({
+          name: 'dictionary', // Use a separate file from the main config
+          encryptionKey,
+          schema: {
+            words: {
+              type: 'array',
+              items: {
+                type: 'string'
+              },
+              default: []
+            },
+            stats: {
+              type: 'object',
+              properties: {
+                promptsGenerated: { type: 'number', default: 0 },
+                exactMatches: { type: 'number', default: 0 },
+                fuzzyMatches: { type: 'number', default: 0 },
+                unmatchedWords: { type: 'number', default: 0 },
+                totalProcessed: { type: 'number', default: 0 }
+              },
+              default: {
+                promptsGenerated: 0,
+                exactMatches: 0,
+                fuzzyMatches: 0,
+                unmatchedWords: 0,
+                totalProcessed: 0
+              }
+            }
+          }
+        });
+        
+        // Verify store is working by attempting to access it
+        const testAccess = this.store.get('words', null);
+        console.log(`Dictionary store initialized successfully, contains ${testAccess ? testAccess.length : 0} words`);
+        
+        return this.store;
+      } catch (error) {
+        console.error('Error creating electron-store instance:', error);
+        
+        // If there's a JSON parse error, the config file might be corrupted
+        if (error instanceof SyntaxError) {
+          console.log('Dictionary store file might be corrupted, attempting recovery...');
+          
+          try {
+            // Get the config file path
+            const userDataPath = app.getPath('userData');
+            const dictPath = path.join(userDataPath, 'dictionary.json');
+            
+            // Delete the corrupted file if it exists
+            if (fs.existsSync(dictPath)) {
+              fs.unlinkSync(dictPath);
+              console.log('Deleted corrupted dictionary store file');
+            }
+            
+            // Try creating the store again
+            this.store = new Store({
+              name: 'dictionary',
+              encryptionKey,
+              schema: {
+                words: {
+                  type: 'array',
+                  items: {
+                    type: 'string'
+                  },
+                  default: []
+                },
+                stats: {
+                  type: 'object',
+                  properties: {
+                    promptsGenerated: { type: 'number', default: 0 },
+                    exactMatches: { type: 'number', default: 0 },
+                    fuzzyMatches: { type: 'number', default: 0 },
+                    unmatchedWords: { type: 'number', default: 0 },
+                    totalProcessed: { type: 'number', default: 0 }
+                  },
+                  default: {
+                    promptsGenerated: 0,
+                    exactMatches: 0,
+                    fuzzyMatches: 0,
+                    unmatchedWords: 0,
+                    totalProcessed: 0
+                  }
+                }
+              }
+            });
+            
+            console.log('Dictionary store recovered successfully');
+            return this.store;
+          } catch (recoveryError) {
+            console.error('Failed to recover dictionary store:', recoveryError);
+            throw new Error('Failed to initialize dictionary storage');
+          }
+        }
+        
+        throw error;
+      }
     } catch (error) {
-      console.error('Error initializing dictionary:', error);
-      // Create an empty dictionary if there's an error
-      this.words = new Set();
+      console.error('Error initializing dictionary store:', error);
       this.emitError(error);
+      throw error;
     }
   }
 
   async loadDictionary() {
-    console.log('Loading dictionary from:', this.dictionaryPath);
+    console.log('Loading dictionary from store...');
     try {
-      const data = await fs.promises.readFile(this.dictionaryPath, 'utf8');
-      const words = JSON.parse(data);
+      // Load words from store
+      const words = this.store.get('words', []);
       this.words = new Set(words);
+      
+      // Load stats from store
+      const savedStats = this.store.get('stats', {});
+      this.stats = { ...this.stats, ...savedStats };
+      
       console.log('Dictionary loaded successfully with', this.words.size, 'words');
     } catch (error) {
       console.error('Error loading dictionary:', error);
@@ -59,8 +190,13 @@ class DictionaryService extends BaseService {
   async saveDictionary() {
     console.log('Saving dictionary...');
     try {
+      // Save words to store
       const words = Array.from(this.words);
-      await fs.promises.writeFile(this.dictionaryPath, JSON.stringify(words, null, 2), 'utf8');
+      this.store.set('words', words);
+      
+      // Save stats to store
+      this.store.set('stats', this.stats);
+      
       console.log('Dictionary saved successfully');
       return true;
     } catch (error) {
@@ -86,7 +222,24 @@ class DictionaryService extends BaseService {
 
     console.log('Adding word to dictionary:', trimmedWord);
     this.words.add(trimmedWord);
-    return this.saveDictionary();
+    
+    // Ensure store is initialized before using it
+    if (!this.store) {
+      console.log('Store not initialized, initializing now...');
+      await this.initializeStore();
+    }
+    
+    // Save the updated words to the store
+    try {
+      const words = Array.from(this.words);
+      this.store.set('words', words);
+      console.log(`Word "${trimmedWord}" added successfully`);
+      return true;
+    } catch (error) {
+      console.error('Error saving word to store:', error);
+      this.emitError(error);
+      throw error;
+    }
   }
 
   async removeWord(word) {
@@ -96,9 +249,27 @@ class DictionaryService extends BaseService {
 
     console.log('Removing word from dictionary:', word);
     const result = this.words.delete(word);
+    
     if (result) {
-      return this.saveDictionary();
+      // Ensure store is initialized before using it
+      if (!this.store) {
+        console.log('Store not initialized, initializing now...');
+        await this.initializeStore();
+      }
+      
+      // Save the updated words to the store
+      try {
+        const words = Array.from(this.words);
+        this.store.set('words', words);
+        console.log(`Word "${word}" removed successfully`);
+        return true;
+      } catch (error) {
+        console.error('Error saving dictionary after word removal:', error);
+        this.emitError(error);
+        throw error;
+      }
     }
+    
     return false;
   }
 
@@ -208,6 +379,20 @@ class DictionaryService extends BaseService {
     console.log('[Dictionary] Generated prompt with', allPromptItems.length, 'items');
     console.log('[Dictionary] Prompt:', prompt);
     console.log('[Dictionary] Total prompts generated:', this.stats.promptsGenerated);
+    
+    // Ensure store is initialized before using it
+    if (!this.store) {
+      console.log('[Dictionary] Store not initialized, initializing now...');
+      await this.initializeStore();
+    }
+    
+    // Save updated stats to the store
+    try {
+      this.store.set('stats', this.stats);
+    } catch (error) {
+      console.error('[Dictionary] Error saving stats to store:', error);
+      // Continue without saving stats
+    }
     
     return prompt;
   }
@@ -338,12 +523,25 @@ class DictionaryService extends BaseService {
     console.log('  - Total fuzzy matches:', this.stats.fuzzyMatches);
     console.log('  - Total unmatched words:', this.stats.unmatchedWords);
     
+    // Ensure store is initialized before using it
+    if (this.store) {
+      // Save updated stats to the store
+      try {
+        this.store.set('stats', this.stats);
+      } catch (error) {
+        console.error('[Dictionary] Error saving stats to store:', error);
+        // Continue without saving stats
+      }
+    } else {
+      console.warn('[Dictionary] Store not initialized, stats not saved');
+    }
+    
     console.log('\n[Dictionary] Output text:', result);
     return result;
   }
 
   getStats() {
-    return {
+    const stats = {
       ...this.stats,
       dictionarySize: this.words.size,
       effectiveness: {
@@ -358,7 +556,25 @@ class DictionaryService extends BaseService {
           : '0%'
       }
     };
+    
+    // Ensure store is initialized before using it
+    if (this.store) {
+      // Update stats in the store
+      try {
+        this.store.set('stats', this.stats);
+      } catch (error) {
+        console.error('[Dictionary] Error saving stats to store:', error);
+        // Continue without saving stats
+      }
+    } else {
+      console.warn('[Dictionary] Store not initialized, stats not saved');
+    }
+    
+    return stats;
   }
+
+  // The autosave method is no longer needed with electron-store
+  // as it automatically persists changes
 }
 
 // Export a factory function instead of a singleton
