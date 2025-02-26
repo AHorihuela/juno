@@ -1,0 +1,9 @@
+{
+  "exactMatches": "I like apple and banana and orange.",
+  "fuzzyMatches": "I like aple and banan and ornge.",
+  "noMatches": "I like grapes and pears and lemons.",
+  "mixed": "I like apple and banan and grapes.",
+  "empty": "",
+  "punctuation": "Hello, world! How are you today? I'm fine, thank you.",
+  "longText": "The quick brown fox jumps over the lazy dog. The five boxing wizards jump quickly. Pack my box with five dozen liquor jugs. How vexingly quick daft zebras jump! Bright vixens jump; dozy fowl quack. Sphinx of black quartz, judge my vow. Amazingly few discotheques provide jukeboxes. Jackdaws love my big sphinx of quartz. The jay, pig, fox, zebra, and my wolves quack! Crazy Fredrick bought many very exquisite opal jewels."
+} 

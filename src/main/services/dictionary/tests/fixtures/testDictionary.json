@@ -1,0 +1,36 @@
+{
+  "words": [
+    "apple",
+    "banana",
+    "orange",
+    "grape",
+    "pear",
+    "strawberry",
+    "blueberry",
+    "raspberry",
+    "blackberry",
+    "watermelon",
+    "cantaloupe",
+    "honeydew",
+    "kiwi",
+    "mango",
+    "papaya",
+    "pineapple",
+    "coconut",
+    "avocado",
+    "peach",
+    "plum",
+    "apricot",
+    "cherry",
+    "lemon",
+    "lime",
+    "grapefruit"
+  ],
+  "stats": {
+    "promptsGenerated": 10,
+    "exactMatches": 50,
+    "fuzzyMatches": 25,
+    "unmatchedWords": 25,
+    "totalProcessed": 100
+  }
+} 
