@@ -58,12 +58,21 @@ function setupDictionaryIpcHandlers() {
           throw new Error('Dictionary service not properly initialized');
         }
         
+        // Get words from the dictionary service
         const words = await dictionaryService.getAllWords();
+        
+        // Verify we got an array
+        if (!Array.isArray(words)) {
+          console.error('[DictionaryIpcHandlers] getAllWords did not return an array:', words);
+          return [];
+        }
+        
         console.log('[DictionaryIpcHandlers] Retrieved words:', words);
         return words;
       } catch (error) {
         console.error('[DictionaryIpcHandlers] Error getting dictionary words:', error);
-        throw error;
+        // Return empty array instead of throwing to prevent UI errors
+        return [];
       }
     });
 
