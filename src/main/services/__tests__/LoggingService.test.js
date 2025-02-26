@@ -5,10 +5,17 @@ const assert = require('assert');
 const LoggingService = require('../LoggingService')();
 const LogManager = require('../../utils/LogManager');
 
+// Store handlers for testing
+const handlers = {};
+
 // Mock the IPC registry
 const mockIpcRegistry = {
-  registerHandler: jest.fn(),
-  removeHandler: jest.fn()
+  register: jest.fn().mockImplementation((channel, handler) => {
+    console.log(`Registering handler for ${channel}`);
+    handlers[channel] = handler;
+    return mockIpcRegistry;
+  }),
+  unregister: jest.fn()
 };
 
 // Mock the service registry
@@ -27,33 +34,39 @@ describe('LoggingService', () => {
   
   describe('initialization', () => {
     it('should initialize and register IPC handlers', async () => {
+      // Clear handlers before this test
+      Object.keys(handlers).forEach(key => delete handlers[key]);
+      
       await LoggingService.initialize(mockServiceRegistry);
       
       // Verify IPC registry was retrieved
       expect(mockServiceRegistry.get).toHaveBeenCalledWith('ipc');
       
       // Verify IPC handlers were registered
-      expect(mockIpcRegistry.registerHandler).toHaveBeenCalledTimes(5);
-      expect(mockIpcRegistry.registerHandler).toHaveBeenCalledWith(
+      expect(mockIpcRegistry.register).toHaveBeenCalledTimes(5);
+      expect(mockIpcRegistry.register).toHaveBeenCalledWith(
         'logging:getLogFiles',
         expect.any(Function)
       );
-      expect(mockIpcRegistry.registerHandler).toHaveBeenCalledWith(
+      expect(mockIpcRegistry.register).toHaveBeenCalledWith(
         'logging:getLogContent',
         expect.any(Function)
       );
-      expect(mockIpcRegistry.registerHandler).toHaveBeenCalledWith(
+      expect(mockIpcRegistry.register).toHaveBeenCalledWith(
         'logging:setLogLevel',
         expect.any(Function)
       );
-      expect(mockIpcRegistry.registerHandler).toHaveBeenCalledWith(
+      expect(mockIpcRegistry.register).toHaveBeenCalledWith(
         'logging:getLogLevel',
         expect.any(Function)
       );
-      expect(mockIpcRegistry.registerHandler).toHaveBeenCalledWith(
+      expect(mockIpcRegistry.register).toHaveBeenCalledWith(
         'logging:getLogConfig',
         expect.any(Function)
       );
+      
+      // Debug: print registered handlers
+      console.log('Registered handlers:', Object.keys(handlers));
     });
   });
   
@@ -66,19 +79,24 @@ describe('LoggingService', () => {
       await LoggingService.shutdown();
       
       // Verify IPC handlers were unregistered
-      expect(mockIpcRegistry.removeHandler).toHaveBeenCalledTimes(5);
-      expect(mockIpcRegistry.removeHandler).toHaveBeenCalledWith('logging:getLogFiles');
-      expect(mockIpcRegistry.removeHandler).toHaveBeenCalledWith('logging:getLogContent');
-      expect(mockIpcRegistry.removeHandler).toHaveBeenCalledWith('logging:setLogLevel');
-      expect(mockIpcRegistry.removeHandler).toHaveBeenCalledWith('logging:getLogLevel');
-      expect(mockIpcRegistry.removeHandler).toHaveBeenCalledWith('logging:getLogConfig');
+      expect(mockIpcRegistry.unregister).toHaveBeenCalledTimes(5);
+      expect(mockIpcRegistry.unregister).toHaveBeenCalledWith('logging:getLogFiles');
+      expect(mockIpcRegistry.unregister).toHaveBeenCalledWith('logging:getLogContent');
+      expect(mockIpcRegistry.unregister).toHaveBeenCalledWith('logging:setLogLevel');
+      expect(mockIpcRegistry.unregister).toHaveBeenCalledWith('logging:getLogLevel');
+      expect(mockIpcRegistry.unregister).toHaveBeenCalledWith('logging:getLogConfig');
     });
   });
   
   describe('IPC handlers', () => {
-    beforeEach(async () => {
-      // Initialize service before each test
+    // Initialize once for all tests in this describe block
+    beforeAll(async () => {
+      // Clear handlers before initialization
+      Object.keys(handlers).forEach(key => delete handlers[key]);
+      
+      // Initialize service
       await LoggingService.initialize(mockServiceRegistry);
+      console.log('Handlers after initialization in beforeAll:', Object.keys(handlers));
     });
     
     it('should handle getLogFiles request', async () => {
@@ -87,9 +105,9 @@ describe('LoggingService', () => {
       jest.spyOn(LogManager, 'getLogFiles').mockReturnValue(mockFiles);
       
       // Get the handler function
-      const handler = mockIpcRegistry.registerHandler.mock.calls.find(
-        call => call[0] === 'logging:getLogFiles'
-      )[1];
+      const handler = handlers['logging:getLogFiles'];
+      console.log('getLogFiles handler:', handler ? 'defined' : 'undefined');
+      expect(handler).toBeDefined();
       
       // Call the handler
       const result = await handler();
@@ -105,9 +123,9 @@ describe('LoggingService', () => {
       jest.spyOn(LogManager, 'getLogFileContent').mockReturnValue(mockContent);
       
       // Get the handler function
-      const handler = mockIpcRegistry.registerHandler.mock.calls.find(
-        call => call[0] === 'logging:getLogContent'
-      )[1];
+      const handler = handlers['logging:getLogContent'];
+      console.log('getLogContent handler:', handler ? 'defined' : 'undefined');
+      expect(handler).toBeDefined();
       
       // Call the handler
       const result = await handler({}, 'test.log');
@@ -122,9 +140,9 @@ describe('LoggingService', () => {
       jest.spyOn(LogManager, 'setLogLevel').mockImplementation(() => {});
       
       // Get the handler function
-      const handler = mockIpcRegistry.registerHandler.mock.calls.find(
-        call => call[0] === 'logging:setLogLevel'
-      )[1];
+      const handler = handlers['logging:setLogLevel'];
+      console.log('setLogLevel handler:', handler ? 'defined' : 'undefined');
+      expect(handler).toBeDefined();
       
       // Call the handler
       const result = await handler({}, 'DEBUG');
@@ -139,9 +157,9 @@ describe('LoggingService', () => {
       jest.spyOn(LogManager, 'getLogLevel').mockReturnValue('INFO');
       
       // Get the handler function
-      const handler = mockIpcRegistry.registerHandler.mock.calls.find(
-        call => call[0] === 'logging:getLogLevel'
-      )[1];
+      const handler = handlers['logging:getLogLevel'];
+      console.log('getLogLevel handler:', handler ? 'defined' : 'undefined');
+      expect(handler).toBeDefined();
       
       // Call the handler
       const result = await handler();
@@ -157,9 +175,9 @@ describe('LoggingService', () => {
       jest.spyOn(LogManager, 'getConfig').mockReturnValue(mockConfig);
       
       // Get the handler function
-      const handler = mockIpcRegistry.registerHandler.mock.calls.find(
-        call => call[0] === 'logging:getLogConfig'
-      )[1];
+      const handler = handlers['logging:getLogConfig'];
+      console.log('getLogConfig handler:', handler ? 'defined' : 'undefined');
+      expect(handler).toBeDefined();
       
       // Call the handler
       const result = await handler();
@@ -167,6 +185,11 @@ describe('LoggingService', () => {
       // Verify result
       assert.deepStrictEqual(result, mockConfig);
       expect(LogManager.getConfig).toHaveBeenCalled();
+    });
+    
+    // Clean up after all tests in this describe block
+    afterAll(async () => {
+      await LoggingService.shutdown();
     });
   });
   

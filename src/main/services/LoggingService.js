@@ -35,11 +35,11 @@ class LoggingService extends BaseService {
     
     // Unregister IPC handlers
     if (this.ipcRegistry) {
-      this.ipcRegistry.removeHandler('logging:getLogFiles');
-      this.ipcRegistry.removeHandler('logging:getLogContent');
-      this.ipcRegistry.removeHandler('logging:setLogLevel');
-      this.ipcRegistry.removeHandler('logging:getLogLevel');
-      this.ipcRegistry.removeHandler('logging:getLogConfig');
+      this.ipcRegistry.unregister('logging:getLogFiles');
+      this.ipcRegistry.unregister('logging:getLogContent');
+      this.ipcRegistry.unregister('logging:setLogLevel');
+      this.ipcRegistry.unregister('logging:getLogLevel');
+      this.ipcRegistry.unregister('logging:getLogConfig');
     }
   }
 
@@ -54,11 +54,11 @@ class LoggingService extends BaseService {
     }
 
     // Register handlers
-    this.ipcRegistry.registerHandler('logging:getLogFiles', this._handleGetLogFiles.bind(this));
-    this.ipcRegistry.registerHandler('logging:getLogContent', this._handleGetLogContent.bind(this));
-    this.ipcRegistry.registerHandler('logging:setLogLevel', this._handleSetLogLevel.bind(this));
-    this.ipcRegistry.registerHandler('logging:getLogLevel', this._handleGetLogLevel.bind(this));
-    this.ipcRegistry.registerHandler('logging:getLogConfig', this._handleGetLogConfig.bind(this));
+    this.ipcRegistry.register('logging:getLogFiles', this._handleGetLogFiles.bind(this));
+    this.ipcRegistry.register('logging:getLogContent', this._handleGetLogContent.bind(this));
+    this.ipcRegistry.register('logging:setLogLevel', this._handleSetLogLevel.bind(this));
+    this.ipcRegistry.register('logging:getLogLevel', this._handleGetLogLevel.bind(this));
+    this.ipcRegistry.register('logging:getLogConfig', this._handleGetLogConfig.bind(this));
     
     logger.debug('Registered IPC handlers for logging');
   }

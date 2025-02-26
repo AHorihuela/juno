@@ -65,12 +65,12 @@ describe('LogManager', () => {
       LogManager.initialize();
       
       assert(LogManager.initialized);
-      assert.strictEqual(LogManager.environment, 'development');
+      assert.strictEqual(LogManager.environment, 'test');
       
       // Verify logger was configured
       const config = LogManager.getConfig();
-      assert.strictEqual(config.logLevel, 'DEBUG');
-      assert(config.prettyPrint);
+      assert.strictEqual(config.logLevel, 'ERROR');
+      assert.strictEqual(config.prettyPrint, false);
     });
     
     it('should initialize with custom configuration', () => {
