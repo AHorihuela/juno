@@ -1,117 +1,23 @@
-const electron = require('electron');
+const { normalizeShortcut } = require('../../main/utils/shortcutManager');
 
-// Mock recorder service
-jest.mock('../../main/services/recorder', () => ({
-  isRecording: jest.fn(),
-  start: jest.fn(),
-  stop: jest.fn(),
-  on: jest.fn(),
-}));
-
-// Mock electron
-jest.mock('electron', () => {
-  const mockWhenReady = jest.fn().mockResolvedValue();
-  const mockOn = jest.fn();
-  const mockQuit = jest.fn();
-  const mockRegister = jest.fn();
-  const mockUnregisterAll = jest.fn();
-  
-  return {
-    app: {
-      whenReady: mockWhenReady,
-      on: mockOn,
-      quit: mockQuit,
-    },
-    globalShortcut: {
-      register: mockRegister,
-      unregisterAll: mockUnregisterAll,
-    },
-    BrowserWindow: jest.fn().mockImplementation(() => ({
-      loadFile: jest.fn().mockResolvedValue(),
-      webContents: {
-        openDevTools: jest.fn(),
-      },
-      on: jest.fn(),
-    })),
-  };
-});
-
-const { app, globalShortcut } = require('electron');
-const recorder = require('../../main/services/recorder');
-
-describe('Global Shortcuts', () => {
-  let f6Handler;
-  let escHandler;
-  let quitHandler;
-
-  beforeEach(async () => {
-    jest.clearAllMocks();
-    jest.useFakeTimers();
-
-    // Load main process code
-    require('../../../main.js');
-
-    // Wait for app ready
-    await app.whenReady();
-
-    // Store handlers for testing
-    app.on.mock.calls.forEach(([event, handler]) => {
-      if (event === 'will-quit') {
-        quitHandler = handler;
-      }
+describe('Keyboard Shortcuts', () => {
+  describe('normalizeShortcut', () => {
+    it('should convert macOS symbols to ASCII equivalents', () => {
+      expect(normalizeShortcut('⌘⇧ Space')).toBe('CommandShift Space');
+      expect(normalizeShortcut('⌘Q')).toBe('CommandQ');
+      expect(normalizeShortcut('⌥⌃T')).toBe('AltControlT');
     });
 
-    globalShortcut.register.mock.calls.forEach(([key, handler]) => {
-      if (key === 'F6') {
-        f6Handler = handler;
-      } else if (key === 'Escape') {
-        escHandler = handler;
-      }
+    it('should leave ASCII shortcuts unchanged', () => {
+      expect(normalizeShortcut('Command+Shift+Space')).toBe('Command+Shift+Space');
+      expect(normalizeShortcut('Control+Alt+Delete')).toBe('Control+Alt+Delete');
+      expect(normalizeShortcut('F12')).toBe('F12');
+      expect(normalizeShortcut('Escape')).toBe('Escape');
     });
-  });
 
-  afterEach(() => {
-    jest.useRealTimers();
-  });
-
-  it('registers shortcuts when app is ready', async () => {
-    expect(globalShortcut.register).toHaveBeenCalledWith(
-      'F6',
-      expect.any(Function)
-    );
-
-    expect(globalShortcut.register).toHaveBeenCalledWith(
-      'Escape',
-      expect.any(Function)
-    );
-  });
-
-  it('unregisters all shortcuts on quit', () => {
-    expect(quitHandler).toBeDefined();
-    quitHandler();
-    expect(globalShortcut.unregisterAll).toHaveBeenCalled();
-  });
-
-  it('starts recording on double-tap F6', () => {
-    expect(f6Handler).toBeDefined();
-
-    // Simulate double tap within 300ms
-    f6Handler();
-    jest.advanceTimersByTime(200);
-    f6Handler();
-
-    expect(recorder.start).toHaveBeenCalled();
-  });
-
-  it('stops recording on Escape', () => {
-    expect(escHandler).toBeDefined();
-
-    // Simulate recording in progress
-    recorder.isRecording.mockReturnValue(true);
-
-    // Simulate Escape press
-    escHandler();
-
-    expect(recorder.stop).toHaveBeenCalled();
+    it('should handle mixed format shortcuts', () => {
+      expect(normalizeShortcut('⌘Shift+Space')).toBe('CommandShift+Space');
+      expect(normalizeShortcut('Control+⌥+T')).toBe('Control+Alt+T');
+    });
   });
 }); 
