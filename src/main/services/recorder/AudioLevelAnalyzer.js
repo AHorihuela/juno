@@ -54,18 +54,13 @@ class AudioLevelAnalyzer {
     
     // Calculate RMS (Root Mean Square) of the audio samples
     let sum = 0;
-    let max = 0;
-    let min = 0;
     let samplesAboveThreshold = 0;
-    let consecutiveSamplesAboveThreshold = 0;
     let maxConsecutiveSamplesAboveThreshold = 0;
     let currentConsecutive = 0;
     
     for (let i = 0; i < samples.length; i++) {
       const sample = Math.abs(samples[i]);
       sum += sample * sample;
-      max = Math.max(max, sample);
-      min = Math.min(min, sample);
       
       if (sample > this.silenceThreshold) {
         samplesAboveThreshold++;
@@ -84,20 +79,20 @@ class AudioLevelAnalyzer {
     // Track peak RMS value
     this.peakRMS = Math.max(this.peakRMS, rms);
     
-    // Even more sensitive normalization (reduced from 2000 to 1800)
-    // Apply an even stronger non-linear curve to significantly amplify quieter sounds
-    // The power of 0.5 makes the curve more aggressive for low values
-    const normalizedLevel = Math.min(1, Math.pow(rms / 1800, 0.5));
+    // More sensitive normalization - lower divisor makes it more responsive
+    // Reduced from 2500 to 1500 for higher sensitivity
+    const normalizedLevel = Math.min(1, rms / 1500);
     
-    // Update smoothed levels with enhanced randomization for more visual interest
+    // Update levels with minimal smoothing for more responsiveness
     for (let i = 0; i < this.currentLevels.length; i++) {
-      // Higher minimum level (0.28) to ensure bars are always visibly moving
-      // Add more randomization for more dynamic visualization
-      const targetLevel = Math.max(0.28, normalizedLevel * (0.6 + Math.random() * 0.8));
+      // Add more variation between bars (±25%) for more dynamic movement
+      const variation = 0.75 + (Math.random() * 0.5);
       
-      // Apply smoothing with the updated factor
-      this.currentLevels[i] = this.currentLevels[i] * (1 - this.levelSmoothingFactor) +
-                           targetLevel * this.levelSmoothingFactor;
+      // Ensure a small minimum level so bars are always slightly visible
+      const targetLevel = Math.max(0.1, normalizedLevel * variation);
+      
+      // Even less smoothing (0.2) for more immediate response to audio
+      this.currentLevels[i] = this.currentLevels[i] * 0.2 + targetLevel * 0.8;
     }
 
     // Send levels to overlay service
@@ -106,6 +101,7 @@ class AudioLevelAnalyzer {
       const overlayService = this.services.overlay;
       if (overlayService) {
         try {
+          // Send every update for more responsive visualization
           overlayService.updateOverlayAudioLevels(this.currentLevels);
           
           // Log every 20th update to avoid flooding logs
@@ -115,27 +111,18 @@ class AudioLevelAnalyzer {
                 updateCount: this.updateCount,
                 rms: Math.round(rms),
                 normalizedLevel: normalizedLevel.toFixed(2),
-                levels: this.currentLevels.map(l => l.toFixed(2)).join(','),
-                overlayVisible: overlayService.isOverlayVisible()
+                levels: this.currentLevels.map(l => l.toFixed(2)).join(',')
               }
             });
           }
         } catch (error) {
           logger.error('Error updating overlay audio levels', {
-            metadata: {
-              error,
-              updateCount: this.updateCount
-            }
+            metadata: { error }
           });
         }
       } else {
         if (this.updateCount === 1 || this.updateCount % 100 === 0) {
-          logger.warn('Overlay service not available for audio level updates', {
-            metadata: {
-              updateCount: this.updateCount,
-              availableServices: Object.keys(this.services)
-            }
-          });
+          logger.warn('Overlay service not available for audio level updates');
         }
       }
     } else {

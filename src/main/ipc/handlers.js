@@ -79,7 +79,7 @@ function setupIpcHandlers(mainWindow, serviceRegistry) {
       mainWindow.webContents.send('transcription', text);
       // Add transcription to history
       try {
-        const history = serviceRegistry.get('transcriptionHistory');
+        const history = serviceRegistry.get('history');
         history.addTranscription(text);
       } catch (error) {
         console.error('Failed to add transcription to history:', error);
@@ -90,7 +90,7 @@ function setupIpcHandlers(mainWindow, serviceRegistry) {
   // Transcription history handlers
   ipcMain.on('get-transcription-history', (event) => {
     try {
-      const history = serviceRegistry.get('transcriptionHistory').getHistory();
+      const history = serviceRegistry.get('history').getHistory();
       event.reply('transcription-history', history);
     } catch (error) {
       console.error('Failed to get transcription history:', error);
@@ -100,7 +100,7 @@ function setupIpcHandlers(mainWindow, serviceRegistry) {
 
   ipcMain.on('delete-transcription', (event, id) => {
     try {
-      const history = serviceRegistry.get('transcriptionHistory');
+      const history = serviceRegistry.get('history');
       history.deleteTranscription(id);
       event.reply('transcription-history', history.getHistory());
     } catch (error) {
@@ -111,7 +111,7 @@ function setupIpcHandlers(mainWindow, serviceRegistry) {
 
   ipcMain.on('clear-transcription-history', (event) => {
     try {
-      const history = serviceRegistry.get('transcriptionHistory');
+      const history = serviceRegistry.get('history');
       history.clearHistory();
       event.reply('transcription-history', []);
     } catch (error) {

@@ -137,6 +137,12 @@ class OverlayUI {
         transform-origin: bottom;
         transform: scaleY(0.15);
         will-change: transform, background;
+        backface-visibility: hidden;
+        perspective: 1000;
+        -webkit-backface-visibility: hidden;
+        -webkit-perspective: 1000;
+        -webkit-transform-style: preserve-3d;
+        transform-style: preserve-3d;
       }
       
       .timer {
@@ -344,9 +350,16 @@ class OverlayUI {
           cancelAnimationFrame(animationFrameId);
         }
         
-        function animate() {
+        // Track frame timing for smoother animations
+        let lastFrameTime = 0;
+        
+        function animate(timestamp) {
+          // Calculate delta time for smoother animations
+          const deltaTime = lastFrameTime ? (timestamp - lastFrameTime) / 1000 : 0.016;
+          lastFrameTime = timestamp;
+          
           if (currentState === 'idle') {
-            states.idle();
+            states.idle(deltaTime);
           }
           
           // Update timer if active and not paused
@@ -437,78 +450,86 @@ class OverlayUI {
       }
       
       const states = {
-        idle: () => {
-          const now = Date.now() / 1000;
+        idle: (deltaTime) => {
+          // Use deltaTime for consistent animation speed regardless of frame rate
+          const now = performance.now() / 1000;
+          
+          // Pre-calculate values outside the loop for better performance
+          const baseScale = 0.2;
+          
           bars.forEach((bar, i) => {
             const offset = i * 0.05;
-            // More pronounced idle animation with multiple sine waves
+            // More efficient sine wave calculation
             const wave1 = Math.sin(now * 2 + offset) * 0.06;
             const wave2 = Math.sin(now * 1.5 + offset * 2) * 0.04;
-            const scale = 0.2 + wave1 + wave2;
+            const scale = baseScale + wave1 + wave2;
             
-            bar.style.transform = \`scaleY(\${scale})\`;
+            // Only update transform if needed
+            const newTransform = \`scaleY(\${scale.toFixed(3)})\`;
+            if (bar._lastTransform !== newTransform) {
+              bar.style.transform = newTransform;
+              bar._lastTransform = newTransform;
+            }
             
-            // Subtle color animation in idle state
-            const hue = 355 + Math.floor(Math.sin(now + i * 0.1) * 5);
-            const lightness = 50 + Math.floor(Math.sin(now * 0.7 + i * 0.15) * 5);
-            bar.style.background = \`linear-gradient(to top, 
-              hsla(\${hue}, 90%, \${lightness}%, 0.5), 
-              hsla(\${hue}, 90%, \${lightness + 10}%, 0.9))\`;
+            // Update color less frequently for better performance
+            if (i % 2 === 0 || !bar._lastColorUpdate || now - bar._lastColorUpdate > 0.1) {
+              const hue = 355 + Math.floor(Math.sin(now + i * 0.1) * 5);
+              const lightness = 50 + Math.floor(Math.sin(now * 0.7 + i * 0.15) * 5);
+              const newBackground = \`linear-gradient(to top, 
+                hsla(\${hue}, 90%, \${lightness}%, 0.5), 
+                hsla(\${hue}, 90%, \${lightness + 10}%, 0.9))\`;
+              
+              if (bar._lastBackground !== newBackground) {
+                bar.style.background = newBackground;
+                bar._lastBackground = newBackground;
+                bar._lastColorUpdate = now;
+              }
+            }
           });
         },
         active: (levels) => {
           if (!levels || !Array.isArray(levels)) return;
           
-          // Expand the levels array to match our number of bars
-          const expandedLevels = [];
+          // Simplified approach - directly map levels to bars
           const barsCount = bars.length;
           const levelsCount = levels.length;
           
-          // Add some artificial peaks for more visual interest
-          const enhancedLevels = [...levels];
-          for (let i = 0; i < enhancedLevels.length; i++) {
-            // Randomly boost some levels to create more dynamic peaks
-            if (Math.random() < 0.3) {
-              enhancedLevels[i] = Math.min(1, enhancedLevels[i] * 1.8); // Increased boost from 1.5 to 1.8
-            }
-          }
+          // Pre-calculate common values
+          const minScale = 0.05; // Lower minimum scale for more dynamic range
           
-          // Create a wave-like pattern by adding a sine wave to the levels
-          const now = Date.now() / 1000;
-          for (let i = 0; i < barsCount; i++) {
-            // Map the bar index to a level index with some overlap for smoother visualization
+          // Apply the levels to the bars with enhanced responsiveness
+          bars.forEach((bar, i) => {
+            // Map bar index to level index
             const levelIdx = Math.min(levelsCount - 1, Math.floor(i * levelsCount / barsCount));
             
-            // Enhanced randomization for more dynamic visualization
-            const randomFactor = 0.85 + Math.random() * 0.4;
+            // Get the level value directly from the analyzer
+            let level = levels[levelIdx] || 0;
             
-            // Apply a stronger curve to emphasize peaks
-            let level = Math.pow(enhancedLevels[levelIdx] * randomFactor, 0.75); // More aggressive curve (0.75 instead of 0.8)
+            // Apply a power curve to emphasize changes in level
+            // This makes small sounds more visible and large sounds more dramatic
+            level = Math.pow(level, 0.7); // Power < 1 emphasizes smaller values
             
-            // Add a subtle sine wave for more fluid motion
-            const waveOffset = Math.sin((now * 3) + (i * 0.2)) * 0.05;
-            level = Math.min(1, level + waveOffset);
-            
-            expandedLevels.push(level);
-          }
-          
-          // Apply the levels to the bars with a minimum scale to ensure visibility
-          bars.forEach((bar, i) => {
-            const level = expandedLevels[i] || 0;
-            const minScale = 0.15; // Minimum scale to ensure bars are always visible
+            // Apply scale with minimum value
             const scale = minScale + level * (1 - minScale);
             
-            bar.style.transform = \`scaleY(\${scale})\`;
+            // Always update transform for maximum responsiveness
+            bar.style.transform = \`scaleY(\${scale.toFixed(3)})\`;
+            bar._lastTransform = \`scaleY(\${scale.toFixed(3)})\`;
             
-            // Dynamic color based on intensity
+            // Update colors based on intensity
+            // Update every bar every frame for more visual impact
             const intensity = Math.min(100, Math.floor(level * 100));
-            const hue = Math.max(0, 355 - intensity * 0.5); // Shift from red to orange for higher levels
+            const hue = Math.max(0, 355 - intensity * 0.6); // More color shift with intensity
             const saturation = 90 + Math.floor(level * 10);
-            const lightness = 50 + Math.floor(level * 15);
+            const lightness = 50 + Math.floor(level * 20); // More brightness change
             
-            bar.style.background = \`linear-gradient(to top, 
+            const newBackground = \`linear-gradient(to top, 
               hsla(\${hue}, \${saturation}%, \${lightness}%, 0.5), 
-              hsla(\${hue}, \${saturation}%, \${lightness + 10}%, 0.9))\`;
+              hsla(\${hue}, \${saturation}%, \${lightness + 15}%, 0.9))\`; // More contrast in gradient
+            
+            bar.style.background = newBackground;
+            bar._lastBackground = newBackground;
+            bar._lastColorUpdate = performance.now() / 1000;
           });
         }
       };
