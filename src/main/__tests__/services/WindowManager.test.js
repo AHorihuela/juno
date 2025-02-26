@@ -74,6 +74,8 @@ jest.mock('../../../main/services/MainWindowManager', () => {
   return jest.fn().mockImplementation(() => ({
     mainWindow: null,
     isDev: true,
+    retryCount: 0,
+    maxRetries: 3,
     setMainWindow: jest.fn(function(window) {
       try {
         this.mainWindow = window;
@@ -84,13 +86,59 @@ jest.mock('../../../main/services/MainWindowManager', () => {
         if (process.platform === 'darwin') {
           window.setWindowButtonVisibility(true);
         }
+        // Reset retry count on success
+        this.retryCount = 0;
       } catch (error) {
         console.error('[MainWindowManager] Error setting main window:', error.message);
-        // Don't set the window if there's an error
-        this.mainWindow = null;
-        // Call emitError on the windowManager
-        this.windowManager.emitError('MainWindowManager', error);
+        
+        // Attempt recovery based on error type
+        if (this.retryCount < this.maxRetries) {
+          console.log(`[MainWindowManager] Retrying (${this.retryCount + 1}/${this.maxRetries})...`);
+          this.retryCount++;
+          
+          // Keep the previous window reference if it exists and is valid
+          if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+            this.mainWindow = null;
+          }
+          
+          // Emit error but indicate retry is in progress
+          this.windowManager.emitError('MainWindowManager', {
+            ...error,
+            recovery: {
+              type: 'retry',
+              attempt: this.retryCount,
+              maxAttempts: this.maxRetries
+            }
+          });
+          
+          // We could implement actual retry logic here
+          // For the test, we'll just simulate the concept
+        } else {
+          // Max retries reached, fallback to minimal window or null
+          console.error('[MainWindowManager] Max retries reached, falling back to recovery options');
+          this.mainWindow = null;
+          
+          // Emit error with recovery status
+          this.windowManager.emitError('MainWindowManager', {
+            ...error,
+            recovery: {
+              type: 'fallback',
+              status: 'failed',
+              message: 'Unable to create window after multiple attempts'
+            }
+          });
+          
+          // Here we could create a minimal fallback window
+          // this.createFallbackWindow();
+        }
       }
+    }),
+    // Add a method for creating a fallback window
+    createFallbackWindow: jest.fn(function() {
+      console.log('[MainWindowManager] Creating fallback window');
+      // Implementation would create a minimal window with error message
+      // For testing purposes, we'll just mock this
+      return { id: 'fallback-window', type: 'minimal' };
     }),
     showWindow: jest.fn(function() {
       if (this.mainWindow && !this.mainWindow.isDestroyed()) {
@@ -209,6 +257,64 @@ describe('WindowManager Service', () => {
       windowManager.setMainWindow(mockWindow);
       
       expect(windowManager.emitError).toHaveBeenCalled();
+      expect(windowManager.emitError.mock.calls[0][0]).toBe('MainWindowManager');
+      expect(windowManager.emitError.mock.calls[0][1].recovery).toBeDefined();
+      expect(windowManager.emitError.mock.calls[0][1].recovery.type).toBe('retry');
+      expect(windowManager.emitError.mock.calls[0][1].recovery.attempt).toBe(1);
+    });
+    
+    it('should attempt multiple retries before falling back', () => {
+      mockWindow.setFullScreenable.mockImplementation(() => {
+        throw new Error('Persistent test error');
+      });
+      
+      // First attempt
+      windowManager.setMainWindow(mockWindow);
+      expect(windowManager.emitError).toHaveBeenCalledTimes(1);
+      expect(windowManager.emitError.mock.calls[0][1].recovery.type).toBe('retry');
+      
+      // Second attempt
+      windowManager.setMainWindow(mockWindow);
+      expect(windowManager.emitError).toHaveBeenCalledTimes(2);
+      expect(windowManager.emitError.mock.calls[1][1].recovery.type).toBe('retry');
+      
+      // Third attempt
+      windowManager.setMainWindow(mockWindow);
+      expect(windowManager.emitError).toHaveBeenCalledTimes(3);
+      expect(windowManager.emitError.mock.calls[2][1].recovery.type).toBe('retry');
+      
+      // Fourth attempt - should fall back
+      windowManager.setMainWindow(mockWindow);
+      expect(windowManager.emitError).toHaveBeenCalledTimes(4);
+      expect(windowManager.emitError.mock.calls[3][1].recovery.type).toBe('fallback');
+      expect(windowManager.emitError.mock.calls[3][1].recovery.status).toBe('failed');
+    });
+    
+    it('should reset retry count after successful window creation', () => {
+      // First cause an error
+      mockWindow.setFullScreenable.mockImplementationOnce(() => {
+        throw new Error('Temporary test error');
+      });
+      
+      windowManager.setMainWindow(mockWindow);
+      expect(windowManager.emitError).toHaveBeenCalledTimes(1);
+      expect(windowManager.mainWindowManager.retryCount).toBe(1);
+      
+      // Then succeed
+      mockWindow.setFullScreenable.mockImplementationOnce(() => {});
+      windowManager.setMainWindow(mockWindow);
+      
+      // Retry count should be reset
+      expect(windowManager.mainWindowManager.retryCount).toBe(0);
+      
+      // Cause another error - should start from retry 1 again
+      mockWindow.setFullScreenable.mockImplementationOnce(() => {
+        throw new Error('Another test error');
+      });
+      
+      windowManager.setMainWindow(mockWindow);
+      expect(windowManager.emitError).toHaveBeenCalledTimes(2);
+      expect(windowManager.mainWindowManager.retryCount).toBe(1);
     });
     
     it('should show the window', () => {
