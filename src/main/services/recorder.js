@@ -10,9 +10,9 @@ class RecorderService extends BaseService {
     this.recorder = null;
     this.audioData = [];
     this.hasAudioContent = false;
-    this.silenceThreshold = 30;
+    this.silenceThreshold = 20;
     this.currentDeviceId = null;
-    this.levelSmoothingFactor = 0.5;
+    this.levelSmoothingFactor = 0.7;
     this.currentLevels = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
   }
 
@@ -311,14 +311,18 @@ class RecorderService extends BaseService {
     
     const rms = Math.sqrt(sum / samples.length);
     
-    // More sensitive normalization (reduced from 5000 to 3000)
-    // Apply a non-linear curve to amplify quieter sounds
-    const normalizedLevel = Math.min(1, Math.pow(rms / 3000, 0.8));
+    // Much more sensitive normalization (reduced from 3000 to 2000)
+    // Apply a stronger non-linear curve to significantly amplify quieter sounds
+    // The power of 0.6 makes the curve more aggressive for low values
+    const normalizedLevel = Math.min(1, Math.pow(rms / 2000, 0.6));
     
-    // Update smoothed levels with some randomization for visual interest
+    // Update smoothed levels with enhanced randomization for more visual interest
     for (let i = 0; i < this.currentLevels.length; i++) {
-      // Increased base level to ensure bars are more visible even with quiet sounds
-      const targetLevel = Math.max(0.2, normalizedLevel * (0.8 + Math.random() * 0.4));
+      // Higher minimum level (0.25) to ensure bars are always visibly moving
+      // Add more randomization (0.5 + Math.random() * 0.7) for more dynamic visualization
+      const targetLevel = Math.max(0.25, normalizedLevel * (0.5 + Math.random() * 0.7));
+      
+      // Apply smoothing with the updated factor
       this.currentLevels[i] = this.currentLevels[i] * (1 - this.levelSmoothingFactor) +
                            targetLevel * this.levelSmoothingFactor;
     }
@@ -330,9 +334,8 @@ class RecorderService extends BaseService {
     // Calculate percentage of samples above threshold
     const percentageAboveThreshold = (samplesAboveThreshold / samples.length) * 100;
     
-    // Consider it real audio only if we have a significant percentage of samples above threshold
-    // AND we have some consecutive samples above threshold (indicating sustained sound)
-    return percentageAboveThreshold > 15 && maxConsecutiveSamplesAboveThreshold > 40;
+    // Lower thresholds to detect more subtle audio
+    return percentageAboveThreshold > 10 && maxConsecutiveSamplesAboveThreshold > 30;
   }
 
   async stop() {

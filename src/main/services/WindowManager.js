@@ -346,8 +346,19 @@ class WindowManager extends BaseService {
           const now = Date.now() / 1000;
           bars.forEach((bar, i) => {
             const offset = i * 0.05;
-            const scale = 0.15 + Math.sin(now * 2 + offset) * 0.05;
+            // More pronounced idle animation with multiple sine waves
+            const wave1 = Math.sin(now * 2 + offset) * 0.06;
+            const wave2 = Math.sin(now * 1.5 + offset * 2) * 0.04;
+            const scale = 0.2 + wave1 + wave2;
+            
             bar.style.transform = \`scaleY(\${scale})\`;
+            
+            // Subtle color animation in idle state
+            const hue = 355 + Math.floor(Math.sin(now + i * 0.1) * 5);
+            const lightness = 50 + Math.floor(Math.sin(now * 0.7 + i * 0.15) * 5);
+            bar.style.background = \`linear-gradient(to top, 
+              hsla(\${hue}, 90%, \${lightness}%, 0.5), 
+              hsla(\${hue}, 90%, \${lightness + 10}%, 0.9))\`;
           });
         },
         active: (levels) => {
@@ -358,33 +369,42 @@ class WindowManager extends BaseService {
           const barsCount = bars.length;
           const levelsCount = levels.length;
           
+          // Add some artificial peaks for more visual interest
+          const enhancedLevels = [...levels];
+          for (let i = 0; i < enhancedLevels.length; i++) {
+            // Randomly boost some levels to create more dynamic peaks
+            if (Math.random() < 0.3) {
+              enhancedLevels[i] = Math.min(1, enhancedLevels[i] * 1.5);
+            }
+          }
+          
           for (let i = 0; i < barsCount; i++) {
             // Map the bar index to a level index with some overlap for smoother visualization
             const levelIdx = Math.min(levelsCount - 1, Math.floor(i * levelsCount / barsCount));
             
             // Enhanced randomization for more dynamic visualization
-            const randomFactor = 0.9 + Math.random() * 0.3;
+            const randomFactor = 0.85 + Math.random() * 0.4;
             
-            // Apply a slight curve to emphasize peaks
-            const level = Math.pow(levels[levelIdx] * randomFactor, 0.9);
+            // Apply a stronger curve to emphasize peaks
+            const level = Math.pow(enhancedLevels[levelIdx] * randomFactor, 0.8);
             expandedLevels.push(level);
           }
           
-          // Apply smoothed levels to bars with slight delay for wave effect
+          // Apply smoothed levels to bars with minimal delay for more responsive animation
           bars.forEach((bar, i) => {
             // Reduced delay for more responsive animation
-            const delay = i * 8; 
+            const delay = i * 5; 
             setTimeout(() => {
               // Ensure minimum scale for better visibility
-              const scale = Math.max(0.2, Math.min(1, expandedLevels[i] || 0));
+              const scale = Math.max(0.25, Math.min(1, expandedLevels[i] || 0));
               bar.style.transform = \`scaleY(\${scale})\`;
               
               // Enhanced color variation based on intensity
-              const intensity = Math.min(0.95, 0.5 + scale * 0.5);
-              const hue = 360 - Math.floor(scale * 15); // Slight hue shift based on intensity
+              const intensity = Math.min(0.98, 0.6 + scale * 0.4);
+              const hue = 355 - Math.floor(scale * 25); // More pronounced hue shift based on intensity
               bar.style.background = \`linear-gradient(to top, 
-                hsla(\${hue}, 90%, 50%, \${intensity * 0.5}), 
-                hsla(\${hue}, 90%, 60%, \${intensity}))\`;
+                hsla(\${hue}, 95%, 50%, \${intensity * 0.6}), 
+                hsla(\${hue}, 95%, 65%, \${intensity}))\`;
             }, delay);
           });
           
@@ -458,7 +478,12 @@ class WindowManager extends BaseService {
         return;
       }
       
-      console.log('[WindowManager] Updating overlay audio levels');
+      // Log the max level for debugging (only occasionally to avoid flooding logs)
+      if (Math.random() < 0.05) {
+        const maxLevel = Math.max(...levels);
+        console.log(`[WindowManager] Audio levels - max: ${maxLevel.toFixed(2)}, avg: ${(levels.reduce((a, b) => a + b, 0) / levels.length).toFixed(2)}`);
+      }
+      
       this.overlayWindow.webContents.executeJavaScript(`
         if (window.updateState) {
           window.updateState('active', ${JSON.stringify(levels)});
