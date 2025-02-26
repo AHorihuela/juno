@@ -41,7 +41,10 @@ class ContextService extends BaseService {
     // Initialize memory manager
     this.memoryManager = this.getService('memoryManager');
     if (this.memoryManager) {
-      await this.memoryManager.initialize();
+      await this.memoryManager.initialize({
+        config: this.getService('config'),
+        context: this
+      });
       console.log('[ContextService] Memory manager initialized');
       
       // Migrate existing context history to memory manager

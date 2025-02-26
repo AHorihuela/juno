@@ -18,6 +18,14 @@ const AIUsageTracker = require('./AIUsageTracker');
 const { MemoryError, MemoryAccessError, MemoryStorageError } = require('./MemoryErrors');
 const logger = require('../../utils/logger');
 
+/**
+ * Factory function to create a new MemoryManager instance
+ * @returns {MemoryManager} A new MemoryManager instance
+ */
+function memoryManagerFactory() {
+  return new MemoryManager();
+}
+
 class MemoryManager {
   /**
    * Creates a new MemoryManager instance
@@ -29,10 +37,11 @@ class MemoryManager {
     this.persistence = new MemoryPersistence();
     this.scoring = new MemoryScoring();
     this.stats = new MemoryStats();
-    this.aiTracker = new AIUsageTracker();
+    this.aiUsageTracker = new AIUsageTracker();
     
     this.initialized = false;
-    this.services = null;
+    this.configService = null;
+    this.contextService = null;
   }
   
   /**
@@ -48,44 +57,41 @@ class MemoryManager {
     
     try {
       logger.info('[MemoryManager] Starting initialization');
-      this.services = services;
+      
+      // Validate required services
+      if (!services || !services.config) {
+        throw new MemoryError('Config service is required');
+      }
+      
+      if (!services || !services.context) {
+        throw new MemoryError('Context service is required');
+      }
+      
+      this.configService = services.config;
+      this.contextService = services.context;
       
       // Initialize persistence first (needed for loading data)
       await this.persistence.initialize(services);
       
+      // Initialize stats tracking
+      this.stats.initialize();
+      
+      // Initialize AI usage tracker
+      await this.aiUsageTracker.initialize(services);
+      
       // Load long-term memory from disk
       const longTermMemory = await this.persistence.loadLongTermMemory();
       
-      // Initialize tier manager with loaded data
-      await this.tierManager.initialize({
-        longTermMemory,
-        scoring: this.scoring
+      // Initialize tier manager
+      this.tierManager.initialize({
+        memoryStats: this.stats,
+        memoryScoring: this.scoring
       });
       
-      // Initialize stats tracking
-      await this.stats.initialize({
-        tierManager: this.tierManager,
-        services
-      });
-      
-      // Initialize AI usage tracker
-      await this.aiTracker.initialize(services);
-      
-      // Set up periodic memory management
-      this.memoryManagementInterval = setInterval(
-        () => this.manageMemory().catch(err => {
-          logger.error('[MemoryManager] Error during scheduled memory management', err);
-        }), 
-        60000 // Every minute
-      );
-      
-      // Set up periodic stats update
-      this.statsInterval = setInterval(
-        () => this.stats.updateMemoryStats().catch(err => {
-          logger.error('[MemoryManager] Error during scheduled stats update', err);
-        }), 
-        60000 // Every minute
-      );
+      // Set memory tiers with loaded data
+      if (longTermMemory && longTermMemory.length > 0) {
+        this.tierManager.setMemoryTiers([], [], longTermMemory);
+      }
       
       this.initialized = true;
       logger.info('[MemoryManager] Initialized successfully');
@@ -97,333 +103,366 @@ class MemoryManager {
   }
   
   /**
-   * Clean up resources and save state before shutdown
+   * Add a memory item
    * 
    * @async
-   * @returns {Promise<void>}
-   */
-  async shutdown() {
-    try {
-      logger.info('[MemoryManager] Shutting down');
-      
-      if (this.memoryManagementInterval) {
-        clearInterval(this.memoryManagementInterval);
-      }
-      
-      if (this.statsInterval) {
-        clearInterval(this.statsInterval);
-      }
-      
-      // Save long-term memory before shutdown
-      await this.persistence.saveLongTermMemory(this.tierManager.getLongTermMemory());
-      
-      // Save AI stats before shutdown
-      await this.aiTracker.saveStats();
-      
-      this.initialized = false;
-      logger.info('[MemoryManager] Shutdown complete');
-    } catch (error) {
-      logger.error('[MemoryManager] Error during shutdown:', error);
-      // We don't throw here as we're shutting down anyway
-    }
-  }
-  
-  /**
-   * Add a new context item to memory
-   * 
-   * @param {Object} item - Context item to add
-   * @param {string} item.content - The content of the memory item
-   * @returns {Promise<Object>} The enriched item that was added
+   * @param {Object} content - Content of the memory item
+   * @param {Object} [metadata={}] - Metadata for the memory item
+   * @returns {Promise<Object>} The added memory item
    * @throws {MemoryError} If the item cannot be added
    */
-  async addItem(item) {
+  async addMemoryItem(content, metadata = {}) {
     try {
       if (!this.initialized) {
         throw new MemoryError('Memory manager not initialized');
       }
       
-      if (!item || !item.content) {
-        throw new MemoryError('Invalid memory item: missing content');
-      }
-      
-      // Add to working memory via tier manager
-      const enrichedItem = await this.tierManager.addItem(item);
-      
-      // Update stats
-      await this.stats.updateAfterAddingItem(enrichedItem);
-      
-      return enrichedItem;
+      const item = this.tierManager.addToMemory(content, metadata);
+      return item;
     } catch (error) {
       const wrappedError = new MemoryError('Failed to add memory item', { cause: error });
-      logger.error('[MemoryManager] Error adding item:', wrappedError);
+      logger.error('[MemoryManager] Error adding memory item:', wrappedError);
       throw wrappedError;
     }
   }
   
   /**
-   * Manage memory tiers - move items between tiers based on relevance
+   * Get a memory item by ID
    * 
    * @async
-   * @returns {Promise<void>}
-   * @throws {MemoryError} If memory management fails
+   * @param {string} id - ID of the memory item
+   * @returns {Promise<Object|null>} The memory item, or null if not found
+   * @throws {MemoryError} If the item cannot be retrieved
    */
-  async manageMemory() {
+  async getMemoryItemById(id) {
     try {
       if (!this.initialized) {
         throw new MemoryError('Memory manager not initialized');
       }
       
-      logger.info('[MemoryManager] Running memory management');
-      
-      // Let tier manager handle the promotion/demotion logic
-      const changes = await this.tierManager.manageMemoryTiers();
-      
-      // If there were changes to long-term memory, save it
-      if (changes.longTermMemoryChanged) {
-        await this.persistence.saveLongTermMemory(this.tierManager.getLongTermMemory());
-      }
-      
-      // Update stats
-      await this.stats.updateAfterMemoryManagement();
-      
-      logger.info('[MemoryManager] Memory management complete', this.stats.getStats());
-      return changes;
+      return this.tierManager.findMemoryItemById(id);
     } catch (error) {
-      const wrappedError = new MemoryError('Failed to manage memory', { cause: error });
-      logger.error('[MemoryManager] Error during memory management:', wrappedError);
+      const wrappedError = new MemoryError('Failed to get memory item', { cause: error });
+      logger.error('[MemoryManager] Error getting memory item:', wrappedError);
       throw wrappedError;
     }
   }
   
   /**
-   * Record that an item was accessed and found useful
+   * Access a memory item (updates access count and timestamp)
    * 
-   * @param {string} itemId - ID of the item
-   * @param {number} usefulness - How useful the item was (0-10)
-   * @returns {Promise<boolean>} Success status
-   * @throws {MemoryAccessError} If the item cannot be accessed
+   * @async
+   * @param {string} id - ID of the memory item
+   * @returns {Promise<Object|null>} The accessed memory item, or null if not found
+   * @throws {MemoryError} If the item cannot be accessed
    */
-  async recordItemUsage(itemId, usefulness = 5) {
+  async accessMemoryItem(id) {
     try {
       if (!this.initialized) {
-        throw new MemoryAccessError('Memory manager not initialized');
+        throw new MemoryError('Memory manager not initialized');
       }
       
-      if (!itemId) {
-        throw new MemoryAccessError('Invalid item ID');
-      }
-      
-      // Update item usage via tier manager
-      const updated = await this.tierManager.recordItemUsage(itemId, usefulness);
-      
-      // Update stats if item was found and updated
-      if (updated) {
-        await this.stats.updateAfterItemUsage(itemId, usefulness);
-      }
-      
-      return updated;
+      return this.tierManager.accessMemoryItem(id);
     } catch (error) {
-      const wrappedError = new MemoryAccessError('Failed to record item usage', { 
-        cause: error,
-        itemId
-      });
-      logger.error('[MemoryManager] Error recording item usage:', wrappedError);
+      const wrappedError = new MemoryError('Failed to access memory item', { cause: error });
+      logger.error('[MemoryManager] Error accessing memory item:', wrappedError);
       throw wrappedError;
     }
   }
   
   /**
-   * Get the best context for a given command
+   * Delete a memory item
    * 
-   * @param {string} command - The command being processed
-   * @param {Object} options - Options for context selection
-   * @returns {Promise<Object>} Selected context items
-   * @throws {MemoryAccessError} If context cannot be retrieved
+   * @async
+   * @param {string} id - ID of the memory item
+   * @returns {Promise<boolean>} True if the item was deleted, false if not found
+   * @throws {MemoryError} If the item cannot be deleted
    */
-  async getContextForCommand(command, options = {}) {
+  async deleteMemoryItem(id) {
     try {
       if (!this.initialized) {
-        throw new MemoryAccessError('Memory manager not initialized');
+        throw new MemoryError('Memory manager not initialized');
       }
       
-      if (!command) {
-        throw new MemoryAccessError('Command is required');
-      }
+      const deleted = this.tierManager.deleteMemoryItem(id);
       
-      // Get context from tier manager
-      const context = await this.tierManager.getContextForCommand(command, options);
-      
-      // Update stats
-      await this.stats.updateAfterContextRetrieval(context);
-      
-      return context;
-    } catch (error) {
-      const wrappedError = new MemoryAccessError('Failed to get context for command', { 
-        cause: error,
-        command
-      });
-      logger.error('[MemoryManager] Error getting context for command:', wrappedError);
-      throw wrappedError;
-    }
-  }
-  
-  /**
-   * Get all memory items for UI display
-   * 
-   * @returns {Promise<Object>} Memory items organized by tier
-   * @throws {MemoryAccessError} If items cannot be retrieved
-   */
-  async getAllMemoryItems() {
-    try {
-      if (!this.initialized) {
-        throw new MemoryAccessError('Memory manager not initialized');
-      }
-      
-      // Get all items from tier manager
-      const items = await this.tierManager.getAllMemoryItems();
-      
-      // Add stats
-      return {
-        ...items,
-        stats: this.stats.getStats()
-      };
-    } catch (error) {
-      const wrappedError = new MemoryAccessError('Failed to get all memory items', { cause: error });
-      logger.error('[MemoryManager] Error getting all memory items:', wrappedError);
-      throw wrappedError;
-    }
-  }
-  
-  /**
-   * Delete an item from memory
-   * 
-   * @param {string} itemId - ID of the item to delete
-   * @returns {Promise<boolean>} Success status
-   * @throws {MemoryAccessError} If the item cannot be deleted
-   */
-  async deleteItem(itemId) {
-    try {
-      if (!this.initialized) {
-        throw new MemoryAccessError('Memory manager not initialized');
-      }
-      
-      if (!itemId) {
-        throw new MemoryAccessError('Invalid item ID');
-      }
-      
-      // Delete item via tier manager
-      const deleted = await this.tierManager.deleteItem(itemId);
-      
-      // Update stats if item was found and deleted
       if (deleted) {
-        await this.stats.updateAfterItemDeletion(itemId);
-        
-        // If the item might have been in long-term memory, save changes
-        await this.persistence.saveLongTermMemory(this.tierManager.getLongTermMemory());
+        // Also remove from context service
+        await this.contextService.deleteMemoryItem(id);
       }
       
       return deleted;
     } catch (error) {
-      const wrappedError = new MemoryAccessError('Failed to delete memory item', { 
-        cause: error,
-        itemId
-      });
+      const wrappedError = new MemoryError('Failed to delete memory item', { cause: error });
       logger.error('[MemoryManager] Error deleting memory item:', wrappedError);
       throw wrappedError;
     }
   }
   
   /**
-   * Clear all memory or a specific tier
+   * Get all memory items
    * 
-   * @param {string} [tier] - Specific tier to clear, or all if not specified
-   * @returns {Promise<boolean>} Success status
-   * @throws {MemoryError} If memory cannot be cleared
+   * @async
+   * @returns {Promise<Array>} All memory items
+   * @throws {MemoryError} If the items cannot be retrieved
    */
-  async clearMemory(tier = null) {
+  async getAllMemoryItems() {
     try {
       if (!this.initialized) {
         throw new MemoryError('Memory manager not initialized');
       }
       
-      // Clear memory via tier manager
-      const cleared = await this.tierManager.clearMemory(tier);
-      
-      // Update stats
-      await this.stats.updateAfterMemoryClear(tier);
-      
-      // If long-term memory was cleared, update persistent storage
-      if (!tier || tier === 'long-term') {
-        await this.persistence.saveLongTermMemory([]);
-      }
-      
-      logger.info(`[MemoryManager] Cleared memory${tier ? ` (${tier})` : ''}`);
-      return cleared;
+      return this.tierManager.getAllMemoryItems();
     } catch (error) {
-      const wrappedError = new MemoryError('Failed to clear memory', { 
-        cause: error,
-        tier
-      });
-      logger.error('[MemoryManager] Error clearing memory:', wrappedError);
+      const wrappedError = new MemoryError('Failed to get all memory items', { cause: error });
+      logger.error('[MemoryManager] Error getting all memory items:', wrappedError);
       throw wrappedError;
     }
   }
   
   /**
-   * Get current memory statistics
+   * Get memory items by tier
    * 
-   * @returns {Promise<Object>} Memory statistics
+   * @async
+   * @param {string} tier - Memory tier ('working', 'shortTerm', or 'longTerm')
+   * @returns {Promise<Array>} Memory items in the specified tier
+   * @throws {MemoryError} If the items cannot be retrieved
    */
-  async getStats() {
+  async getMemoryByTier(tier) {
     try {
-      return this.stats.getStats();
+      if (!this.initialized) {
+        throw new MemoryError('Memory manager not initialized');
+      }
+      
+      return this.tierManager.getMemoryTier(tier);
     } catch (error) {
-      logger.error('[MemoryManager] Error getting stats:', error);
-      return {}; // Return empty object rather than throwing
+      const wrappedError = new MemoryError('Failed to get memory by tier', { cause: error });
+      logger.error('[MemoryManager] Error getting memory by tier:', wrappedError);
+      throw wrappedError;
     }
   }
   
   /**
-   * Delete a memory item by ID (compatibility method for IPC handlers)
+   * Find memories relevant to a command
    * 
-   * @param {string} id - The ID of the memory item to delete
-   * @returns {Promise<boolean>} Success status
+   * @async
+   * @param {string} command - The command to find relevant memories for
+   * @param {number} [limit=5] - Maximum number of memories to return
+   * @returns {Promise<Array>} Relevant memory items
+   * @throws {MemoryError} If relevant memories cannot be found
    */
-  async deleteMemoryItem(id) {
-    return this.deleteItem(id);
+  async findRelevantMemories(command, limit = 5) {
+    try {
+      if (!this.initialized) {
+        throw new MemoryError('Memory manager not initialized');
+      }
+      
+      // Get all memory items
+      const allItems = this.tierManager.getAllMemoryItems();
+      
+      if (!allItems || allItems.length === 0) {
+        return [];
+      }
+      
+      // Calculate relevance for each item
+      const itemsWithRelevance = allItems.map(item => {
+        const relevance = this.scoring.calculateRelevanceToCommand(item, command);
+        return { ...item, relevance };
+      });
+      
+      // Sort by relevance (descending)
+      itemsWithRelevance.sort((a, b) => b.relevance - a.relevance);
+      
+      // Return the top N items
+      return itemsWithRelevance.slice(0, limit);
+    } catch (error) {
+      const wrappedError = new MemoryError('Failed to find relevant memories', { cause: error });
+      logger.error('[MemoryManager] Error finding relevant memories:', wrappedError);
+      throw wrappedError;
+    }
   }
   
   /**
-   * Track AI usage statistics
+   * Promote a memory item to the next tier
    * 
-   * @param {Object} stats - AI usage statistics
-   * @param {number} stats.promptTokens - Number of prompt tokens
-   * @param {number} stats.completionTokens - Number of completion tokens
-   * @returns {Promise<void>}
+   * @async
+   * @param {string} id - ID of the memory item
+   * @returns {Promise<Object|null>} The promoted memory item, or null if not found
+   * @throws {MemoryError} If the item cannot be promoted
    */
-  async trackAIUsage(stats) {
+  async promoteMemoryItem(id) {
     try {
-      await this.aiTracker.trackUsage(stats);
+      if (!this.initialized) {
+        throw new MemoryError('Memory manager not initialized');
+      }
+      
+      return this.tierManager.promoteMemoryItem(id);
     } catch (error) {
-      logger.error('[MemoryManager] Error tracking AI usage:', error);
-      // Don't throw, as this is non-critical functionality
+      const wrappedError = new MemoryError('Failed to promote memory item', { cause: error });
+      logger.error('[MemoryManager] Error promoting memory item:', wrappedError);
+      throw wrappedError;
+    }
+  }
+  
+  /**
+   * Demote a memory item to the previous tier
+   * 
+   * @async
+   * @param {string} id - ID of the memory item
+   * @returns {Promise<Object|null>} The demoted memory item, or null if not found
+   * @throws {MemoryError} If the item cannot be demoted
+   */
+  async demoteMemoryItem(id) {
+    try {
+      if (!this.initialized) {
+        throw new MemoryError('Memory manager not initialized');
+      }
+      
+      return this.tierManager.demoteMemoryItem(id);
+    } catch (error) {
+      const wrappedError = new MemoryError('Failed to demote memory item', { cause: error });
+      logger.error('[MemoryManager] Error demoting memory item:', wrappedError);
+      throw wrappedError;
+    }
+  }
+  
+  /**
+   * Clear a memory tier
+   * 
+   * @async
+   * @param {string} tier - Memory tier to clear ('working', 'shortTerm', or 'longTerm')
+   * @returns {Promise<void>}
+   * @throws {MemoryError} If the tier cannot be cleared
+   */
+  async clearMemoryTier(tier) {
+    try {
+      if (!this.initialized) {
+        throw new MemoryError('Memory manager not initialized');
+      }
+      
+      this.tierManager.clearMemoryTier(tier);
+      
+      // Also clear from context service
+      await this.contextService.clearMemory(tier);
+    } catch (error) {
+      const wrappedError = new MemoryError('Failed to clear memory tier', { cause: error });
+      logger.error('[MemoryManager] Error clearing memory tier:', wrappedError);
+      throw wrappedError;
+    }
+  }
+  
+  /**
+   * Clear all memory
+   * 
+   * @async
+   * @returns {Promise<void>}
+   * @throws {MemoryError} If memory cannot be cleared
+   */
+  async clearAllMemory() {
+    try {
+      if (!this.initialized) {
+        throw new MemoryError('Memory manager not initialized');
+      }
+      
+      this.tierManager.clearAllMemory();
+      
+      // Also clear from context service
+      await this.contextService.clearMemory('all');
+    } catch (error) {
+      const wrappedError = new MemoryError('Failed to clear all memory', { cause: error });
+      logger.error('[MemoryManager] Error clearing all memory:', wrappedError);
+      throw wrappedError;
+    }
+  }
+  
+  /**
+   * Save memory to disk
+   * 
+   * @async
+   * @returns {Promise<boolean>} Success status
+   * @throws {MemoryError} If memory cannot be saved
+   */
+  async saveMemory() {
+    try {
+      if (!this.initialized) {
+        throw new MemoryError('Memory manager not initialized');
+      }
+      
+      const longTermMemory = this.tierManager.getMemoryTier('longTerm');
+      return await this.persistence.saveLongTermMemory(longTermMemory);
+    } catch (error) {
+      const wrappedError = new MemoryError('Failed to save memory', { cause: error });
+      logger.error('[MemoryManager] Error saving memory:', wrappedError);
+      throw wrappedError;
+    }
+  }
+  
+  /**
+   * Get memory statistics
+   * 
+   * @async
+   * @returns {Promise<Object>} Memory statistics
+   * @throws {MemoryError} If statistics cannot be retrieved
+   */
+  async getMemoryStats() {
+    try {
+      if (!this.initialized) {
+        throw new MemoryError('Memory manager not initialized');
+      }
+      
+      return this.stats.getStats();
+    } catch (error) {
+      const wrappedError = new MemoryError('Failed to get memory statistics', { cause: error });
+      logger.error('[MemoryManager] Error getting memory statistics:', wrappedError);
+      throw wrappedError;
+    }
+  }
+  
+  /**
+   * Track AI usage
+   * 
+   * @async
+   * @param {Object} usageData - AI usage data
+   * @param {number} usageData.promptTokens - Number of prompt tokens
+   * @param {number} usageData.completionTokens - Number of completion tokens
+   * @param {string} usageData.model - Model name
+   * @returns {Promise<void>}
+   * @throws {MemoryError} If usage cannot be tracked
+   */
+  async trackAIUsage(usageData) {
+    try {
+      if (!this.initialized) {
+        throw new MemoryError('Memory manager not initialized');
+      }
+      
+      await this.aiUsageTracker.trackUsage(usageData);
+    } catch (error) {
+      const wrappedError = new MemoryError('Failed to track AI usage', { cause: error });
+      logger.error('[MemoryManager] Error tracking AI usage:', wrappedError);
+      throw wrappedError;
     }
   }
   
   /**
    * Get AI usage statistics
    * 
+   * @async
    * @returns {Promise<Object>} AI usage statistics
+   * @throws {MemoryError} If statistics cannot be retrieved
    */
-  async getAIStats() {
+  async getAIUsageStats() {
     try {
-      return this.aiTracker.getStats();
+      if (!this.initialized) {
+        throw new MemoryError('Memory manager not initialized');
+      }
+      
+      return this.aiUsageTracker.getStats();
     } catch (error) {
-      logger.error('[MemoryManager] Error getting AI stats:', error);
-      return {}; // Return empty object rather than throwing
+      const wrappedError = new MemoryError('Failed to get AI usage statistics', { cause: error });
+      logger.error('[MemoryManager] Error getting AI usage statistics:', wrappedError);
+      throw wrappedError;
     }
   }
 }
 
-// Factory function to create a new MemoryManager instance
-module.exports = () => new MemoryManager(); 
+module.exports = memoryManagerFactory; 

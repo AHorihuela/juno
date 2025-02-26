@@ -426,12 +426,17 @@ class ConfigService extends BaseService {
   }
 
   async setKeyboardShortcut(shortcut) {
-    const store = await this.initializeStore();
-    if (!shortcut) {
-      store.set('keyboardShortcut', 'CommandOrControl+Shift+Space'); // Use default
-    } else {
-      store.set('keyboardShortcut', shortcut);
-    }
+    this.store.set('keyboardShortcut', shortcut);
+    this.emit('keyboardShortcutChanged', shortcut);
+  }
+
+  /**
+   * Get the application data path
+   * 
+   * @returns {string} The path to the application data directory
+   */
+  getAppDataPath() {
+    return app.getPath('userData');
   }
 }
 
