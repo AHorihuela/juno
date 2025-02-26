@@ -32,6 +32,9 @@ function setupSettingsHandlers() {
       if (settings.actionVerbs !== undefined) {
         await configService.setActionVerbs(settings.actionVerbs);
       }
+      if (settings.actionVerbsEnabled !== undefined) {
+        await configService.setActionVerbsEnabled(settings.actionVerbsEnabled);
+      }
       if (settings.aiRules !== undefined) {
         await configService.setAIRules(settings.aiRules);
       }

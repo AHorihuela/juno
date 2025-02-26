@@ -6,6 +6,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const BaseService = require('./BaseService');
+const { detectAICommand, logCommandDetection } = require('../utils/commandDetection');
 
 // WAV header constants
 const RIFF_HEADER_SIZE = 44;
@@ -110,6 +111,85 @@ class TranscriptionService extends BaseService {
       console.error('[Transcription] Error cleaning up temp file:', error);
     }
     return false;
+  }
+
+  /**
+   * Process transcribed text to determine if it's an AI command
+   * @param {string} text - Transcribed text to process
+   * @returns {Promise<Object>} Processing result with command detection
+   */
+  async processTranscribedText(text) {
+    console.log('[Transcription] Processing transcribed text:', text);
+    
+    if (!text || text.trim() === '') {
+      console.log('[Transcription] Empty text, skipping processing');
+      return { 
+        isCommand: false,
+        text: ''
+      };
+    }
+    
+    try {
+      // Get configuration
+      const configService = this.getService('config');
+      const actionVerbs = await configService.getActionVerbs();
+      const actionVerbsEnabled = await configService.getActionVerbsEnabled();
+      const aiTriggerWord = await configService.getAITriggerWord();
+      
+      // Get user context
+      const userContext = {
+        hasHighlightedText: await this.getService('context').hasHighlightedText(),
+        isLongDictation: text.split(/\s+/).length > 30, // Consider it long if > 30 words
+        recentAICommands: this.processingStats.aiCommandCount > 0 ? 1 : 0
+      };
+      
+      // Detect if this is an AI command
+      const commandDetection = detectAICommand(
+        text, 
+        actionVerbs, 
+        actionVerbsEnabled, 
+        aiTriggerWord, 
+        userContext
+      );
+      
+      // Log detection results for debugging
+      logCommandDetection(commandDetection, text);
+      
+      // If it's a command or needs confirmation, handle accordingly
+      if (commandDetection.isCommand) {
+        console.log('[Transcription] AI command detected with confidence:', commandDetection.confidenceScore);
+        this.processingStats.aiCommandCount++;
+        
+        return {
+          isCommand: true,
+          text: text,
+          commandInfo: commandDetection
+        };
+      } else if (commandDetection.needsConfirmation) {
+        console.log('[Transcription] Possible AI command detected, needs confirmation');
+        // For now, we'll treat this as not a command, but in the future
+        // we could implement a confirmation UI
+      }
+      
+      // Not a command, just return the processed text
+      console.log('[Transcription] Not an AI command, treating as normal transcription');
+      this.processingStats.normalTranscriptionCount++;
+      
+      return {
+        isCommand: false,
+        text: text
+      };
+    } catch (error) {
+      console.error('[Transcription] Error processing text:', error);
+      this.processingStats.errorCount++;
+      
+      // Return the original text on error
+      return {
+        isCommand: false,
+        text: text,
+        error: error.message
+      };
+    }
   }
 
   /**

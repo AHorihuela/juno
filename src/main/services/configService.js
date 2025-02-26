@@ -118,6 +118,10 @@ class ConfigService extends BaseService {
                 'make'
               ]
             },
+            actionVerbsEnabled: {
+              type: 'boolean',
+              default: true
+            },
             aiRules: {
               type: 'array',
               items: {
@@ -210,6 +214,10 @@ class ConfigService extends BaseService {
                   'revise',
                   'make'
                 ]
+              },
+              actionVerbsEnabled: {
+                type: 'boolean',
+                default: true
               },
               aiRules: {
                 type: 'array',
@@ -363,6 +371,16 @@ class ConfigService extends BaseService {
     }
     const store = await this.initializeStore();
     store.set('actionVerbs', verbs);
+  }
+
+  async getActionVerbsEnabled() {
+    const store = await this.initializeStore();
+    return store.get('actionVerbsEnabled', true);
+  }
+
+  async setActionVerbsEnabled(enabled) {
+    const store = await this.initializeStore();
+    store.set('actionVerbsEnabled', enabled);
   }
 
   async addActionVerb(verb) {

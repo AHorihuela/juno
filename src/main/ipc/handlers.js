@@ -128,6 +128,7 @@ function setupIpcHandlers(mainWindow) {
         startupBehavior: await config.getStartupBehavior(),
         defaultMicrophone: await config.getDefaultMicrophone(),
         actionVerbs: await config.getActionVerbs(),
+        actionVerbsEnabled: await config.getActionVerbsEnabled(),
         aiRules: await config.getAIRules(),
         keyboardShortcut: await config.getKeyboardShortcut(),
       };
