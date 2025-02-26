@@ -411,15 +411,65 @@ class TranscriptionService extends BaseService {
 
         console.log('[Transcription] Response received:', response);
         
-        // Check confidence - if very low confidence, likely no real speech
+        // Check confidence - if very low confidence, likely no real speech or hallucination
         if (response.segments && response.segments.length > 0) {
           const avgConfidence = response.segments.reduce((sum, segment) => sum + segment.confidence, 0) / response.segments.length;
-          console.log(`[Transcription] Average confidence: ${avgConfidence.toFixed(4)}`);
+          const avgLogprob = response.segments.reduce((sum, segment) => sum + segment.avg_logprob, 0) / response.segments.length;
+          const noSpeechProb = response.segments[0].no_speech_prob || 0;
           
-          // If confidence is very low and audio is short, likely no real speech
-          if (avgConfidence < 0.5 && audioLengthSeconds < 3) {
-            console.log('[Transcription] Low confidence transcription, likely no real speech');
-            return { text: '' };  // Return empty text
+          console.log(`[Transcription] Confidence metrics:
+            Average confidence: ${avgConfidence ? avgConfidence.toFixed(4) : 'N/A'}
+            Average log probability: ${avgLogprob.toFixed(4)}
+            No speech probability: ${noSpeechProb.toFixed(4)}`);
+          
+          // If confidence is very low or no_speech_prob is high, likely hallucination or no real speech
+          if ((avgLogprob < -1.0 || noSpeechProb > 0.35) && audioLengthSeconds < 4) {
+            console.log('[Transcription] Low confidence transcription, likely hallucination or no real speech');
+            
+            // Try a second pass with different parameters
+            console.log('[Transcription] Attempting second pass with different parameters...');
+            
+            // Create a new file stream for the second attempt
+            const secondFileStream = fs.createReadStream(tempFile);
+            
+            try {
+              // Use a slightly higher temperature for the second attempt
+              const secondResponse = await openai.audio.transcriptions.create({
+                file: secondFileStream,
+                model: 'whisper-1',
+                language: 'en',
+                prompt: dictionaryPrompt,
+                temperature: 0.2,  // Slightly higher temperature for second attempt
+                response_format: 'verbose_json'
+              });
+              
+              console.log('[Transcription] Second pass response:', secondResponse);
+              
+              // Check if second attempt has better confidence
+              if (secondResponse.segments && secondResponse.segments.length > 0) {
+                const secondAvgLogprob = secondResponse.segments.reduce((sum, segment) => sum + segment.avg_logprob, 0) / secondResponse.segments.length;
+                const secondNoSpeechProb = secondResponse.segments[0].no_speech_prob || 0;
+                
+                console.log(`[Transcription] Second pass metrics:
+                  Average log probability: ${secondAvgLogprob.toFixed(4)}
+                  No speech probability: ${secondNoSpeechProb.toFixed(4)}`);
+                
+                // If second attempt is better, use it
+                if (secondAvgLogprob > avgLogprob && secondNoSpeechProb < noSpeechProb) {
+                  console.log('[Transcription] Second pass has better confidence, using it');
+                  return secondResponse;
+                }
+              }
+            } catch (secondError) {
+              console.error('[Transcription] Error in second pass:', secondError);
+              // Continue with original response if second attempt fails
+            }
+            
+            // If confidence is extremely low, return empty text
+            if (avgLogprob < -1.5 || noSpeechProb > 0.45) {
+              console.log('[Transcription] Extremely low confidence, returning empty text');
+              return { text: '' };
+            }
           }
         }
         
@@ -466,6 +516,59 @@ class TranscriptionService extends BaseService {
       console.log('\n[Transcription] Text changes:');
       console.log('  Original:', originalText);
       console.log('  Processed:', processedText);
+    }
+  }
+
+  /**
+   * Learn from successful transcriptions by adding frequently used words to the dictionary
+   * @param {string} transcribedText - The successfully transcribed text
+   * @private
+   */
+  async _learnFromTranscription(transcribedText) {
+    if (!transcribedText || typeof transcribedText !== 'string' || transcribedText.trim().length === 0) {
+      return;
+    }
+    
+    try {
+      // Get dictionary service
+      const dictionaryService = this.getService('dictionary');
+      if (!dictionaryService) {
+        console.log('[Transcription] Dictionary service not available for learning');
+        return;
+      }
+      
+      // Get existing dictionary words
+      const existingWords = new Set(await dictionaryService.getAllWords());
+      
+      // Extract potential words to learn (proper nouns, unusual words)
+      const words = transcribedText
+        .split(/\s+/)
+        .map(word => word.replace(/[.,!?;:'"()]/g, '').trim())
+        .filter(word => word.length > 0);
+      
+      // Look for proper nouns (capitalized words not at the start of sentences)
+      const properNouns = words
+        .filter((word, index) => {
+          // If it's the first word, check if it's capitalized
+          if (index === 0) {
+            return word.length > 1 && /^[A-Z][a-z]+$/.test(word);
+          }
+          
+          // For other words, it's likely a proper noun if capitalized
+          return /^[A-Z][a-z]+$/.test(word);
+        })
+        .filter(word => !existingWords.has(word));
+      
+      // Add proper nouns to dictionary
+      for (const word of properNouns) {
+        console.log(`[Transcription] Learning new proper noun: "${word}"`);
+        await dictionaryService.addWord(word);
+      }
+      
+      console.log(`[Transcription] Learning complete: ${properNouns.length} new words added to dictionary`);
+    } catch (error) {
+      console.error('[Transcription] Error learning from transcription:', error);
+      // Continue without learning if there's an error
     }
   }
 
@@ -527,6 +630,11 @@ class TranscriptionService extends BaseService {
 
       // Wait for text processing to complete
       const processedText = await processTextPromise;
+      
+      // Learn from successful transcription in the background
+      this._learnFromTranscription(transcribedText).catch(err => {
+        console.error('[Transcription] Error in learning process:', err);
+      });
 
       // Log metrics in the background without waiting
       this.logTranscriptionMetrics(transcribedText, processedText).catch(err => {

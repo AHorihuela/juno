@@ -155,11 +155,57 @@ class DictionaryService extends BaseService {
 
     this.stats.promptsGenerated++;
     
+    // Get common phrases from context if available
+    let recentPhrases = [];
+    try {
+      const contextService = this.getService('context');
+      if (contextService) {
+        const recentItems = await contextService.getRecentItems(5);
+        if (recentItems && recentItems.length > 0) {
+          // Extract phrases from recent context
+          recentPhrases = recentItems
+            .filter(item => item.text && typeof item.text === 'string')
+            .map(item => item.text.split(/[.!?]/).map(s => s.trim()).filter(s => s.length > 0))
+            .flat()
+            .slice(0, 3); // Take up to 3 recent phrases
+          
+          console.log('[Dictionary] Added recent phrases to prompt:', recentPhrases);
+        }
+      }
+    } catch (error) {
+      console.error('[Dictionary] Error getting context for prompt:', error);
+      // Continue without context if there's an error
+    }
+    
+    // Add common speech patterns to reduce hallucinations
+    const commonPhrases = [
+      "I'm saying",
+      "I said",
+      "I meant",
+      "I want to",
+      "please",
+      "thank you",
+      "excuse me",
+      "sorry",
+      "hello",
+      "hi there",
+      "good morning",
+      "good afternoon",
+      "good evening"
+    ];
+    
+    // Combine dictionary words, recent phrases, and common phrases
+    const allPromptItems = [
+      ...words,
+      ...recentPhrases,
+      ...commonPhrases
+    ];
+    
     // Using a very technical format that won't be mistaken as content
     // Based on Whisper documentation - using XML-like tags that are unlikely to be in natural speech
-    const prompt = `<dictionary>${words.join('|')}</dictionary>`;
+    const prompt = `<dictionary>${allPromptItems.join('|')}</dictionary>`;
     
-    console.log('[Dictionary] Generated prompt with', words.length, 'words');
+    console.log('[Dictionary] Generated prompt with', allPromptItems.length, 'items');
     console.log('[Dictionary] Prompt:', prompt);
     console.log('[Dictionary] Total prompts generated:', this.stats.promptsGenerated);
     
