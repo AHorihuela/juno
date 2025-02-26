@@ -368,8 +368,22 @@ class RecorderService extends BaseService {
     // Calculate percentage of samples above threshold
     const percentageAboveThreshold = (samplesAboveThreshold / samples.length) * 100;
     
-    // Lower thresholds to detect more subtle audio
-    return percentageAboveThreshold > 8 && maxConsecutiveSamplesAboveThreshold > 25;
+    // More stringent thresholds to better distinguish between ambient noise and actual speech
+    // Requires both a minimum percentage of samples above threshold AND a minimum RMS value
+    const isActualSpeech = percentageAboveThreshold > 12 && 
+                          maxConsecutiveSamplesAboveThreshold > 30 &&
+                          rms > 300;
+    
+    // Log detailed audio metrics for debugging
+    if (isActualSpeech) {
+      console.log('Speech detected:', {
+        rms: Math.round(rms),
+        percentageAboveThreshold: Math.round(percentageAboveThreshold),
+        maxConsecutive: maxConsecutiveSamplesAboveThreshold
+      });
+    }
+    
+    return isActualSpeech;
   }
 
   async stop() {
@@ -408,22 +422,31 @@ class RecorderService extends BaseService {
       
       const percentageAboveThreshold = (samplesAboveThreshold / totalSamples) * 100;
       
+      // Calculate RMS value for better audio content detection
+      const averageRMS = Math.round(
+        this.audioData.reduce((sum, chunk) => {
+          const samples = new Int16Array(chunk.buffer);
+          const rms = Math.sqrt(samples.reduce((s, sample) => s + sample * sample, 0) / samples.length);
+          return sum + rms;
+        }, 0) / this.audioData.length
+      );
+      
+      // More stringent check for audio content - requires both percentage above threshold
+      // and minimum RMS value to consider it valid speech
+      const hasRealSpeech = percentageAboveThreshold > 15 && averageRMS > 300;
+      
       console.log('Final audio analysis:', {
         totalDuration: (totalSamples / 16000).toFixed(2) + 's',
         percentageAboveThreshold: Math.round(percentageAboveThreshold) + '%',
         totalChunks: this.audioData.length,
         hasAudioContent: this.hasAudioContent,
-        averageRMS: Math.round(
-          this.audioData.reduce((sum, chunk) => {
-            const samples = new Int16Array(chunk.buffer);
-            const rms = Math.sqrt(samples.reduce((s, sample) => s + sample * sample, 0) / samples.length);
-            return sum + rms;
-          }, 0) / this.audioData.length
-        )
+        averageRMS,
+        hasRealSpeech
       });
 
       // Skip transcription if no real audio content detected
-      if (!this.hasAudioContent) {
+      // Using both the real-time detection (this.hasAudioContent) and the final analysis (hasRealSpeech)
+      if (!this.hasAudioContent || !hasRealSpeech) {
         console.log('No significant audio content detected, skipping transcription');
         this.getService('notification').showNoAudioDetected();
         this.emit('stop');

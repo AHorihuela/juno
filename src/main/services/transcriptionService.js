@@ -379,11 +379,17 @@ class TranscriptionService extends BaseService {
     const openai = await this.getService('resource').getOpenAIClient();
 
     try {
+      // Get dictionary prompt
+      const dictionaryPrompt = await this.getService('dictionary').generateWhisperPrompt();
+      
+      // Create API request with parameters to reduce hallucinations
       const response = await openai.audio.transcriptions.create({
         file: fs.createReadStream(tempFile),
         model: 'whisper-1',
         language: 'en',
-        prompt: await this.getService('dictionary').generateWhisperPrompt()
+        prompt: dictionaryPrompt,
+        temperature: 0.0,  // Lower temperature reduces hallucinations
+        response_format: 'json'
       });
 
       console.log('[Transcription] Response received:', response);
