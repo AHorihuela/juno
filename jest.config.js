@@ -1,6 +1,7 @@
 module.exports = {
+  rootDir: '.',
   testEnvironment: 'jsdom',
-  setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
+  setupFilesAfterEnv: ['<rootDir>/config/jest.setup.js'],
   moduleNameMapper: {
     '\\.(css|less|sass|scss)$': '<rootDir>/__mocks__/styleMock.js',
     '\\.(gif|ttf|eot|svg)$': '<rootDir>/__mocks__/fileMock.js',
@@ -8,7 +9,7 @@ module.exports = {
     'electron': '<rootDir>/__mocks__/electron/index.js',
   },
   transform: {
-    '^.+\\.(js|jsx)$': 'babel-jest'
+    '^.+\\.(js|jsx)$': ['babel-jest', { configFile: './config/.babelrc' }]
   },
   testMatch: [
     '<rootDir>/src/**/__tests__/**/*.{js,jsx}',

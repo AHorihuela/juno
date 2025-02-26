@@ -122,7 +122,7 @@ This guide addresses common issues encountered when writing and running tests fo
    module.exports = {
      testMatch: ['**/__tests__/**/*.test.[jt]s?(x)'],
      testEnvironment: 'jsdom',
-     setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
+     setupFilesAfterEnv: ['<rootDir>/config/jest.setup.js'],
      // other configurations
    };
    ```

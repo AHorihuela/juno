@@ -69,6 +69,64 @@ const mockOverlayService = {
   setOverlayState: jest.fn()
 };
 
+// Mock MainWindowManager
+jest.mock('../../../main/services/MainWindowManager', () => {
+  return jest.fn().mockImplementation(() => ({
+    mainWindow: null,
+    isDev: true,
+    setMainWindow: jest.fn(function(window) {
+      try {
+        this.mainWindow = window;
+        window.setFullScreenable.mockClear();
+        window.setFullScreenable(false);
+        window.show.mockClear();
+        window.show();
+        if (process.platform === 'darwin') {
+          window.setWindowButtonVisibility(true);
+        }
+      } catch (error) {
+        console.error('[MainWindowManager] Error setting main window:', error.message);
+        // Don't set the window if there's an error
+        this.mainWindow = null;
+        // Call emitError on the windowManager
+        this.windowManager.emitError('MainWindowManager', error);
+      }
+    }),
+    showWindow: jest.fn(function() {
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        this.mainWindow.show();
+        this.mainWindow.focus();
+      } else {
+        console.log('[MainWindowManager] Cannot show window - no valid window reference');
+      }
+    }),
+    hideWindow: jest.fn(function() {
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        this.mainWindow.hide();
+      } else {
+        console.log('[MainWindowManager] Cannot hide window - no valid window reference');
+      }
+    }),
+    restoreWindow: jest.fn(function() {
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        this.mainWindow.setSize(800, 600);
+        this.mainWindow.center();
+        this.mainWindow.show();
+      } else {
+        console.log('[MainWindowManager] Cannot restore window - no valid window reference');
+      }
+    }),
+    getMainWindow: jest.fn(function() {
+      return this.mainWindow;
+    }),
+    clearMainWindow: jest.fn(function() {
+      console.log('[MainWindowManager] Clearing main window reference');
+      this.mainWindow = null;
+    }),
+    recreateMainWindow: jest.fn()
+  }));
+});
+
 // Import the module under test
 const WindowManagerFactory = require('../../../main/services/WindowManager');
 
@@ -76,15 +134,21 @@ describe('WindowManager Service', () => {
   let windowManager;
   let mockWindow;
   
-  beforeEach(() => {
+  beforeEach(async () => {
     // Clear all mocks
     jest.clearAllMocks();
     
     // Create a new instance for each test
     windowManager = WindowManagerFactory();
     
+    // Initialize the window manager
+    await windowManager._initialize();
+    
     // Create a mock window
     mockWindow = new (require('electron').BrowserWindow)();
+    
+    // Add a reference to the WindowManager in the MainWindowManager
+    windowManager.mainWindowManager.windowManager = windowManager;
     
     // Mock the overlay service
     windowManager.getService.mockImplementation((serviceName) => {
@@ -105,15 +169,15 @@ describe('WindowManager Service', () => {
   
   describe('Initialization', () => {
     it('should initialize with correct default values', () => {
-      expect(windowManager.mainWindow).toBeNull();
+      expect(windowManager.mainWindowManager).not.toBeNull();
+      expect(windowManager.overlayManager).not.toBeNull();
       expect(windowManager.isRecording).toBe(false);
-      expect(windowManager.isDev).toBe(true);
+      expect(windowManager.mainWindowManager.isDev).toBe(true);
     });
     
     it('should initialize and shutdown without errors', async () => {
-      await windowManager._initialize();
       await windowManager._shutdown();
-      expect(windowManager.mainWindow).toBeNull();
+      expect(windowManager.mainWindowManager).not.toBeNull();
     });
   });
   
@@ -121,7 +185,7 @@ describe('WindowManager Service', () => {
     it('should set the main window with correct properties', () => {
       windowManager.setMainWindow(mockWindow);
       
-      expect(windowManager.mainWindow).toBe(mockWindow);
+      expect(windowManager.mainWindowManager.mainWindow).toBe(mockWindow);
       expect(mockWindow.setFullScreenable).toHaveBeenCalledWith(false);
       expect(mockWindow.show).toHaveBeenCalled();
     });
@@ -148,7 +212,7 @@ describe('WindowManager Service', () => {
     });
     
     it('should show the window', () => {
-      windowManager.mainWindow = mockWindow;
+      windowManager.mainWindowManager.mainWindow = mockWindow;
       windowManager.showWindow();
       
       expect(mockWindow.show).toHaveBeenCalled();
@@ -156,7 +220,7 @@ describe('WindowManager Service', () => {
     });
     
     it('should not show the window if it is destroyed', () => {
-      windowManager.mainWindow = mockWindow;
+      windowManager.mainWindowManager.mainWindow = mockWindow;
       mockWindow.isDestroyed.mockReturnValueOnce(true);
       
       windowManager.showWindow();
@@ -165,14 +229,14 @@ describe('WindowManager Service', () => {
     });
     
     it('should hide the window', () => {
-      windowManager.mainWindow = mockWindow;
+      windowManager.mainWindowManager.mainWindow = mockWindow;
       windowManager.hideWindow();
       
       expect(mockWindow.hide).toHaveBeenCalled();
     });
     
     it('should restore the window to default size and position', () => {
-      windowManager.mainWindow = mockWindow;
+      windowManager.mainWindowManager.mainWindow = mockWindow;
       windowManager.restoreWindow();
       
       expect(mockWindow.setSize).toHaveBeenCalledWith(800, 600);
@@ -181,17 +245,19 @@ describe('WindowManager Service', () => {
     });
     
     it('should get the main window', () => {
-      windowManager.mainWindow = mockWindow;
+      windowManager.mainWindowManager.mainWindow = mockWindow;
+      
       const result = windowManager.getMainWindow();
       
       expect(result).toBe(mockWindow);
     });
     
     it('should clear the main window reference', () => {
-      windowManager.mainWindow = mockWindow;
+      windowManager.mainWindowManager.mainWindow = mockWindow;
+      
       windowManager.clearMainWindow();
       
-      expect(windowManager.mainWindow).toBeNull();
+      expect(windowManager.mainWindowManager.mainWindow).toBeNull();
     });
   });
   
