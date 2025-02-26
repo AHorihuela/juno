@@ -11,6 +11,8 @@ The Dictionary Service provides functionality for:
 - Generating prompts for Whisper speech recognition
 - Collecting and reporting statistics
 
+> **Note:** The dictionary is populated exclusively with user-added words. Automatic word learning from transcriptions has been disabled to ensure the dictionary contains only intentionally added terms.
+
 ## Architecture
 
 The service has been modularized for better maintainability and testability:

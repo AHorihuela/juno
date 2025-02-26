@@ -447,10 +447,17 @@ class TranscriptionService extends BaseService {
 
   /**
    * Learn from successful transcriptions by adding frequently used words to the dictionary
+   * This feature is currently disabled to rely solely on user-added dictionary terms
    * @param {string} transcribedText - The successfully transcribed text
    * @private
    */
   async _learnFromTranscription(transcribedText) {
+    // Automatic word learning is disabled
+    console.log('[Transcription] Automatic word learning is disabled');
+    return;
+    
+    // The code below is kept for reference but will not execute
+    /*
     if (!transcribedText || typeof transcribedText !== 'string' || transcribedText.trim().length === 0) {
       return;
     }
@@ -496,6 +503,7 @@ class TranscriptionService extends BaseService {
       console.error('[Transcription] Error learning from transcription:', error);
       // Continue without learning if there's an error
     }
+    */
   }
 
   /**
@@ -557,7 +565,7 @@ class TranscriptionService extends BaseService {
       // Wait for text processing to complete
       const processedText = await processTextPromise;
       
-      // Learn from successful transcription in the background
+      // Automatic word learning is disabled - this call is kept for compatibility
       this._learnFromTranscription(transcribedText).catch(err => {
         console.error('[Transcription] Error in learning process:', err);
       });

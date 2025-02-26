@@ -7,6 +7,10 @@ const { SERVICE_NAME, LOG_PREFIX, COMMON_PHRASES } = require('./constants');
 /**
  * Dictionary Service for managing user dictionary and text processing
  * This service has been modularized for better maintainability and testability
+ * 
+ * Note: The dictionary is populated exclusively with user-added words.
+ * Automatic word learning from transcriptions has been disabled to ensure
+ * the dictionary contains only intentionally added terms.
  */
 class DictionaryService extends BaseService {
   constructor() {
