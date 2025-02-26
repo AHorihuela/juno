@@ -1,6 +1,11 @@
 /**
  * Analyzes audio levels and detects speech vs. silence
  */
+const LogManager = require('../../utils/LogManager');
+
+// Get a logger for this module
+const logger = LogManager.getLogger('AudioLevelAnalyzer');
+
 class AudioLevelAnalyzer {
   constructor(services) {
     this.services = services;
@@ -9,6 +14,15 @@ class AudioLevelAnalyzer {
     this.currentLevels = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     this.hasAudioContent = false;
     this.peakRMS = 0; // Track peak RMS value
+    this.updateCount = 0; // Track number of updates
+    
+    logger.info('AudioLevelAnalyzer initialized', {
+      metadata: {
+        silenceThreshold: this.silenceThreshold,
+        levelSmoothingFactor: this.levelSmoothingFactor,
+        servicesAvailable: Object.keys(this.services || {})
+      }
+    });
   }
 
   /**
@@ -18,6 +32,8 @@ class AudioLevelAnalyzer {
     this.hasAudioContent = false;
     this.currentLevels = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     this.peakRMS = 0;
+    this.updateCount = 0;
+    logger.debug('AudioLevelAnalyzer reset');
   }
 
   /**
@@ -27,7 +43,11 @@ class AudioLevelAnalyzer {
    * @returns {boolean} - True if speech was detected
    */
   processBuffer(buffer, isPaused = false) {
-    if (!buffer || isPaused) return false;
+    if (!buffer || isPaused) {
+      if (!buffer) logger.debug('Empty buffer received, skipping processing');
+      if (isPaused) logger.debug('Recording is paused, skipping processing');
+      return false;
+    }
     
     // Convert buffer to 16-bit samples
     const samples = new Int16Array(buffer.buffer);
@@ -81,10 +101,46 @@ class AudioLevelAnalyzer {
     }
 
     // Send levels to overlay service
+    this.updateCount++;
     if (this.services) {
       const overlayService = this.services.overlay;
       if (overlayService) {
-        overlayService.updateOverlayAudioLevels(this.currentLevels);
+        try {
+          overlayService.updateOverlayAudioLevels(this.currentLevels);
+          
+          // Log every 20th update to avoid flooding logs
+          if (this.updateCount % 20 === 0) {
+            logger.debug('Updated overlay audio levels', {
+              metadata: {
+                updateCount: this.updateCount,
+                rms: Math.round(rms),
+                normalizedLevel: normalizedLevel.toFixed(2),
+                levels: this.currentLevels.map(l => l.toFixed(2)).join(','),
+                overlayVisible: overlayService.isOverlayVisible()
+              }
+            });
+          }
+        } catch (error) {
+          logger.error('Error updating overlay audio levels', {
+            metadata: {
+              error,
+              updateCount: this.updateCount
+            }
+          });
+        }
+      } else {
+        if (this.updateCount === 1 || this.updateCount % 100 === 0) {
+          logger.warn('Overlay service not available for audio level updates', {
+            metadata: {
+              updateCount: this.updateCount,
+              availableServices: Object.keys(this.services)
+            }
+          });
+        }
+      }
+    } else {
+      if (this.updateCount === 1) {
+        logger.warn('No services available for audio level updates');
       }
     }
     
@@ -99,10 +155,12 @@ class AudioLevelAnalyzer {
     
     // Log detailed audio metrics for debugging
     if (isActualSpeech) {
-      console.log('Speech detected:', {
-        rms: Math.round(rms),
-        percentageAboveThreshold: Math.round(percentageAboveThreshold),
-        maxConsecutive: maxConsecutiveSamplesAboveThreshold
+      logger.debug('Speech detected:', {
+        metadata: {
+          rms: Math.round(rms),
+          percentageAboveThreshold: Math.round(percentageAboveThreshold),
+          maxConsecutive: maxConsecutiveSamplesAboveThreshold
+        }
       });
     }
     
@@ -120,6 +178,7 @@ class AudioLevelAnalyzer {
    */
   analyzeAudioContent(audioData) {
     if (!audioData || audioData.length === 0) {
+      logger.debug('No audio data to analyze');
       return {
         hasRealSpeech: false,
         percentageAboveThreshold: 0,
@@ -156,6 +215,18 @@ class AudioLevelAnalyzer {
     const hasRealSpeech = 
       (percentageAboveThreshold > 10 && averageRMS > 100) || 
       (percentageAboveThreshold > 5 && peakRMS > 300);
+    
+    logger.info('Audio content analysis complete', {
+      metadata: {
+        hasRealSpeech,
+        percentageAboveThreshold: percentageAboveThreshold.toFixed(2),
+        averageRMS,
+        peakRMS: Math.round(peakRMS),
+        totalSamples,
+        samplesAboveThreshold,
+        audioChunks: audioData.length
+      }
+    });
     
     return {
       hasRealSpeech,

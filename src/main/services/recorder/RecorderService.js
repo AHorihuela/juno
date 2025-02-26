@@ -279,6 +279,17 @@ class RecorderService extends BaseService {
 
       this.emit('start');
       logger.info('Recording started successfully');
+      
+      // Update the overlay to show active state
+      try {
+        const overlayService = this.getService('overlay');
+        if (overlayService) {
+          overlayService.updateOverlayState('active');
+          logger.debug('Overlay updated to active state after recording start');
+        }
+      } catch (error) {
+        logger.error('Error updating overlay state after recording start:', { metadata: { error } });
+      }
     } catch (error) {
       logger.error('Error starting recording:', { metadata: { error } });
       this.getService('notification').showNotification(

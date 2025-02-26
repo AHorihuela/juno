@@ -31,7 +31,9 @@ class OverlayService extends BaseService {
       this.destroyOverlay();
       
       // Remove IPC handlers
-      ipcMain.removeAllListeners('control-action');
+      ipcMain.removeAllListeners('overlay-pause');
+      ipcMain.removeAllListeners('overlay-resume');
+      ipcMain.removeAllListeners('overlay-cancel');
       logger.info('OverlayService shutdown complete');
     } catch (error) {
       logger.error('Error during OverlayService shutdown:', { metadata: { error } });
@@ -39,23 +41,33 @@ class OverlayService extends BaseService {
   }
 
   /**
-   * Set up IPC handlers for the overlay window
+   * Set up IPC handlers for overlay control actions
    * @private
    */
   _setupIPCHandlers() {
-    ipcMain.on('control-action', (event, data) => {
-      try {
-        if (data && data.action) {
-          this._handleControlAction(data.action);
-        } else {
-          logger.warn('Received control-action event with invalid data', { metadata: { data } });
-        }
-      } catch (error) {
-        logger.error('Error handling control-action event:', { metadata: { error } });
-      }
-    });
-    
-    logger.debug('OverlayService IPC handlers set up');
+    try {
+      // Handle pause action from overlay
+      ipcMain.on('overlay-pause', () => {
+        logger.info('Received pause action from overlay');
+        this._handleControlAction('pause');
+      });
+      
+      // Handle resume action from overlay
+      ipcMain.on('overlay-resume', () => {
+        logger.info('Received resume action from overlay');
+        this._handleControlAction('resume');
+      });
+      
+      // Handle cancel action from overlay
+      ipcMain.on('overlay-cancel', () => {
+        logger.info('Received cancel action from overlay');
+        this._handleControlAction('cancel');
+      });
+      
+      logger.debug('Overlay IPC handlers set up successfully');
+    } catch (error) {
+      logger.error('Error setting up overlay IPC handlers:', { metadata: { error } });
+    }
   }
 
   /**

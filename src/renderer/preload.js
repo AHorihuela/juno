@@ -44,7 +44,11 @@ contextBridge.exposeInMainWorld(
         'transcription',
         'transcription-history',
         'transcription-history-error',
-        'navigate'
+        'navigate',
+        // Overlay-related channels
+        'update-audio-levels',
+        'update-state',
+        'set-state'
       ];
       
       if (validChannels.includes(channel)) {
@@ -63,7 +67,11 @@ contextBridge.exposeInMainWorld(
         'get-transcription-history',
         'delete-transcription',
         'clear-transcription-history',
-        'show-notification'
+        'show-notification',
+        // Overlay control channels
+        'overlay-pause',
+        'overlay-resume',
+        'overlay-cancel'
       ];
       
       if (validChannels.includes(channel)) {
@@ -78,7 +86,11 @@ contextBridge.exposeInMainWorld(
         'transcription-history',
         'transcription-history-error',
         'error',
-        'navigate'
+        'navigate',
+        // Overlay-related channels
+        'update-audio-levels',
+        'update-state',
+        'set-state'
       ];
       
       if (validChannels.includes(channel)) {

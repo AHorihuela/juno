@@ -8,6 +8,10 @@
 const { BrowserWindow, screen, ipcMain } = require('electron');
 const path = require('path');
 const overlayUI = require('./OverlayUI');
+const LogManager = require('../../utils/LogManager');
+
+// Get a logger for this module
+const logger = LogManager.getLogger('OverlayManager');
 
 class OverlayManager {
   constructor() {
@@ -21,7 +25,13 @@ class OverlayManager {
    */
   createOverlayWindow() {
     try {
-      console.log('[OverlayManager] Creating overlay window');
+      logger.info('Creating overlay window');
+      
+      // If window already exists, return it
+      if (this.overlayWindow && !this.overlayWindow.isDestroyed()) {
+        logger.debug('Overlay window already exists, returning existing window');
+        return this.overlayWindow;
+      }
       
       // Create a new BrowserWindow for the overlay
       this.overlayWindow = new BrowserWindow({
@@ -48,58 +58,58 @@ class OverlayManager {
         }
       });
       
-      // Load the HTML content
-      this.overlayWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(overlayUI.getHTML())}`);
+      // Load the overlay HTML content
+      const overlayHTML = overlayUI.generateOverlayHTML();
+      this.overlayWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(overlayHTML)}`);
       
-      // Set up the overlay behavior
+      // Set up overlay behavior
       this._setupOverlayBehavior();
       
-      // Set up IPC handlers for the overlay window
+      // Set up IPC handlers
       this._setupIPCHandlers();
+      
+      logger.info('Overlay window created successfully');
       
       return this.overlayWindow;
     } catch (error) {
-      console.error('[OverlayManager] Error creating overlay window:', error);
+      logger.error('Error creating overlay window:', { metadata: { error } });
       return null;
     }
   }
 
   /**
-   * Set up the behavior of the overlay window
+   * Set up overlay window behavior
    * @private
    */
   _setupOverlayBehavior() {
     try {
-      if (!this.overlayWindow || this.overlayWindow.isDestroyed()) return;
+      if (!this.overlayWindow || this.overlayWindow.isDestroyed()) {
+        logger.warn('Cannot set up overlay behavior - no valid overlay window');
+        return;
+      }
       
-      // Make the window click-through
-      this.overlayWindow.setIgnoreMouseEvents(true);
+      // Position the overlay at the top center of the primary display
+      const primaryDisplay = screen.getPrimaryDisplay();
+      const { width: screenWidth } = primaryDisplay.workAreaSize;
+      const windowWidth = this.overlayWindow.getBounds().width;
       
-      // Ensure it's always on top
-      this.overlayWindow.setAlwaysOnTop(true, 'screen-saver', 1);
+      // Calculate position (centered horizontally, 40px from top)
+      const x = Math.floor((screenWidth - windowWidth) / 2);
+      const y = 40;
       
-      // Make it visible on all workspaces
-      this.overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+      this.overlayWindow.setPosition(x, y);
       
-      // Ensure it doesn't appear in the taskbar
-      this.overlayWindow.setSkipTaskbar(true);
-      
-      // Position the window at the bottom center of the screen
-      const { workArea } = screen.getPrimaryDisplay();
-      this.overlayWindow.setPosition(
-        Math.floor(workArea.x + (workArea.width - this.overlayWindow.getSize()[0]) / 2),
-        workArea.height - 100 // Positioned near the bottom of the screen
-      );
-      
-      // Set initial state
-      this.setOverlayState('idle');
-      
-      // Handle window events
+      // Handle window closed event
       this.overlayWindow.on('closed', () => {
+        logger.debug('Overlay window closed event received');
         this.overlayWindow = null;
       });
+      
+      logger.debug('Overlay behavior set up successfully', { 
+        metadata: { position: { x, y } } 
+      });
     } catch (error) {
-      console.error('[OverlayManager] Error setting up overlay behavior:', error);
+      logger.error('Error setting up overlay behavior:', { metadata: { error } });
     }
   }
 
@@ -108,12 +118,12 @@ class OverlayManager {
    * @private
    */
   _setupIPCHandlers() {
-    this.overlayWindow.webContents.on('did-finish-load', () => {
-      this.overlayWindow.webContents.executeJavaScript(overlayUI.getIPCHandlerScript())
-        .catch(err => {
-          console.error('[OverlayManager] Error setting up overlay message handler:', err);
-        });
-    });
+    try {
+      // No specific IPC handlers needed here yet
+      logger.debug('Overlay IPC handlers set up');
+    } catch (error) {
+      logger.error('Error setting up overlay IPC handlers:', { metadata: { error } });
+    }
   }
 
   /**
@@ -122,10 +132,11 @@ class OverlayManager {
   showOverlay() {
     try {
       if (!this.overlayWindow || this.overlayWindow.isDestroyed()) {
+        logger.debug('No valid overlay window, creating new one');
         this.createOverlayWindow();
       }
       
-      console.log('[OverlayManager] Showing overlay with fade-in effect');
+      logger.info('Showing overlay with fade-in effect');
       
       // Set initial opacity to 0
       this.overlayWindow.setOpacity(0);
@@ -142,6 +153,7 @@ class OverlayManager {
         opacity += 0.1;
         
         if (!this.overlayWindow || this.overlayWindow.isDestroyed()) {
+          logger.warn('Overlay window destroyed during fade-in, clearing interval');
           clearInterval(fadeIn);
           return;
         }
@@ -149,11 +161,12 @@ class OverlayManager {
         this.overlayWindow.setOpacity(Math.min(1, opacity));
         
         if (opacity >= 1) {
+          logger.debug('Fade-in complete');
           clearInterval(fadeIn);
         }
       }, 16);
     } catch (error) {
-      console.error('[OverlayManager] Error showing overlay:', error);
+      logger.error('Error showing overlay:', { metadata: { error } });
     }
   }
 
@@ -163,18 +176,22 @@ class OverlayManager {
   hideOverlay() {
     try {
       if (!this.overlayWindow || this.overlayWindow.isDestroyed()) {
-        console.log('[OverlayManager] Cannot hide overlay - no valid overlay window');
+        logger.debug('Cannot hide overlay - no valid overlay window');
         return;
       }
       
-      console.log('[OverlayManager] Hiding overlay with fade-out effect');
+      logger.info('Hiding overlay with fade-out effect');
+      
+      // Get current opacity
+      const startOpacity = this.overlayWindow.getOpacity();
+      let opacity = startOpacity;
       
       // Fade out effect
-      let opacity = 1;
       const fadeOut = setInterval(() => {
         opacity -= 0.1;
         
         if (!this.overlayWindow || this.overlayWindow.isDestroyed()) {
+          logger.warn('Overlay window destroyed during fade-out, clearing interval');
           clearInterval(fadeOut);
           return;
         }
@@ -182,12 +199,13 @@ class OverlayManager {
         this.overlayWindow.setOpacity(Math.max(0, opacity));
         
         if (opacity <= 0) {
+          logger.debug('Fade-out complete, hiding window');
           clearInterval(fadeOut);
           this.overlayWindow.hide();
         }
       }, 16);
     } catch (error) {
-      console.error('[OverlayManager] Error hiding overlay:', error);
+      logger.error('Error hiding overlay:', { metadata: { error } });
     }
   }
 
@@ -197,46 +215,38 @@ class OverlayManager {
   destroyOverlay() {
     try {
       if (!this.overlayWindow || this.overlayWindow.isDestroyed()) {
-        console.log('[OverlayManager] Cannot destroy overlay - no valid overlay window');
+        logger.debug('Cannot destroy overlay - no valid overlay window');
         return;
       }
       
-      console.log('[OverlayManager] Destroying overlay window');
-      this.overlayWindow.destroy();
+      logger.info('Destroying overlay window');
+      
+      // Close the window
+      this.overlayWindow.close();
       this.overlayWindow = null;
+      
+      logger.debug('Overlay window destroyed successfully');
     } catch (error) {
-      console.error('[OverlayManager] Error destroying overlay:', error);
+      logger.error('Error destroying overlay:', { metadata: { error } });
+      this.overlayWindow = null;
     }
   }
 
   /**
-   * Update the audio levels in the overlay
-   * @param {Array<number>} levels Array of audio level values between 0 and 1
+   * Update the audio levels displayed in the overlay
+   * @param {Array<number>} levels Array of audio level values (0-1)
    */
   updateOverlayAudioLevels(levels) {
     try {
-      if (!this.overlayWindow || this.overlayWindow.isDestroyed()) {
-        console.log('[OverlayManager] Cannot update overlay audio levels - no valid overlay window');
+      if (!this.overlayWindow || this.overlayWindow.isDestroyed() || !this.overlayWindow.isVisible()) {
+        // Skip updates if window is not visible
         return;
       }
       
-      // Log the max level for debugging (only occasionally to avoid flooding logs)
-      if (Math.random() < 0.05) {
-        const maxLevel = Math.max(...levels);
-        console.log(`[OverlayManager] Audio levels - max: ${maxLevel.toFixed(2)}, avg: ${(levels.reduce((a, b) => a + b, 0) / levels.length).toFixed(2)}`);
-      }
-      
-      this.overlayWindow.webContents.executeJavaScript(`
-        if (window.updateState) {
-          window.updateState('active', ${JSON.stringify(levels)});
-        } else {
-          window.postMessage({ type: 'update-levels', data: { levels: ${JSON.stringify(levels)} } }, '*');
-        }
-      `).catch(err => {
-        console.error('[OverlayManager] Error updating overlay audio levels:', err);
-      });
+      // Send the levels to the renderer process
+      this.overlayWindow.webContents.send('update-audio-levels', { levels });
     } catch (error) {
-      console.error('[OverlayManager] Error in updateOverlayAudioLevels:', error);
+      logger.error('Error updating overlay audio levels:', { metadata: { error } });
     }
   }
 
@@ -246,23 +256,17 @@ class OverlayManager {
    */
   updateOverlayState(state) {
     try {
-      if (!this.overlayWindow || this.overlayWindow.isDestroyed()) {
-        console.log('[OverlayManager] Cannot update overlay state - no valid overlay window');
+      if (!this.overlayWindow || this.overlayWindow.isDestroyed() || !this.overlayWindow.isVisible()) {
+        logger.debug('Cannot update overlay state - window not visible');
         return;
       }
       
-      console.log('[OverlayManager] Updating overlay state to:', state);
-      this.overlayWindow.webContents.executeJavaScript(`
-        if (window.updateState) {
-          window.updateState('${state}');
-        } else {
-          window.postMessage({ type: 'set-state', data: { state: '${state}' } }, '*');
-        }
-      `).catch(err => {
-        console.error('[OverlayManager] Error updating overlay state:', err);
-      });
+      logger.debug('Updating overlay state:', { metadata: { state } });
+      
+      // Send the state to the renderer process
+      this.overlayWindow.webContents.send('update-state', { state });
     } catch (error) {
-      console.error('[OverlayManager] Error in updateOverlayState:', error);
+      logger.error('Error updating overlay state:', { metadata: { error, state } });
     }
   }
 
@@ -273,22 +277,16 @@ class OverlayManager {
   setOverlayState(state) {
     try {
       if (!this.overlayWindow || this.overlayWindow.isDestroyed()) {
-        console.log('[OverlayManager] Cannot set overlay state - no valid overlay window');
+        logger.debug('Cannot set overlay state - no valid overlay window');
         return;
       }
       
-      console.log('[OverlayManager] Setting overlay state:', state);
-      this.overlayWindow.webContents.executeJavaScript(`
-        if (window.updateState) {
-          window.updateState('${state}');
-        } else {
-          window.postMessage({ type: 'set-state', data: { state: '${state}' } }, '*');
-        }
-      `).catch(err => {
-        console.error('[OverlayManager] Error setting overlay state:', err);
-      });
+      logger.debug('Setting overlay state:', { metadata: { state } });
+      
+      // Send the state to the renderer process
+      this.overlayWindow.webContents.send('set-state', { state });
     } catch (error) {
-      console.error('[OverlayManager] Error in setOverlayState:', error);
+      logger.error('Error setting overlay state:', { metadata: { error, state } });
     }
   }
 
@@ -297,8 +295,14 @@ class OverlayManager {
    * @returns {boolean} True if the overlay exists and is visible
    */
   isOverlayVisible() {
-    return this.overlayWindow && !this.overlayWindow.isDestroyed() && this.overlayWindow.isVisible();
+    try {
+      return !!(this.overlayWindow && !this.overlayWindow.isDestroyed() && this.overlayWindow.isVisible());
+    } catch (error) {
+      logger.error('Error checking overlay visibility:', { metadata: { error } });
+      return false;
+    }
   }
 }
 
+// Export a singleton instance
 module.exports = new OverlayManager(); 
