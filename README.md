@@ -29,6 +29,25 @@ Juno is a powerful desktop application that combines real-time speech-to-text tr
 - Custom action verbs for command recognition
 - Personalized AI rules for tailored responses
 
+## 🏗️ Architecture
+
+Juno follows a modular, service-oriented architecture that separates concerns and improves maintainability:
+
+### Main Process (Backend)
+- **WindowManager**: Unified window management for main app and overlay windows
+- **RecorderService**: Orchestrates audio recording with specialized sub-modules:
+  - **MicrophoneManager**: Handles microphone permissions and device selection
+  - **AudioLevelAnalyzer**: Processes audio data to detect levels and silence
+  - **BackgroundAudioController**: Controls background audio (pause/resume)
+- **MemoryManager**: Optimizes application memory usage
+- **ServiceRegistry**: Manages service lifecycle and dependencies
+
+### Renderer Process (Frontend)
+- React-based component architecture
+- Custom hooks for stateful logic
+- Secure IPC communication with the main process
+- Tailwind CSS for styling
+
 ## 🚀 Getting Started
 
 ### Prerequisites
@@ -121,6 +140,11 @@ Generate coverage report:
 npm run test:coverage
 ```
 
+Run critical path tests only:
+```bash
+npm run test:critical
+```
+
 ## 📦 Building for Distribution
 
 Create distribution packages:
@@ -133,9 +157,26 @@ This will create platform-specific installers in the `dist` directory:
 - Windows: `.exe` (NSIS) and portable
 - Linux: `.AppImage` and `.deb`
 
+## 📚 Documentation
+
+Additional documentation is available in the `docs` directory:
+
+- [Architecture Overview](docs/architecture-overview.md): High-level overview of Juno's architecture and recent improvements
+- [Transcription and AI Methodology](docs/transcription-and-ai-methodology.md): Details on how speech recognition and AI processing work
+- Architecture documentation in each module directory:
+  - [Main Process Architecture](src/main/README.md)
+  - [Renderer Process Architecture](src/renderer/README.md)
+- [Changelog](CHANGELOG.md): Track all notable changes to the project
+
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+When contributing, please follow our modular architecture and consider:
+- Creating focused, single-responsibility modules
+- Writing tests for new functionality
+- Documenting your changes
+- Following the existing code style
 
 ## 📄 License
 
