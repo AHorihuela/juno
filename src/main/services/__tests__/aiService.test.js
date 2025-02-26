@@ -38,6 +38,7 @@ jest.mock('../configService', () => ({
 jest.mock('../notificationService', () => ({
   showAPIError: jest.fn(),
   showAIError: jest.fn(),
+  showNotification: jest.fn(),
 }));
 
 describe('AIService', () => {
@@ -77,6 +78,11 @@ describe('AIService', () => {
       if (serviceName === 'notification') return notificationService;
       if (serviceName === 'context') return {
         getContext: jest.fn(highlightedText => ({
+          primaryContext: highlightedText ? 
+            { type: 'highlight', content: highlightedText } : 
+            { type: 'clipboard', content: clipboard.readText() }
+        })),
+        getContextAsync: jest.fn((highlightedText) => Promise.resolve({
           primaryContext: highlightedText ? 
             { type: 'highlight', content: highlightedText } : 
             { type: 'clipboard', content: clipboard.readText() }
