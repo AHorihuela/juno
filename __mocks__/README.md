@@ -1,69 +1,61 @@
 # Mock Implementations
 
-This directory contains mock implementations of external dependencies used in testing.
+This directory contains mock implementations for external dependencies used in the Juno application. These mocks are used during testing to isolate the code being tested from external systems and to provide controlled test environments.
 
-## Structure
+## Directory Structure
 
-- `electron/` - Mock implementations for Electron modules
-  - `index.js` - Main Electron mock that exports all mocked modules
-- `electron-store.js` - Mock for electron-store package
-- `styleMock.js` - Mock for CSS/style imports
-- `fileMock.js` - Mock for file imports (images, fonts, etc.)
+- `__mocks__/` - Root mocks directory
+  - `electron/` - Mocks for Electron APIs
 
 ## Electron Mocks
 
-The Electron mock implementation provides Jest-compatible mocks for all Electron APIs used in the application. This allows tests to run without requiring an actual Electron environment.
-
-### Usage
-
-The mock is automatically used in tests through the Jest configuration:
-
-```js
-// jest.config.js
-moduleNameMapper: {
-  'electron': '<rootDir>/__mocks__/electron/index.js',
-}
-```
+The `electron/` directory contains mocks for Electron APIs. These mocks simulate the behavior of Electron in a Node.js environment, allowing tests to run without requiring an actual Electron instance.
 
 ### Available Mocks
 
-- `app` - Application lifecycle and information
-- `BrowserWindow` - Window management
-- `dialog` - File and message dialogs
-- `ipcMain` - Main process IPC
-- `ipcRenderer` - Renderer process IPC
-- `Menu` and `MenuItem` - Application and context menus
-- `shell` - Desktop integration
-- `clipboard` - System clipboard
-- `screen` - Display information
+- `app`: Mock implementation of Electron's app module
+- `BrowserWindow`: Mock implementation of Electron's BrowserWindow class
+- `dialog`: Mock implementation of Electron's dialog module
+- `ipcMain` and `ipcRenderer`: Mock implementations of Electron's IPC modules
+- `shell`: Mock implementation of Electron's shell module
 
-### Customizing Mocks for Specific Tests
+### Usage
 
-You can customize the behavior of mocks in individual test files:
+The mocks are automatically used by Jest when importing Electron modules in test files. For example:
 
-```js
-// In your test file
-const { ipcMain } = require('electron');
+```javascript
+// In a test file
+const { app, BrowserWindow } = require('electron');
 
-// Override the default mock behavior
-ipcMain.handle.mockImplementation((channel, listener) => {
-  if (channel === 'custom-channel') {
-    return customHandler;
-  }
+// The imported modules are the mock implementations
+```
+
+## Customizing Mocks
+
+You can customize the behavior of mocks in individual tests:
+
+```javascript
+// Mock a specific method for a single test
+beforeEach(() => {
+  electron.dialog.showOpenDialog.mockResolvedValueOnce({
+    canceled: false,
+    filePaths: ['/path/to/file.txt']
+  });
 });
 ```
 
-## Adding New Mocks
+## Creating New Mocks
 
-When adding new dependencies that need to be mocked:
+When adding new mocks:
 
-1. Create a new mock file in this directory
-2. Add the mock to the `moduleNameMapper` in `jest.config.js`
-3. Document the mock in this README
+1. Create a new file in the appropriate directory
+2. Implement the mock with the same interface as the original module
+3. Use Jest's mock functions (`jest.fn()`) for methods that need to be spied on or have their behavior customized
+4. Document the mock's behavior and any limitations
 
 ## Best Practices
 
-- Keep mocks as simple as possible while providing the functionality needed for tests
-- Use Jest's mocking capabilities (`jest.fn()`, `mockReturnValue`, etc.)
-- Reset mocks between tests to ensure isolation
-- Document any complex mock behavior 
+1. **Keep mocks simple**: Implement only what's needed for tests
+2. **Match the real API**: Mocks should have the same interface as the real modules
+3. **Reset mocks between tests**: Use `beforeEach` to reset mock state
+4. **Document limitations**: Note any differences between the mock and real implementation 

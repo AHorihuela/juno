@@ -1,5 +1,80 @@
 # Testing Strategy
 
+This directory contains tests for the Juno application. The testing strategy is designed to ensure the application's reliability, maintainability, and correctness.
+
+## Directory Structure
+
+- `__tests__/` - Root test directory
+  - `examples/` - Example tests demonstrating testing patterns for common scenarios
+  - `helpers/` - Test utilities and helper functions
+  - `__mocks__/` - Mock implementations for external dependencies
+
+## Testing Approach
+
+Our testing approach follows these principles:
+
+1. **Unit Tests**: Test individual components and services in isolation
+2. **Integration Tests**: Test interactions between components
+3. **Mock External Dependencies**: Use mocks for Electron APIs and other external dependencies
+4. **Test Coverage**: Aim for comprehensive test coverage of critical functionality
+
+## Running Tests
+
+To run all tests:
+
+```bash
+npm test
+```
+
+To run specific tests:
+
+```bash
+npx jest <path-to-test-file>
+```
+
+For example:
+
+```bash
+npx jest __tests__/examples
+```
+
+## Mock Strategy
+
+We use Jest's mocking capabilities to mock external dependencies:
+
+- Electron APIs are mocked in `__mocks__/electron/`
+- Other external dependencies are mocked as needed
+
+## Test Helpers
+
+The `helpers/` directory contains utilities to simplify testing:
+
+- `electron-test-utils.js`: Utilities for testing Electron-specific functionality
+
+## Example Tests
+
+The `examples/` directory contains example tests that demonstrate how to test common scenarios:
+
+- Window creation and management
+- IPC communication between main and renderer processes
+- Dialog interactions (file open/save, message boxes)
+
+These examples serve as templates for writing new tests.
+
+## Best Practices
+
+1. **Isolation**: Tests should be independent and not rely on the state from other tests
+2. **Readability**: Tests should be clear about what they're testing
+3. **Maintainability**: Tests should be easy to maintain and update
+4. **Speed**: Tests should run quickly to enable fast feedback
+5. **Reliability**: Tests should produce consistent results
+
+## Continuous Integration
+
+Tests are run automatically as part of our CI pipeline to ensure code quality and prevent regressions.
+
+# Testing Strategy
+
 This document outlines the testing strategy for the Juno application, including test organization, coverage requirements, and best practices.
 
 ## Test Organization
