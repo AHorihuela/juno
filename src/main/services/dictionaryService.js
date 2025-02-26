@@ -171,19 +171,35 @@ class DictionaryService extends BaseService {
   async loadDictionary() {
     console.log('Loading dictionary from store...');
     try {
+      // Ensure store is initialized
+      if (!this.store) {
+        console.log('Store not initialized, initializing now...');
+        await this.initializeStore();
+      }
+      
       // Load words from store
       const words = this.store.get('words', []);
-      this.words = new Set(words);
+      console.log('Raw words from store:', words);
+      
+      if (!Array.isArray(words)) {
+        console.error('Words from store is not an array:', typeof words, words);
+        this.words = new Set();
+      } else {
+        this.words = new Set(words);
+        console.log('Words loaded into Set:', Array.from(this.words));
+      }
       
       // Load stats from store
       const savedStats = this.store.get('stats', {});
       this.stats = { ...this.stats, ...savedStats };
       
       console.log('Dictionary loaded successfully with', this.words.size, 'words');
+      return true;
     } catch (error) {
       console.error('Error loading dictionary:', error);
       this.words = new Set();
       this.emitError(error);
+      return false;
     }
   }
 
@@ -207,7 +223,34 @@ class DictionaryService extends BaseService {
   }
 
   async getAllWords() {
-    return Array.from(this.words).sort();
+    console.log('Getting all dictionary words...');
+    
+    // First try to get words from the in-memory Set
+    let words = Array.from(this.words);
+    console.log('Words from in-memory Set:', words);
+    
+    // If the in-memory Set is empty but we know we should have words, try to reload from store
+    if (words.length === 0 && this.store) {
+      console.log('In-memory Set is empty, checking store directly...');
+      const storeWords = this.store.get('words', []);
+      console.log('Words directly from store:', storeWords);
+      
+      if (Array.isArray(storeWords) && storeWords.length > 0) {
+        console.log('Found words in store, updating in-memory Set');
+        this.words = new Set(storeWords);
+        words = storeWords;
+      }
+    }
+    
+    // If we still don't have words, try to reload the dictionary
+    if (words.length === 0) {
+      console.log('No words found, attempting to reload dictionary...');
+      await this.loadDictionary();
+      words = Array.from(this.words);
+    }
+    
+    console.log('Returning', words.length, 'words from dictionary');
+    return words.sort();
   }
 
   async addWord(word) {
@@ -232,7 +275,18 @@ class DictionaryService extends BaseService {
     // Save the updated words to the store
     try {
       const words = Array.from(this.words);
+      console.log('Saving words to store:', words);
       this.store.set('words', words);
+      
+      // Verify the save operation
+      const savedWords = this.store.get('words', []);
+      console.log('Words after save:', savedWords);
+      
+      if (!savedWords.includes(trimmedWord)) {
+        console.error('Word was not saved correctly to the store');
+        throw new Error('Failed to save word to store');
+      }
+      
       console.log(`Word "${trimmedWord}" added successfully`);
       return true;
     } catch (error) {
