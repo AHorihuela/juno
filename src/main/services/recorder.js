@@ -229,6 +229,13 @@ class RecorderService extends BaseService {
       // Start tracking recording session in context service
       this.getService('context').startRecording();
 
+      // Show the overlay
+      const overlayService = this.getService('overlay');
+      if (overlayService) {
+        overlayService.showOverlay();
+        overlayService.setOverlayState('idle');
+      }
+
       // Play start sound BEFORE starting the recorder
       try {
         console.log('Playing start sound before recording...');
@@ -336,9 +343,11 @@ class RecorderService extends BaseService {
                            targetLevel * this.levelSmoothingFactor;
     }
 
-    // Send levels to overlay
-    const windowManager = this.getService('windowManager');
-    windowManager.updateOverlayAudioLevels(this.currentLevels);
+    // Send levels to overlay service
+    const overlayService = this.getService('overlay');
+    if (overlayService) {
+      overlayService.updateOverlayAudioLevels(this.currentLevels);
+    }
     
     // Calculate percentage of samples above threshold
     const percentageAboveThreshold = (samplesAboveThreshold / samples.length) * 100;
@@ -361,6 +370,12 @@ class RecorderService extends BaseService {
 
       // Stop tracking recording session in context service
       this.getService('context').stopRecording();
+
+      // Hide the overlay
+      const overlayService = this.getService('overlay');
+      if (overlayService) {
+        overlayService.hideOverlay();
+      }
 
       // Play stop sound
       await this.getService('audio').playStopSound();
@@ -442,7 +457,10 @@ class RecorderService extends BaseService {
     }
     
     // Update the overlay to show paused state
-    this.getService('windowManager').updateOverlayState('paused');
+    const overlayService = this.getService('overlay');
+    if (overlayService) {
+      overlayService.updateOverlayState('paused');
+    }
     
     // Emit pause event
     this.emit('paused');
@@ -466,7 +484,10 @@ class RecorderService extends BaseService {
     }
     
     // Update the overlay to show active state
-    this.getService('windowManager').updateOverlayState('active');
+    const overlayService = this.getService('overlay');
+    if (overlayService) {
+      overlayService.updateOverlayState('active');
+    }
     
     // Emit resume event
     this.emit('resumed');
@@ -489,7 +510,10 @@ class RecorderService extends BaseService {
     this.hasAudioContent = false;
     
     // Hide the overlay
-    this.getService('windowManager').hideOverlay();
+    const overlayService = this.getService('overlay');
+    if (overlayService) {
+      overlayService.hideOverlay();
+    }
     
     // Emit cancel event
     this.emit('cancelled');

@@ -19,7 +19,8 @@ class ServiceRegistry extends EventEmitter {
       'selection',
       'textInsertion',
       'tray',
-      'windowManager'
+      'windowManager',
+      'overlay'
     ];
   }
 

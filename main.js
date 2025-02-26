@@ -21,6 +21,7 @@ const windowManager = require('./src/main/services/WindowManager');
 const textProcessingService = require('./src/main/services/textProcessing');
 const resourceManager = require('./src/main/services/resourceManager');
 const memoryManager = require('./src/main/services/MemoryManager');
+const overlayService = require('./src/main/services/OverlayService');
 
 // Import IPC handlers
 const setupIpcHandlers = require('./src/main/ipc/handlers');
@@ -76,7 +77,8 @@ async function initializeServices() {
     .register('textInsertion', textInsertionService())
     .register('tray', trayService())
     .register('windowManager', windowManager())
-    .register('transcriptionHistory', transcriptionHistoryService());
+    .register('transcriptionHistory', transcriptionHistoryService())
+    .register('overlay', overlayService());
 
   // Initialize all services
   await serviceRegistry.initialize();
