@@ -5,7 +5,7 @@ const LogManager = require('./LogManager');
 const logger = LogManager.getLogger('ShortcutManager');
 
 // Constants
-const FN_DOUBLE_TAP_DELAY = 150; // ms (reduced from 200ms for faster response)
+const FN_DOUBLE_TAP_DELAY = 200; // ms (balanced setting for comfortable double-tapping)
 
 // State variables
 let lastFnKeyPress = 0;
