@@ -5,7 +5,7 @@ const LogManager = require('./LogManager');
 const logger = LogManager.getLogger('ShortcutManager');
 
 // Constants
-const FN_DOUBLE_TAP_DELAY = 200; // ms (reduced from 300ms for faster response)
+const FN_DOUBLE_TAP_DELAY = 150; // ms (reduced from 200ms for faster response)
 
 // State variables
 let lastFnKeyPress = 0;
@@ -127,22 +127,11 @@ async function registerShortcuts(serviceRegistry) {
         logger.error('Error handling shortcut:', { metadata: { error } });
       }
     });
-
-    if (success) {
-      logger.info('Keyboard shortcut registered successfully:', { metadata: { shortcut } });
-    } else {
-      logger.error('Failed to register keyboard shortcut:', { metadata: { shortcut } });
-    }
     
+    logger.info('Shortcut registration result:', { metadata: { success } });
     return success;
   } catch (error) {
-    logger.error('Error registering shortcuts:', { 
-      metadata: { 
-        error: error.toString(),
-        stack: error.stack,
-        message: error.message
-      } 
-    });
+    logger.error('Error registering shortcuts:', { metadata: { error } });
     return false;
   }
 }

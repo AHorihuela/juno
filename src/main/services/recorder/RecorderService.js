@@ -173,6 +173,13 @@ class RecorderService extends BaseService {
       
       logger.debug('Starting recording with settings:', { metadata: { recordingOptions } });
       
+      // OPTIMIZATION: Play start sound immediately in non-blocking way
+      // This allows the sound to start playing while we set up the recorder
+      this.getService('audio').playStartSound().catch(soundError => {
+        logger.error('Error playing start sound:', { metadata: { error: soundError } });
+        // Continue with recording even if sound fails
+      });
+      
       // Start the recorder immediately to reduce latency
       try {
         this.recorder = record.record(recordingOptions);
@@ -184,6 +191,7 @@ class RecorderService extends BaseService {
       }
       
       // Perform these operations in parallel after recording has started
+      // OPTIMIZATION: Removed the start sound from this Promise.all since we're playing it earlier
       Promise.all([
         // Start tracking recording session in context service
         (async () => {
@@ -223,18 +231,6 @@ class RecorderService extends BaseService {
             }
           } catch (error) {
             logger.error('Error handling background audio:', { metadata: { error } });
-          }
-        })(),
-        
-        // Play start sound in parallel with recording start
-        (async () => {
-          try {
-            logger.debug('Playing start sound...');
-            await this.getService('audio').playStartSound();
-            logger.debug('Start sound completed');
-          } catch (soundError) {
-            logger.error('Error playing start sound:', { metadata: { error: soundError } });
-            // Continue with recording even if sound fails
           }
         })()
       ]).catch(error => {
