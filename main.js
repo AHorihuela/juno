@@ -32,7 +32,7 @@ const transcriptionHistoryService = require('./src/main/services/transcriptionHi
 const windowManager = require('./src/main/services/WindowManager');
 const textProcessingService = require('./src/main/services/textProcessing');
 const resourceManager = require('./src/main/services/resourceManager');
-const overlayService = require('./src/main/services/OverlayService');
+const overlayService = require('./src/main/services/overlayService');
 const loggingService = require('./src/main/services/LoggingService');
 const ipcService = require('./src/main/services/IPCService');
 
