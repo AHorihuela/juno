@@ -61,8 +61,8 @@ app.setName('Juno');
 // Ensure app appears in dock on macOS
 if (process.platform === 'darwin') {
   app.dock.setIcon(path.join(__dirname, 'assets/icon.png'));
-  // Prevent app from exiting when all windows are closed
-  app.dock.hide();
+  // We want the app to appear in the dock, so we're not hiding it
+  // app.dock.hide();
 }
 
 // Only allow a single instance of the app
