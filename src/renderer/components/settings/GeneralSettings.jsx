@@ -140,17 +140,20 @@ const GeneralSettings = () => {
                 onChange={(e) => updateSetting('pauseBackgroundAudio', e.target.checked)}
                 className="sr-only"
               />
-              <div 
-                className={`w-11 h-6 rounded-full transition-colors ${
+              <button
+                role="switch"
+                aria-checked={settings.pauseBackgroundAudio}
+                onClick={() => updateSetting('pauseBackgroundAudio', !settings.pauseBackgroundAudio)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
                   settings.pauseBackgroundAudio ? 'bg-indigo-500' : 'bg-gray-300'
                 }`}
               >
-                <div 
-                  className={`absolute top-0.5 left-0.5 bg-white w-5 h-5 rounded-full shadow transform transition-transform ${
-                    settings.pauseBackgroundAudio ? 'translate-x-5' : 'translate-x-0'
-                  }`}
+                <span 
+                  className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                    settings.pauseBackgroundAudio ? 'translate-x-5' : 'translate-x-1'
+                  }`} 
                 />
-              </div>
+              </button>
             </div>
           </div>
         </div>
