@@ -24,6 +24,9 @@ class AIPromptBuilder {
   buildSystemPrompt(rules, context) {
     const parts = [...this.baseInstructions];
     
+    // Add instruction about prioritizing commands
+    parts.push('Always prioritize responding to the user\'s command over analyzing any provided context. If the command is unrelated to the context, focus on the command.');
+    
     // Add application-specific guidance if available
     if (context.applicationContext && context.applicationContext.name) {
       const appName = context.applicationContext.name;
@@ -65,8 +68,8 @@ class AIPromptBuilder {
   buildPrompt(command, context) {
     const parts = [];
     
-    // Add the command
-    parts.push(command);
+    // Add the command with clear instruction
+    parts.push(`${command}\n\nNOTE: If this command is unrelated to any highlighted text or context below, prioritize responding to the command directly rather than analyzing the highlighted text.`);
 
     // Add context with clear hierarchy
     if (context.primaryContext) {

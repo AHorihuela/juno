@@ -145,12 +145,49 @@ class AIService extends BaseService {
       const cleanedText = this.responseFormatter.cleanResponse(response.choices[0].message.content.trim());
       console.log('[AIService] Cleaned response text:', cleanedText);
       
+      // Check if the response is too similar to the highlighted text
+      // This indicates the model might be confused and just echoing back the context
+      if (highlightedText && cleanedText.length > 0) {
+        const isTooSimilar = this._isResponseTooSimilarToHighlight(cleanedText, highlightedText);
+        if (isTooSimilar) {
+          console.log('[AIService] Response too similar to highlighted text, retrying with clearer prompt');
+          
+          // Retry with a clearer prompt that explicitly tells the model not to echo back the highlighted text
+          const retryPrompt = `${command}\n\nIMPORTANT: Do NOT repeat back the highlighted text. Instead, respond directly to the command above.`;
+          
+          const retryResponse = await this.openai.chat.completions.create({
+            model: model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: retryPrompt }
+            ],
+            temperature: temperature,
+          });
+          
+          // Use the retry response instead
+          const retryCleanedText = this.responseFormatter.cleanResponse(retryResponse.choices[0].message.content.trim());
+          console.log('[AIService] Retry response text:', retryCleanedText);
+          
+          // Update stats for successful request
+          this.statsTracker.recordSuccessfulRequest();
+          
+          return {
+            text: retryCleanedText,
+            hasHighlight: Boolean(highlightedText),
+            originalCommand: command,
+            contextUsed: this.contextManager.getContextUsageSummary(),
+            responseTime: this.statsTracker.getLastResponseTime()
+          };
+        }
+      }
+      
       // Update stats for successful request
       this.statsTracker.recordSuccessfulRequest();
       
       // Provide feedback on context usefulness if we have memory manager
       this.contextManager.updateContextUsefulness(context, true);
 
+      // Return the processed response
       return {
         text: cleanedText,
         hasHighlight: Boolean(highlightedText),
@@ -158,7 +195,6 @@ class AIService extends BaseService {
         contextUsed: this.contextManager.getContextUsageSummary(),
         responseTime: this.statsTracker.getLastResponseTime()
       };
-
     } catch (error) {
       // Update stats for failed request
       this.statsTracker.recordFailedRequest();
@@ -285,6 +321,36 @@ class AIService extends BaseService {
       formattedResponseTime: this.statsTracker.formatResponseTime(this.statsTracker.getLastResponseTime()),
       formattedAverageResponseTime: this.statsTracker.formatResponseTime(this.statsTracker.getAverageResponseTime())
     };
+  }
+
+  /**
+   * Check if the response is too similar to the highlighted text
+   * @param {string} response - The AI response
+   * @param {string} highlightedText - The highlighted text
+   * @returns {boolean} True if the response is too similar to the highlighted text
+   * @private
+   */
+  _isResponseTooSimilarToHighlight(response, highlightedText) {
+    // Simple check: if the response contains a significant portion of the highlighted text
+    if (highlightedText.length > 100) {
+      // For longer highlighted text, check if a significant portion appears in the response
+      const normalizedResponse = response.toLowerCase().replace(/\s+/g, ' ');
+      const normalizedHighlight = highlightedText.toLowerCase().replace(/\s+/g, ' ');
+      
+      // Check if the response contains at least 70% of the highlighted text
+      const words = normalizedHighlight.split(' ');
+      let matchCount = 0;
+      
+      for (const word of words) {
+        if (word.length > 3 && normalizedResponse.includes(word)) {
+          matchCount++;
+        }
+      }
+      
+      return matchCount / words.length > 0.7;
+    }
+    
+    return false;
   }
 }
 

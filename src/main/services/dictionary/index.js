@@ -317,12 +317,22 @@ class DictionaryService extends BaseService {
     try {
       const contextService = this.getService('context');
       if (contextService) {
-        const recentItems = await contextService.getRecentItems(5);
+        // Check if contextService has getRecentItems method, otherwise use contextHistory
+        let recentItems = [];
+        if (typeof contextService.getRecentItems === 'function') {
+          recentItems = await contextService.getRecentItems(5);
+        } else if (contextService.contextHistory && typeof contextService.contextHistory.getRecent === 'function') {
+          recentItems = contextService.contextHistory.getRecent(5);
+        }
+        
         if (recentItems && recentItems.length > 0) {
           // Extract phrases from recent context
           recentPhrases = recentItems
-            .filter(item => item.text && typeof item.text === 'string')
-            .map(item => item.text.split(/[.!?]/).map(s => s.trim()).filter(s => s.length > 0))
+            .filter(item => item.text && typeof item.text === 'string' || item.content && typeof item.content === 'string')
+            .map(item => {
+              const text = item.text || item.content;
+              return text.split(/[.!?]/).map(s => s.trim()).filter(s => s.length > 0);
+            })
             .flat()
             .slice(0, 3); // Take up to 3 recent phrases
           
