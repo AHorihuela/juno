@@ -18,7 +18,8 @@
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "postinstall": "electron-builder install-app-deps",
-    "build:mac": "node scripts/build-mac-app.js"
+    "build:mac": "node scripts/build-mac-app.js",
+    "check:case": "node scripts/check-case-sensitivity.js"
   },
   "author": "",
   "license": "ISC",
@@ -78,12 +79,16 @@
       "output": "dist"
     },
     "nodeGypRebuild": false,
+    "asarUnpack": ["**/*.node"],
     "mac": {
       "icon": "assets/icon.png",
       "target": [
         "dmg",
         "zip"
-      ]
+      ],
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
     },
     "win": {
       "icon": "assets/icon.png",
