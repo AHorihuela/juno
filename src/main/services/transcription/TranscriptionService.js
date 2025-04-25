@@ -1,541 +1,564 @@
 /**
- * TranscriptionService - Handles speech-to-text transcription
+ * TranscriptionService for real-time speech-to-text capabilities
  * 
- * This service coordinates the transcription process:
- * - Captures audio input from microphone
- * - Prepares audio for transcription API
- * - Sends audio to Whisper API and processes response
- * - Integrates with text processing for post-processing
- * - Manages caching and performance metrics
+ * This service:
+ * - Manages audio recording and processing
+ * - Performs speech-to-text transcription
+ * - Detects voice commands and triggers actions
  */
 
-const BaseService = require('../BaseService');
-const LogManager = require('../../utils/LogManager');
-const WhisperAPIClient = require('./WhisperAPIClient');
-const AudioUtils = require('../../utils/AudioUtils');
-const { performance } = require('perf_hooks');
+const { EventEmitter } = require('events');
 const path = require('path');
 const fs = require('fs');
-const crypto = require('crypto');
+const logger = require('../../logger');
 
-// Get a logger for this module
-const logger = LogManager.getLogger('TranscriptionService');
-
-// Constants for performance tracking
-const METRICS_HISTORY_LIMIT = 20;
-
-class TranscriptionService extends BaseService {
-  constructor() {
-    super('Transcription');
-    
-    // API client instance
-    this.apiClient = null;
-    
-    // Services
-    this.configManager = null;
-    this.textProcessingService = null;
-    this.contextService = null;
-    this.selectionService = null;
-    
-    // Performance metrics
-    this.metrics = {
-      transcriptions: 0,
-      totalDuration: 0,
-      averageDuration: 0,
-      history: []
+class TranscriptionService extends EventEmitter {
+  constructor(options = {}) {
+    super();
+    this.initialized = false;
+    this.options = {
+      recordingEnabled: true,
+      language: 'en-US',
+      continuous: true,
+      interimResults: true,
+      maxAlternatives: 1,
+      model: 'default', // or 'command_and_search', 'phone_call', etc.
+      ...options
     };
     
-    // Caching
-    this.cache = new Map();
-    this.cacheHits = 0;
-    this.cacheMisses = 0;
+    this.services = null;
+    this.isRecording = false;
+    this.recognitionActive = false;
+    this.lastTranscription = '';
+    this.currentSessionId = null;
+    this.commandQueue = [];
+    this.transcriptionEngine = null;
+    this.processingQueue = [];
+    this.isProcessingQueue = false;
   }
   
   /**
    * Initialize the service
-   * @private
+   * @param {ServiceRegistry} services Service registry
+   * @returns {Promise<void>}
    */
-  async _initialize() {
-    logger.info('Initializing TranscriptionService');
-    
-    // Get required services
-    this.configManager = await this.getService('config');
-    this.textProcessingService = await this.getService('textProcessing');
-    this.contextService = await this.getService('context');
-    this.selectionService = await this.getService('selection');
-    
-    // Create API client
-    this.apiClient = new WhisperAPIClient({
-      apiKey: this.configManager.get('transcription.apiKey'),
-      apiEndpoint: this.configManager.get('transcription.apiEndpoint'),
-      model: this.configManager.get('transcription.model') || 'whisper-1'
-    });
-    
-    // Set up cache directory
-    this.cacheDirectory = this.configManager.get('transcription.cacheDirectory') || 
-      path.join(this.configManager.getAppDataPath(), 'cache', 'transcription');
-    
-    await this._ensureCacheDirectory();
-    
-    // Load cache stats
-    this.cacheEnabled = this.configManager.get('transcription.enableCache') !== false;
-    this.cacheHits = this.configManager.get('transcription.cacheHits') || 0;
-    this.cacheMisses = this.configManager.get('transcription.cacheMisses') || 0;
-    
-    // Load metrics
-    const savedMetrics = this.configManager.get('transcription.metrics');
-    if (savedMetrics) {
-      this.metrics = { ...savedMetrics };
+  async initialize(services) {
+    if (this.initialized) {
+      return;
     }
     
-    logger.info('TranscriptionService initialized');
+    logger.info('Initializing transcription service');
+    this.services = services;
+    
+    try {
+      // Load configuration
+      const configService = services.get('config');
+      if (configService) {
+        const transcriptionConfig = await configService.getConfig('transcription') || {};
+        
+        // Update options from config
+        if (transcriptionConfig.recordingEnabled !== undefined) {
+          this.options.recordingEnabled = transcriptionConfig.recordingEnabled;
+        }
+        
+        if (transcriptionConfig.language) {
+          this.options.language = transcriptionConfig.language;
+        }
+        
+        if (transcriptionConfig.model) {
+          this.options.model = transcriptionConfig.model;
+        }
+        
+        logger.debug(`Transcription service configured with language: ${this.options.language}, model: ${this.options.model}`);
+      } else {
+        logger.warn('Config service not available, using default transcription settings');
+      }
+      
+      // Initialize the transcription engine
+      await this._initializeTranscriptionEngine();
+      
+      this.initialized = true;
+      logger.info('Transcription service initialized successfully');
+    } catch (error) {
+      logger.error('Error initializing transcription service:', error);
+      throw error;
+    }
   }
   
   /**
    * Shutdown the service
-   * @private
-   */
-  async _shutdown() {
-    logger.info('Shutting down TranscriptionService');
-    
-    // Save metrics and cache stats
-    this.configManager.set('transcription.metrics', this.metrics);
-    this.configManager.set('transcription.cacheHits', this.cacheHits);
-    this.configManager.set('transcription.cacheMisses', this.cacheMisses);
-    
-    // Clear references
-    this.apiClient = null;
-    this.configManager = null;
-    this.textProcessingService = null;
-    this.contextService = null;
-    this.selectionService = null;
-  }
-  
-  /**
-   * Ensure cache directory exists
-   * @private
-   */
-  async _ensureCacheDirectory() {
-    try {
-      if (!fs.existsSync(this.cacheDirectory)) {
-        fs.mkdirSync(this.cacheDirectory, { recursive: true });
-        logger.info(`Created cache directory: ${this.cacheDirectory}`);
-      }
-    } catch (error) {
-      logger.error('Error creating cache directory:', error);
-      // Disable cache on error
-      this.cacheEnabled = false;
-    }
-  }
-  
-  /**
-   * Transcribe audio to text
-   * @param {Buffer|Uint8Array|string} audioData - Audio data to transcribe
-   * @param {Object} options - Transcription options
-   * @param {string} [options.language] - Language code (e.g. 'en')
-   * @param {boolean} [options.detectCommands=true] - Whether to detect commands
-   * @param {boolean} [options.useCache=true] - Whether to use cache
-   * @returns {Promise<Object>} Transcription result
-   */
-  async transcribe(audioData, options = {}) {
-    const {
-      language,
-      detectCommands = true,
-      useCache = true
-    } = options;
-    
-    const startTime = performance.now();
-    
-    try {
-      logger.info('Starting transcription process');
-      
-      // Process audio for API
-      const preparedAudio = await this._prepareAudio(audioData);
-      
-      // Check cache if enabled
-      const cacheEnabled = this.cacheEnabled && useCache;
-      let transcription = null;
-      
-      if (cacheEnabled) {
-        transcription = await this._checkCache(preparedAudio);
-        
-        if (transcription) {
-          logger.info('Transcription cache hit');
-          this.cacheHits++;
-          
-          // Update metrics and return cached result
-          const endTime = performance.now();
-          const duration = endTime - startTime;
-          this._updateMetrics(duration, true);
-          
-          return transcription;
-        }
-        
-        logger.debug('Transcription cache miss');
-        this.cacheMisses++;
-      }
-      
-      // Call API for transcription
-      const apiOptions = {
-        language
-      };
-      
-      const apiResult = await this.apiClient.transcribe(preparedAudio, apiOptions);
-      
-      // Process transcribed text
-      const rawText = apiResult.text || '';
-      
-      const processedResult = await this.textProcessingService.processTranscribedText(rawText, {
-        detectCommands
-      });
-      
-      // Create full result
-      transcription = {
-        ...processedResult,
-        rawText,
-        language: apiResult.language,
-        duration: apiResult.duration,
-        fromCache: false
-      };
-      
-      // Cache successful transcription
-      if (cacheEnabled && transcription.processedText) {
-        await this._cacheTranscription(preparedAudio, transcription);
-      }
-      
-      // Update metrics
-      const endTime = performance.now();
-      const duration = endTime - startTime;
-      this._updateMetrics(duration, false);
-      
-      // Handle commands if needed
-      if (transcription.isCommand) {
-        await this._handleCommand(transcription);
-      }
-      
-      return transcription;
-    } catch (error) {
-      logger.error('Transcription error:', error);
-      
-      // Update metrics on error
-      const endTime = performance.now();
-      const duration = endTime - startTime;
-      this._updateMetrics(duration, false);
-      
-      throw error;
-    }
-  }
-  
-  /**
-   * Prepare audio data for API
-   * @param {Buffer|Uint8Array|string} audioData - Audio data to prepare
-   * @returns {Promise<Buffer>} Prepared audio buffer
-   * @private
-   */
-  async _prepareAudio(audioData) {
-    try {
-      // Convert to proper format for API if needed
-      if (typeof audioData === 'string') {
-        // If it's a file path, read the file
-        if (fs.existsSync(audioData)) {
-          audioData = fs.readFileSync(audioData);
-        } else {
-          throw new Error('Audio file not found');
-        }
-      }
-      
-      // Convert Uint8Array to Buffer if needed
-      if (audioData instanceof Uint8Array && !(audioData instanceof Buffer)) {
-        audioData = Buffer.from(audioData);
-      }
-      
-      // Check if we need to convert audio format
-      const targetFormat = this.configManager.get('transcription.audioFormat') || 'mp3';
-      const targetSampleRate = this.configManager.get('transcription.sampleRate') || 16000;
-      
-      // Use AudioUtils to convert if needed
-      return await AudioUtils.prepareAudioForWhisper(audioData, {
-        format: targetFormat,
-        sampleRate: targetSampleRate
-      });
-    } catch (error) {
-      logger.error('Error preparing audio:', error);
-      throw error;
-    }
-  }
-  
-  /**
-   * Check cache for existing transcription
-   * @param {Buffer} audioData - Prepared audio data
-   * @returns {Promise<Object|null>} Cached transcription or null
-   * @private
-   */
-  async _checkCache(audioData) {
-    try {
-      if (!this.cacheEnabled) {
-        return null;
-      }
-      
-      // Generate cache key based on audio data hash
-      const hash = crypto.createHash('md5').update(audioData).digest('hex');
-      const cacheFile = path.join(this.cacheDirectory, `${hash}.json`);
-      
-      // Check memory cache first
-      if (this.cache.has(hash)) {
-        return this.cache.get(hash);
-      }
-      
-      // Check file cache
-      if (fs.existsSync(cacheFile)) {
-        const cacheData = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
-        
-        // Add fromCache flag
-        cacheData.fromCache = true;
-        
-        // Store in memory cache
-        this.cache.set(hash, cacheData);
-        
-        return cacheData;
-      }
-      
-      return null;
-    } catch (error) {
-      logger.error('Error checking transcription cache:', error);
-      return null;
-    }
-  }
-  
-  /**
-   * Cache transcription result
-   * @param {Buffer} audioData - Prepared audio data
-   * @param {Object} transcription - Transcription result
    * @returns {Promise<void>}
+   */
+  async shutdown() {
+    logger.info('Shutting down transcription service');
+    
+    try {
+      await this.stopRecording();
+      
+      if (this.transcriptionEngine) {
+        // Cleanup the transcription engine
+        try {
+          if (typeof this.transcriptionEngine.stop === 'function') {
+            this.transcriptionEngine.stop();
+          }
+          
+          if (typeof this.transcriptionEngine.close === 'function') {
+            this.transcriptionEngine.close();
+          }
+          
+          if (typeof this.transcriptionEngine.abort === 'function') {
+            this.transcriptionEngine.abort();
+          }
+        } catch (engineError) {
+          logger.warn('Error stopping transcription engine:', engineError);
+        }
+        
+        this.transcriptionEngine = null;
+      }
+      
+      this.initialized = false;
+      logger.info('Transcription service shutdown complete');
+    } catch (error) {
+      logger.error('Error shutting down transcription service:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Start recording and transcription
+   * @returns {Promise<boolean>} Success status
+   */
+  async startRecording() {
+    if (!this.initialized) {
+      logger.error('Cannot start recording, transcription service not initialized');
+      throw new Error('Transcription service not initialized');
+    }
+    
+    if (this.isRecording) {
+      logger.debug('Recording already in progress');
+      return true;
+    }
+    
+    try {
+      logger.info('Starting recording and transcription');
+      
+      // Generate a new session ID
+      this.currentSessionId = `trans-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      
+      // Check if we can access the microphone
+      const hasMicrophoneAccess = await this._checkMicrophoneAccess();
+      if (!hasMicrophoneAccess) {
+        logger.error('Microphone access denied');
+        this._showNotification('Microphone access denied. Voice commands are unavailable.', 'error');
+        return false;
+      }
+      
+      // Start the recognition
+      const result = await this._startRecognition();
+      
+      if (result) {
+        this.isRecording = true;
+        this.emit('recording-started', { sessionId: this.currentSessionId });
+        this._showNotification('Voice recognition active', 'info');
+      }
+      
+      return result;
+    } catch (error) {
+      logger.error('Error starting recording:', error);
+      this._showNotification(`Error starting voice recognition: ${error.message}`, 'error');
+      return false;
+    }
+  }
+  
+  /**
+   * Stop recording and transcription
+   * @returns {Promise<boolean>} Success status
+   */
+  async stopRecording() {
+    if (!this.isRecording) {
+      return true;
+    }
+    
+    try {
+      logger.info('Stopping recording and transcription');
+      
+      // Stop the recognition
+      await this._stopRecognition();
+      
+      this.isRecording = false;
+      this.emit('recording-stopped', { sessionId: this.currentSessionId });
+      this._showNotification('Voice recognition stopped', 'info');
+      
+      return true;
+    } catch (error) {
+      logger.error('Error stopping recording:', error);
+      return false;
+    }
+  }
+  
+  /**
+   * Toggle recording state
+   * @returns {Promise<boolean>} New recording state
+   */
+  async toggleRecording() {
+    if (this.isRecording) {
+      await this.stopRecording();
+      return false;
+    } else {
+      await this.startRecording();
+      return true;
+    }
+  }
+  
+  /**
+   * Process transcribed text for commands
+   * @param {string} text Transcribed text
+   * @param {boolean} isFinal Whether this is a final transcription
+   * @returns {Promise<Object>} Processing result
+   */
+  async processTranscription(text, isFinal = true) {
+    if (!text || text === this.lastTranscription) {
+      return { processed: false, reason: 'duplicate-or-empty' };
+    }
+    
+    try {
+      logger.debug(`Processing transcription: "${text}", isFinal: ${isFinal}`);
+      
+      // Save last transcription to avoid duplicates
+      this.lastTranscription = text;
+      
+      // Emit raw transcription event
+      this.emit('transcription', { text, isFinal });
+      
+      // Only process commands for final transcriptions
+      if (!isFinal) {
+        return { processed: false, reason: 'not-final' };
+      }
+      
+      // Check for AI service
+      const aiService = this.services.get('ai');
+      if (!aiService) {
+        logger.warn('AI service not available, cannot process commands');
+        return { processed: false, reason: 'no-ai-service' };
+      }
+      
+      // Process text for AI commands using AI service
+      try {
+        const result = await aiService.processText(text);
+        return result;
+      } catch (aiError) {
+        logger.error('Error processing text with AI service:', aiError);
+        this._showNotification(`Error processing command: ${aiError.message}`, 'error');
+        return { processed: false, reason: 'ai-processing-error', error: aiError };
+      }
+      
+    } catch (error) {
+      logger.error('Error processing transcription:', error);
+      return { processed: false, reason: 'processing-error', error };
+    }
+  }
+  
+  /**
+   * Initialize the speech-to-text engine
+   * @returns {Promise<boolean>} Success status
    * @private
    */
-  async _cacheTranscription(audioData, transcription) {
+  async _initializeTranscriptionEngine() {
     try {
-      if (!this.cacheEnabled) {
+      logger.debug('Initializing transcription engine');
+      
+      // This is a placeholder for the actual transcription engine initialization
+      // Implement your preferred speech-to-text integration here
+      
+      // For demo purposes, we'll create a mock engine
+      this.transcriptionEngine = {
+        start: () => {
+          logger.debug('Mock transcription engine started');
+          this.recognitionActive = true;
+          
+          // Simulate occasional transcriptions
+          this._mockTranscriptionInterval = setInterval(() => {
+            if (this.recognitionActive) {
+              // Simulate interim results
+              this._handleTranscriptionResult({
+                results: [
+                  {
+                    isFinal: false,
+                    alternatives: [{ transcript: 'This is an interim result' }]
+                  }
+                ]
+              });
+              
+              // Simulate final result after a delay
+              setTimeout(() => {
+                if (this.recognitionActive) {
+                  this._handleTranscriptionResult({
+                    results: [
+                      {
+                        isFinal: true,
+                        alternatives: [{ transcript: 'Hey Juno, what time is it?' }]
+                      }
+                    ]
+                  });
+                }
+              }, 2000);
+            }
+          }, 10000);
+          
+          return Promise.resolve(true);
+        },
+        stop: () => {
+          logger.debug('Mock transcription engine stopped');
+          this.recognitionActive = false;
+          
+          if (this._mockTranscriptionInterval) {
+            clearInterval(this._mockTranscriptionInterval);
+            this._mockTranscriptionInterval = null;
+          }
+          
+          return Promise.resolve(true);
+        }
+      };
+      
+      // In a real implementation, you would use a proper speech recognition API:
+      // - For web: Web Speech API
+      // - For desktop: Google Cloud Speech-to-Text, Azure Speech, etc.
+      // - For local processing: Vosk, DeepSpeech, etc.
+      
+      logger.debug('Transcription engine initialized successfully');
+      return true;
+    } catch (error) {
+      logger.error('Error initializing transcription engine:', error);
+      return false;
+    }
+  }
+  
+  /**
+   * Check for microphone access
+   * @returns {Promise<boolean>} Whether microphone access is granted
+   * @private
+   */
+  async _checkMicrophoneAccess() {
+    try {
+      logger.debug('Checking microphone access');
+      
+      // This is a placeholder for actual microphone permission checking
+      // Implement your preferred method based on the platform
+      
+      // For demo purposes, we'll assume microphone access is granted
+      return true;
+    } catch (error) {
+      logger.error('Error checking microphone access:', error);
+      return false;
+    }
+  }
+  
+  /**
+   * Start the speech recognition
+   * @returns {Promise<boolean>} Success status
+   * @private
+   */
+  async _startRecognition() {
+    try {
+      if (!this.transcriptionEngine) {
+        logger.error('Transcription engine not initialized');
+        return false;
+      }
+      
+      logger.debug('Starting speech recognition');
+      
+      // Set up result handler
+      if (this.transcriptionEngine) {
+        this.transcriptionEngine.onresult = this._handleTranscriptionResult.bind(this);
+        this.transcriptionEngine.onerror = this._handleTranscriptionError.bind(this);
+        this.transcriptionEngine.onend = this._handleTranscriptionEnd.bind(this);
+      }
+      
+      // Start the engine
+      await this.transcriptionEngine.start();
+      this.recognitionActive = true;
+      
+      logger.debug('Speech recognition started successfully');
+      return true;
+    } catch (error) {
+      logger.error('Error starting speech recognition:', error);
+      return false;
+    }
+  }
+  
+  /**
+   * Stop the speech recognition
+   * @returns {Promise<boolean>} Success status
+   * @private
+   */
+  async _stopRecognition() {
+    try {
+      if (!this.transcriptionEngine || !this.recognitionActive) {
+        this.recognitionActive = false;
+        return true;
+      }
+      
+      logger.debug('Stopping speech recognition');
+      
+      // Stop the engine
+      await this.transcriptionEngine.stop();
+      this.recognitionActive = false;
+      
+      logger.debug('Speech recognition stopped successfully');
+      return true;
+    } catch (error) {
+      logger.error('Error stopping speech recognition:', error);
+      this.recognitionActive = false;
+      return false;
+    }
+  }
+  
+  /**
+   * Handle transcription results
+   * @param {Object} event Transcription result event
+   * @private
+   */
+  _handleTranscriptionResult(event) {
+    try {
+      if (!event || !event.results || event.results.length === 0) {
         return;
       }
       
-      // Generate cache key based on audio data hash
-      const hash = crypto.createHash('md5').update(audioData).digest('hex');
-      const cacheFile = path.join(this.cacheDirectory, `${hash}.json`);
-      
-      // Prepare cache data (don't save fromCache flag)
-      const cacheData = { ...transcription };
-      delete cacheData.fromCache;
-      
-      // Save to file cache
-      fs.writeFileSync(cacheFile, JSON.stringify(cacheData, null, 2));
-      
-      // Store in memory cache (with limited size)
-      if (this.cache.size >= 100) {
-        // Clear oldest entry
-        const firstKey = this.cache.keys().next().value;
-        this.cache.delete(firstKey);
+      // Get most recent result
+      const result = event.results[event.results.length - 1];
+      if (!result.alternatives || result.alternatives.length === 0) {
+        return;
       }
       
-      this.cache.set(hash, transcription);
+      // Get transcript
+      const transcript = result.alternatives[0].transcript;
+      const isFinal = !!result.isFinal;
       
-      logger.debug(`Cached transcription with key: ${hash}`);
-    } catch (error) {
-      logger.error('Error caching transcription:', error);
-    }
-  }
-  
-  /**
-   * Update performance metrics
-   * @param {number} duration - Elapsed time in ms
-   * @param {boolean} fromCache - Whether result was from cache
-   * @private
-   */
-  _updateMetrics(duration, fromCache) {
-    // Only count API calls in metrics
-    if (!fromCache) {
-      this.metrics.transcriptions++;
-      this.metrics.totalDuration += duration;
-      this.metrics.averageDuration = this.metrics.totalDuration / this.metrics.transcriptions;
+      logger.debug(`Transcription result: "${transcript}", isFinal: ${isFinal}`);
       
-      // Add to history (limited size)
-      this.metrics.history.push({
-        timestamp: Date.now(),
-        duration
-      });
-      
-      // Limit history size
-      if (this.metrics.history.length > METRICS_HISTORY_LIMIT) {
-        this.metrics.history.shift();
-      }
-    }
-  }
-  
-  /**
-   * Handle a detected command
-   * @param {Object} transcription - Transcription result with command
-   * @returns {Promise<void>}
-   * @private
-   */
-  async _handleCommand(transcription) {
-    try {
-      const { commandType, commandText } = transcription;
-      
-      logger.info(`Handling ${commandType} command: ${commandText}`);
-      
-      if (commandType === 'ai') {
-        // Process AI command
-        await this.textProcessingService.processAiCommand(commandText);
-      } else if (commandType === 'dictation') {
-        // Start dictation mode
-        await this._handleDictationCommand(commandText);
-      } else if (commandType === 'selection') {
-        // Handle selection command
-        await this._handleSelectionCommand(commandText);
-      }
-    } catch (error) {
-      logger.error('Error handling command:', error);
-    }
-  }
-  
-  /**
-   * Handle dictation command
-   * @param {string} commandText - Dictation command text
-   * @returns {Promise<void>}
-   * @private
-   */
-  async _handleDictationCommand(commandText) {
-    try {
-      logger.info(`Starting dictation mode with text: ${commandText}`);
-      
-      // Get context service to start dictation
-      await this.contextService.startDictation(commandText);
-    } catch (error) {
-      logger.error('Error handling dictation command:', error);
-    }
-  }
-  
-  /**
-   * Handle selection command
-   * @param {string} commandText - Selection command text
-   * @returns {Promise<void>}
-   * @private
-   */
-  async _handleSelectionCommand(commandText) {
-    try {
-      logger.info(`Processing selection command: ${commandText}`);
-      
-      // Use selection service to find and select text
-      await this.selectionService.selectText(commandText);
-    } catch (error) {
-      logger.error('Error handling selection command:', error);
-    }
-  }
-  
-  /**
-   * Clear transcription cache
-   * @returns {Promise<void>}
-   */
-  async clearCache() {
-    try {
-      logger.info('Clearing transcription cache');
-      
-      // Clear memory cache
-      this.cache.clear();
-      
-      // Clear file cache
-      if (fs.existsSync(this.cacheDirectory)) {
-        const files = fs.readdirSync(this.cacheDirectory);
+      // Process the transcription
+      if (transcript && transcript.trim()) {
+        // Add to processing queue
+        this.processingQueue.push({
+          text: transcript,
+          isFinal,
+          timestamp: Date.now()
+        });
         
-        for (const file of files) {
-          if (file.endsWith('.json')) {
-            fs.unlinkSync(path.join(this.cacheDirectory, file));
-          }
+        // Process the queue if not already processing
+        if (!this.isProcessingQueue) {
+          this._processQueue();
         }
       }
-      
-      // Reset cache stats
-      this.cacheHits = 0;
-      this.cacheMisses = 0;
-      
-      // Save cache stats
-      this.configManager.set('transcription.cacheHits', this.cacheHits);
-      this.configManager.set('transcription.cacheMisses', this.cacheMisses);
-      
-      logger.info('Transcription cache cleared');
     } catch (error) {
-      logger.error('Error clearing transcription cache:', error);
-      throw error;
+      logger.error('Error handling transcription result:', error);
     }
   }
   
   /**
-   * Get performance metrics
-   * @returns {Object} Metrics data
+   * Handle transcription errors
+   * @param {Object} error Transcription error event
+   * @private
    */
-  getMetrics() {
-    return { ...this.metrics };
-  }
-  
-  /**
-   * Get cache statistics
-   * @returns {Object} Cache stats
-   */
-  getCacheStats() {
-    const totalRequests = this.cacheHits + this.cacheMisses;
-    const hitRate = totalRequests > 0 ? this.cacheHits / totalRequests : 0;
+  _handleTranscriptionError(error) {
+    logger.error('Transcription error:', error);
     
-    return {
-      enabled: this.cacheEnabled,
-      hits: this.cacheHits,
-      misses: this.cacheMisses,
-      total: totalRequests,
-      hitRate: hitRate,
-      memoryCacheSize: this.cache.size,
-      cacheDirectory: this.cacheDirectory
-    };
+    // Emit error event
+    this.emit('transcription-error', error);
+    
+    // Show notification
+    this._showNotification(`Transcription error: ${error.message || 'Unknown error'}`, 'error');
+    
+    // Restart recognition if it's a recoverable error
+    if (this.isRecording && this.recognitionActive) {
+      // In real implementation, check for specific error types that are recoverable
+      logger.debug('Attempting to restart recognition after error');
+      this._stopRecognition().then(() => {
+        setTimeout(() => {
+          if (this.isRecording) {
+            this._startRecognition();
+          }
+        }, 1000);
+      });
+    }
   }
   
   /**
-   * Set transcription model
-   * @param {string} model - Model name (e.g. 'whisper-1')
+   * Handle transcription end
+   * @private
    */
-  setModel(model) {
-    if (!model) {
-      throw new Error('Invalid model name');
+  _handleTranscriptionEnd() {
+    logger.debug('Transcription ended');
+    
+    // Restart if we should still be recording
+    if (this.isRecording && this.recognitionActive) {
+      logger.debug('Automatically restarting recognition');
+      setTimeout(() => {
+        if (this.isRecording) {
+          this._startRecognition();
+        }
+      }, 500);
+    }
+  }
+  
+  /**
+   * Process the transcription queue
+   * @private
+   */
+  async _processQueue() {
+    if (this.processingQueue.length === 0) {
+      this.isProcessingQueue = false;
+      return;
     }
     
-    this.apiClient.setModel(model);
-    this.configManager.set('transcription.model', model);
+    this.isProcessingQueue = true;
     
-    logger.info(`Set transcription model: ${model}`);
-  }
-  
-  /**
-   * Set API key
-   * @param {string} apiKey - API key
-   */
-  setApiKey(apiKey) {
-    if (!apiKey) {
-      throw new Error('Invalid API key');
+    try {
+      // Get the next item from the queue
+      const item = this.processingQueue.shift();
+      
+      // Process the transcription
+      await this.processTranscription(item.text, item.isFinal);
+      
+      // Continue processing the queue
+      setTimeout(() => {
+        this._processQueue();
+      }, 100);
+    } catch (error) {
+      logger.error('Error processing transcription queue:', error);
+      this.isProcessingQueue = false;
     }
-    
-    this.apiClient.setApiKey(apiKey);
-    this.configManager.set('transcription.apiKey', apiKey);
-    
-    logger.info('Updated API key');
   }
   
   /**
-   * Enable or disable transcription cache
-   * @param {boolean} enabled - Whether cache is enabled
+   * Show a notification to the user
+   * @param {string} message Notification message
+   * @param {string} type Notification type
+   * @private
    */
-  setCacheEnabled(enabled) {
-    this.cacheEnabled = !!enabled;
-    this.configManager.set('transcription.enableCache', this.cacheEnabled);
-    
-    logger.info(`${this.cacheEnabled ? 'Enabled' : 'Disabled'} transcription cache`);
+  _showNotification(message, type = 'info') {
+    try {
+      const notificationService = this.services.get('notification');
+      if (notificationService) {
+        notificationService.show({
+          title: 'Voice Recognition',
+          body: message,
+          type: type
+        });
+      }
+    } catch (error) {
+      logger.warn('Failed to show notification:', error);
+    }
   }
 }
 
-// Export a factory function instead of a singleton
-module.exports = () => new TranscriptionService(); 
+/**
+ * Factory function for creating TranscriptionService instances
+ * @param {Object} options Service options
+ * @returns {TranscriptionService} Transcription service instance
+ */
+module.exports = (options = {}) => {
+  return new TranscriptionService(options);
+};
+
+module.exports.TranscriptionService = TranscriptionService; 

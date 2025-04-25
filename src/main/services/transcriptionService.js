@@ -53,137 +53,163 @@ class TranscriptionService extends BaseService {
   }
 
   /**
-   * Process transcribed text and insert it into the active text field
-   * @param {string} text - Raw transcribed text
-   * @returns {Promise<string>} Processed text
+   * Process audio data for transcription and handle the resulting text
+   * @param {Buffer} audioData The audio data to transcribe
+   * @returns {Promise<boolean>} Success status
    */
-  async processAndInsertText(text) {
-    const startTime = Date.now();
-    let isAICommand = false;
-    
+  async processAudio(audioData) {
+    if (!audioData || audioData.length === 0) {
+      logger.warn('No audio data provided for transcription');
+      return false;
+    }
+
     try {
-      if (!this.initialized) {
-        throw new Error('TranscriptionService not initialized');
+      // Start tracking performance
+      const startTime = Date.now();
+      
+      // Get active application for context
+      const activeApp = await this.appNameProvider.getActiveAppName().catch(err => {
+        logger.warn('Error getting app name during transcription:', err);
+        return 'unknown';
+      });
+      
+      logger.info(`Processing audio data (${audioData.length} bytes) from app: ${activeApp}`);
+      
+      // Transcribe the audio
+      const transcribedText = await this.transcribeAudio(audioData);
+      
+      // Calculate transcription time
+      const transcriptionTime = Date.now() - startTime;
+      logger.debug(`Transcription completed in ${transcriptionTime}ms: "${transcribedText}"`);
+      
+      if (!transcribedText || transcribedText.trim() === '') {
+        logger.warn('Transcription returned empty text');
+        this.notify('No text was transcribed', 'warning');
+        return false;
       }
-
-      logger.info('Starting text processing pipeline');
-      logger.debug('Raw text:', text);
-
-      // Skip processing if text is empty or just whitespace
-      if (!text || !text.trim()) {
-        logger.debug('Empty text, skipping processing');
-        return '';
-      }
-
-      // OPTIMIZATION: Start multiple operations in parallel
-      // 1. Start getting selected text
-      const selectionService = this.getService('selection');
-      const highlightedTextPromise = selectionService.getSelectedText();
       
-      // 2. Start AI command detection in parallel
-      const aiService = this.getService('ai');
-      const isAICommandPromise = aiService.isAICommand(text);
+      // Process the transcribed text
+      const result = await this.processAndInsertText(transcribedText);
       
-      // 3. Start preloading app name (this helps with text insertion speed later)
-      const preloadAppNamePromise = selectionService.preloadAppName()
-        .catch(err => {
-          logger.error('Error preloading app name:', err);
-        });
+      // Calculate total processing time
+      const totalTime = Date.now() - startTime;
+      logger.info(`Total processing time: ${totalTime}ms (transcription: ${transcriptionTime}ms)`);
       
-      // 4. Start dictionary processing (often slow) in parallel
-      const dictionaryPromise = this.getService('dictionary')
-        .processTranscribedText(text)
-        .catch(err => {
-          logger.error('Error in dictionary processing, using raw text:', err);
-          return text; // Fallback to raw text
-        });
-      
-      // Wait for selected text result
-      const highlightedText = await highlightedTextPromise;
-      logger.debug('Selected text:', highlightedText ? 
-        `${highlightedText.substring(0, 100)}... (${highlightedText.length} chars)` : 'none');
-      
-      // Store the highlighted text in context service for future reference
-      if (highlightedText) {
-        const contextService = this.getService('context');
-        await contextService.startRecording(highlightedText);
-        logger.info('Stored highlighted text in context service:', {
-          metadata: {
-            length: highlightedText.length,
-            preview: highlightedText.substring(0, 50) + '...'
-          }
-        });
-      }
-
-      // Check if this is an AI command (should now be ready)
-      isAICommand = await isAICommandPromise;
-      logger.debug('Is AI command:', isAICommand);
-
-      if (isAICommand) {
-        const result = await this._processAICommand(text, highlightedText);
-        if (result) return result;
-        // If AI processing fails, we'll fall back to normal text processing below
-      }
-
-      // If not an AI command or AI processing failed, proceed with normal text processing
-      logger.info('Processing as normal text');
-
-      // First apply dictionary processing (should already be in progress)
-      const dictionaryProcessed = await dictionaryPromise;
-      logger.debug('After dictionary processing:', dictionaryProcessed);
-
-      // Then continue with other text processing
-      const textProcessing = this.getService('textProcessing');
-      const processed = textProcessing.processText(dictionaryProcessed);
-      logger.debug('Final processed text:', processed);
-
-      // Wait for appName preloading to finish (improves insertion performance)
-      await preloadAppNamePromise;
-
-      // Insert the processed text - pass the highlighted text for replacement
-      await this.getService('textInsertion').insertText(processed, highlightedText);
-      
-      // Update stats
-      this.processingStats.normalTranscriptionCount++;
-      
-      return processed;
+      return result;
     } catch (error) {
-      logger.error('Error in processAndInsertText:', {
-        error,
-        name: error.name,
-        message: error.message,
-        stack: error.stack,
-        // Add more detailed diagnostics
-        textProcessed: typeof processed !== 'undefined',
-        textLength: text?.length || 0,
-        highlightedTextLength: highlightedText?.length || 0,
-        isAICommand: isAICommand,
-        elapsed: Date.now() - startTime
-      });
-      
-      // Show notification to user
-      this.getService('notification').showNotification({
-        title: 'Text Processing Failed',
-        body: 'Failed to process and insert text.',
-        type: 'error'
-      });
-      
-      // Update error stats
-      this.processingStats.errorCount++;
-      
-      throw this.emitError(error);
-    } finally {
-      // Always stop recording context when done
-      this.getService('context').stopRecording();
-      
-      // Update processing time stats
-      const processingTime = Date.now() - startTime;
-      this._updateProcessingStats(processingTime, isAICommand);
-      
-      logger.info('Processing completed in', processingTime, 'ms');
+      logger.error('Error processing audio:', error);
+      this.notify(`Error processing audio: ${error.message}`, 'error');
+      this.emit('error', error);
+      return false;
     }
   }
-  
+
+  /**
+   * Process transcribed text and insert the result
+   * Handles special commands (AI, etc.) and regular text
+   * @param {string} transcribedText The text to process
+   * @returns {Promise<boolean>} Success status
+   */
+  async processAndInsertText(transcribedText) {
+    if (!transcribedText) {
+      return false;
+    }
+    
+    try {
+      const normalizedText = transcribedText.trim();
+      logger.debug(`Processing transcribed text: "${normalizedText}"`);
+      
+      // Check if this is an AI command
+      const aiService = this.services.get('ai');
+      if (aiService && await aiService.isAICommand(normalizedText)) {
+        logger.info('AI command detected, processing...');
+        
+        // Get selection service 
+        const selectionService = this.services.get('selection');
+        
+        // Get highlighted text for context if available
+        const selectedText = await selectionService?.getSelectedText().catch(err => {
+          logger.warn('Failed to get selected text for AI context:', err);
+          return '';
+        });
+        
+        logger.debug(`Selected text for AI context: ${selectedText ? 
+          `"${selectedText.substring(0, 30)}..." (${selectedText.length} chars)` : 
+          'none'}`);
+          
+        // Process AI request
+        const aiResponse = await aiService.processRequest(normalizedText, selectedText);
+        if (aiResponse) {
+          logger.info('Inserting AI response');
+          await this.insertText(aiResponse);
+          return true;
+        } else {
+          logger.warn('AI processing returned empty response');
+          this.notify('AI returned no response', 'warning');
+          return false;
+        }
+      } else {
+        // This is regular text, just insert it
+        logger.info('Inserting regular transcribed text');
+        await this.insertText(normalizedText);
+        return true;
+      }
+    } catch (error) {
+      logger.error('Error processing transcribed text:', error);
+      this.notify(`Error processing text: ${error.message}`, 'error');
+      this.emit('error', error);
+      return false;
+    }
+  }
+
+  /**
+   * Insert text at the current cursor position
+   * @param {string} text The text to insert
+   * @returns {Promise<boolean>} Success status
+   */
+  async insertText(text) {
+    try {
+      if (!text) {
+        return false;
+      }
+      
+      const textInsertionService = this.services.get('textInsertion');
+      if (!textInsertionService) {
+        throw new Error('Text insertion service not available');
+      }
+      
+      logger.debug(`Inserting text: "${text.substring(0, 30)}${text.length > 30 ? '...' : ''}"`);
+      await textInsertionService.insertText(text);
+      
+      return true;
+    } catch (error) {
+      logger.error('Error inserting text:', error);
+      this.notify(`Failed to insert text: ${error.message}`, 'error');
+      this.emit('error', error);
+      return false;
+    }
+  }
+
+  /**
+   * Display a notification
+   * @param {string} message Notification message
+   * @param {string} type Notification type (info, warning, error)
+   */
+  notify(message, type = 'info') {
+    try {
+      const notificationService = this.services.get('notification');
+      if (notificationService) {
+        notificationService.show({
+          title: 'Transcription',
+          body: message,
+          type: type
+        });
+      }
+    } catch (error) {
+      logger.error('Error showing notification:', error);
+    }
+  }
+
   /**
    * Process text as an AI command
    * @param {string} text - Raw text
