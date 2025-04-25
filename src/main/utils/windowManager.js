@@ -110,11 +110,19 @@ function createMainWindow(serviceRegistry) {
 
     mainWindow.on('closed', () => {
       // Clear the reference in the window manager
+      console.log("'closed' event triggered for main window.");
       if (serviceRegistry) {
         const windowMgr = serviceRegistry.get('windowManager');
+        console.log("Retrieved 'windowManager' from serviceRegistry:", windowMgr ? 'Exists' : 'null or undefined');
         if (windowMgr) {
+          console.log("Calling windowMgr.clearMainWindow()...");
           windowMgr.clearMainWindow();
+          console.log("Finished calling windowMgr.clearMainWindow().");
+        } else {
+          console.error("Cannot call clearMainWindow because windowMgr is null or undefined.");
         }
+      } else {
+        console.error("serviceRegistry is not available in 'closed' event handler.");
       }
     });
 

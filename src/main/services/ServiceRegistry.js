@@ -70,12 +70,21 @@ class ServiceRegistry extends EventEmitter {
       if (service) {
         logger.info(`Initializing service: ${serviceName}`);
         try {
+          logger.debug(`About to initialize service: ${serviceName}`);
           await service.initialize(this);
           logger.info(`Service initialized: ${serviceName}`);
         } catch (error) {
-          logger.error(`Failed to initialize service: ${serviceName}`, { metadata: { error } });
-          throw error;
+          logger.error(`Failed to initialize service: ${serviceName}`, { 
+            metadata: { 
+              error, 
+              message: error.message,
+              stack: error.stack 
+            } 
+          });
+          throw new Error(`Failed to initialize service "${serviceName}": ${error.message}`);
         }
+      } else {
+        logger.warn(`Service not registered but in init order: ${serviceName}`);
       }
     }
 
@@ -84,11 +93,18 @@ class ServiceRegistry extends EventEmitter {
       if (!this.initOrder.includes(name) && !name.includes(':')) {
         logger.info(`Initializing additional service: ${name}`);
         try {
+          logger.debug(`About to initialize additional service: ${name}`);
           await service.initialize(this);
           logger.info(`Additional service initialized: ${name}`);
         } catch (error) {
-          logger.error(`Failed to initialize additional service: ${name}`, { metadata: { error } });
-          throw error;
+          logger.error(`Failed to initialize additional service: ${name}`, { 
+            metadata: { 
+              error, 
+              message: error.message,
+              stack: error.stack 
+            } 
+          });
+          throw new Error(`Failed to initialize additional service "${name}": ${error.message}`);
         }
       }
     }

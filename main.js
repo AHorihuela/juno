@@ -108,8 +108,21 @@ async function initializeServices() {
       .register('windowManager', windowManager())
       .register('overlay', overlayService());
     
-    // Initialize all services
-    await serviceRegistry.initialize();
+    // Initialize all services with additional debugging
+    logger.info('Beginning service initialization...');
+    try {
+      await serviceRegistry.initialize();
+      logger.info('All services initialized successfully');
+    } catch (error) {
+      logger.error('Service initialization failed', { 
+        metadata: { 
+          error, 
+          message: error.message,
+          stack: error.stack 
+        } 
+      });
+      throw error;
+    }
     
     // Register global shortcuts
     try {
@@ -122,7 +135,13 @@ async function initializeServices() {
     
     logger.info('Application initialization complete');
   } catch (error) {
-    logger.error('Failed to initialize services', { metadata: { error } });
+    logger.error('Failed to initialize services', { 
+      metadata: { 
+        error, 
+        message: error.message,
+        stack: error.stack 
+      } 
+    });
     app.exit(1);
   }
 }
@@ -161,7 +180,13 @@ app.whenReady().then(async () => {
     // Log success
     logger.info('Main window created successfully');
   } catch (error) {
-    logger.error('Failed to create main window', { metadata: { error } });
+    logger.error('Failed to create main window', { 
+      metadata: { 
+        error, 
+        message: error.message,
+        stack: error.stack 
+      } 
+    });
     app.exit(1);
   }
 });
@@ -193,10 +218,22 @@ app.on('before-quit', async (event) => {
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
-  logger.error('Uncaught exception in main process', { metadata: { error } });
+  logger.error('Uncaught exception in main process', { 
+    metadata: { 
+      error, 
+      message: error.message,
+      stack: error.stack 
+    } 
+  });
 });
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (reason) => {
-  logger.error('Unhandled promise rejection in main process', { metadata: { reason } });
+  logger.error('Unhandled promise rejection in main process', { 
+    metadata: { 
+      reason, 
+      message: reason.message,
+      stack: reason.stack 
+    } 
+  });
 }); 

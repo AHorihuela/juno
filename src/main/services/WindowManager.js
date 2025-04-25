@@ -35,7 +35,7 @@ class WindowManager extends BaseService {
     this.isRecording = false;
     this.mainWindowManager = null;
     this.overlayManager = null;
-    console.log('[WindowManager] Initialized');
+    this.logger.info('Constructor: Initializing WindowManager');
   }
 
   /**
@@ -45,10 +45,10 @@ class WindowManager extends BaseService {
    * @returns {Promise<void>}
    */
   async _initialize() {
-    console.log('[WindowManager] Initializing...');
+    this.logger.info('Initialize Start: Creating MainWindowManager and OverlayWindowManager');
     this.mainWindowManager = new MainWindowManager(this);
     this.overlayManager = new OverlayWindowManager(this);
-    console.log('[WindowManager] Window managers initialized');
+    this.logger.info('Initialize End: Window managers assigned', { hasMainWindowManager: !!this.mainWindowManager });
   }
 
   /**
@@ -58,12 +58,15 @@ class WindowManager extends BaseService {
    * @returns {Promise<void>}
    */
   async _shutdown() {
-    console.log('[WindowManager] Shutting down...');
+    this.logger.info('Shutdown Start: Checking mainWindowManager');
     
     if (this.mainWindowManager) {
+      this.logger.info('Shutdown: Calling mainWindowManager.clearMainWindow()');
       this.mainWindowManager.clearMainWindow();
+    } else {
+      this.logger.warn('Shutdown: mainWindowManager was null, cannot clear');
     }
-    console.log('[WindowManager] Windows cleared');
+    this.logger.info('Shutdown End: Windows cleared');
   }
 
   // Main Window Management (delegated to MainWindowManager)
@@ -163,7 +166,13 @@ class WindowManager extends BaseService {
    * Clears the main window reference
    */
   clearMainWindow() {
-    this.mainWindowManager.clearMainWindow();
+    this.logger.info('clearMainWindow Start: Checking mainWindowManager');
+    if (this.mainWindowManager) {
+      this.logger.info('clearMainWindow: Calling mainWindowManager.clearMainWindow()');
+      this.mainWindowManager.clearMainWindow();
+    } else {
+      this.logger.warn('clearMainWindow: mainWindowManager was null, cannot clear');
+    }
   }
   
   /**

@@ -18,7 +18,7 @@
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "postinstall": "electron-builder install-app-deps",
-    "build:mac": "node scripts/build-mac-app.js",
+    "build:mac": "npm run dist",
     "check:case": "node scripts/check-case-sensitivity.js"
   },
   "author": "",
@@ -78,7 +78,6 @@
     "directories": {
       "output": "dist"
     },
-    "nodeGypRebuild": false,
     "asarUnpack": ["**/*.node"],
     "mac": {
       "icon": "assets/icon.png",

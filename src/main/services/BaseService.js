@@ -1,4 +1,5 @@
 const { EventEmitter } = require('events');
+const LogManager = require('../utils/LogManager');
 
 class BaseService extends EventEmitter {
   constructor(name) {
@@ -6,6 +7,9 @@ class BaseService extends EventEmitter {
     this.name = name;
     this.initialized = false;
     this.registry = null;
+    
+    // Initialize logger
+    this.logger = LogManager.getLogger(this.name);
   }
 
   async initialize(registry) {
@@ -13,17 +17,17 @@ class BaseService extends EventEmitter {
       return this;
     }
 
-    console.log(`Initializing ${this.name}Service...`);
+    this.logger.info(`Initializing ${this.name}Service...`);
     this.registry = registry;
     
     try {
       await this._initialize();
       this.initialized = true;
       this.emit('initialized');
-      console.log(`${this.name}Service initialized successfully`);
+      this.logger.info(`${this.name}Service initialized successfully`);
       return this;
     } catch (error) {
-      console.error(`Error initializing ${this.name}Service:`, error);
+      this.logger.error(`Error initializing ${this.name}Service:`, error);
       this.emit('error', error);
       throw error;
     }
@@ -34,16 +38,16 @@ class BaseService extends EventEmitter {
       return;
     }
 
-    console.log(`Shutting down ${this.name}Service...`);
+    this.logger.info(`Shutting down ${this.name}Service...`);
     
     try {
       await this._shutdown();
       this.initialized = false;
       this.registry = null;
       this.emit('shutdown');
-      console.log(`${this.name}Service shut down successfully`);
+      this.logger.info(`${this.name}Service shut down successfully`);
     } catch (error) {
-      console.error(`Error shutting down ${this.name}Service:`, error);
+      this.logger.error(`Error shutting down ${this.name}Service:`, error);
       this.emit('error', error);
       throw error;
     }
