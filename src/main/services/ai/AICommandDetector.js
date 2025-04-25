@@ -9,6 +9,9 @@ class AICommandDetector {
   constructor() {
     // Common greeting words that can precede the trigger word
     this.GREETINGS = new Set(['hey', 'hi', 'hello', 'yo', 'ok', 'okay', 'um', 'uh']);
+    
+    // Default action verbs if none provided
+    this.DEFAULT_ACTION_VERBS = new Set(['summarize', 'rewrite', 'translate', 'explain', 'analyze']);
   }
 
   /**
@@ -52,21 +55,53 @@ class AICommandDetector {
     }
 
     // Convert action verbs to a Set for faster lookups
-    const ACTION_VERBS = new Set(actionVerbs);
+    // Use provided action verbs if available, otherwise fall back to defaults
+    const ACTION_VERBS = new Set(
+      actionVerbs && actionVerbs.length > 0 
+        ? actionVerbs.map(verb => verb.toLowerCase()) 
+        : this.DEFAULT_ACTION_VERBS
+    );
+    
+    console.log('[AICommandDetector] Using action verbs:', 
+      Array.from(ACTION_VERBS).join(', '), 
+      'from provided list:', 
+      actionVerbs ? actionVerbs.join(', ') : 'none'
+    );
 
-    // Check for action verbs in first two words (per spec)
-    if (words.length >= 2) {
-      const firstTwoWords = [
-        words[0].replace(/[.,!?]$/, ''),
-        words[1].replace(/[.,!?]$/, '')
-      ];
-      const hasActionVerb = ACTION_VERBS.has(firstTwoWords[0]) || ACTION_VERBS.has(firstTwoWords[1]);
+    // Check first word against action verbs (more permissive than before)
+    if (words.length >= 1) {
+      const firstWord = words[0].replace(/[.,!?]$/, '').toLowerCase();
+      
+      // Check if first word is an action verb
+      const hasActionVerb = ACTION_VERBS.has(firstWord);
+      
       console.log('[AICommandDetector] Action verb check:', {
-        firstWord: firstTwoWords[0],
-        secondWord: firstTwoWords[1],
-        hasActionVerb
+        firstWord,
+        hasActionVerb,
+        verbList: Array.from(ACTION_VERBS)
       });
-      return hasActionVerb;
+      
+      if (hasActionVerb) {
+        return true;
+      }
+      
+      // Check second word if first word is a common article or pronoun
+      if (words.length >= 2) {
+        const articles = new Set(['the', 'a', 'an', 'this', 'that', 'these', 'those', 'my', 'your', 'please']);
+        if (articles.has(firstWord)) {
+          const secondWord = words[1].replace(/[.,!?]$/, '').toLowerCase();
+          const hasActionVerbSecond = ACTION_VERBS.has(secondWord);
+          
+          console.log('[AICommandDetector] Second word action verb check:', {
+            secondWord,
+            hasActionVerbSecond
+          });
+          
+          if (hasActionVerbSecond) {
+            return true;
+          }
+        }
+      }
     }
 
     console.log('[AICommandDetector] No AI command detected');

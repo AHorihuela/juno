@@ -61,7 +61,11 @@ class AIService extends BaseService {
     
     // Get configuration values needed for command detection
     const triggerWord = await this.getService('config').getAITriggerWord() || 'juno';
-    const actionVerbs = await this.getService('config').getActionVerbs();
+    const actionVerbs = await this.getService('config').getActionVerbs() || [];
+    
+    // Log for debugging
+    console.log('[AIService] Using trigger word:', triggerWord);
+    console.log('[AIService] Using action verbs:', actionVerbs);
     
     // Delegate to the command detector component
     return this.commandDetector.isCommand(text, triggerWord, actionVerbs);
@@ -89,6 +93,19 @@ class AIService extends BaseService {
       // Create AbortController for this request
       const controller = new AbortController();
       
+      // Ensure we have the highlighted text if it wasn't passed
+      if (!highlightedText) {
+        try {
+          const selectionService = this.getService('selection');
+          highlightedText = await selectionService.getSelectedText();
+          console.log('[AIService] Retrieved highlighted text:', 
+            highlightedText ? `${highlightedText.substring(0, 50)}... (${highlightedText.length} chars)` : 'none');
+        } catch (error) {
+          console.error('[AIService] Error getting highlighted text:', error);
+          // Continue without highlighted text
+        }
+      }
+      
       // Get context using the context service with the command for intelligent context selection
       const context = await this.getService('context').getContextAsync(highlightedText, command);
       
@@ -99,10 +116,11 @@ class AIService extends BaseService {
       this.showContextFeedback();
       
       // Add diagnostic logging
-      console.log('[AIService] Input text being summarized:', {
+      console.log('[AIService] Input being processed:', {
         command,
-        highlightedText,
-        contextObject: JSON.stringify(context, null, 2)
+        highlightedTextLength: highlightedText ? highlightedText.length : 0,
+        highlightedTextPreview: highlightedText ? highlightedText.substring(0, 100) + '...' : 'none',
+        hasContext: Boolean(context)
       });
 
       // Get AI rules
@@ -111,11 +129,23 @@ class AIService extends BaseService {
       
       // Build a more structured system prompt with rules
       const systemPrompt = this.promptBuilder.buildSystemPrompt(aiRules, context);
-      console.log('[AIService] System prompt:', systemPrompt);
-
-      // Build the prompt for GPT based on command and context
-      const prompt = this.promptBuilder.buildPrompt(command, context);
-      console.log('[AIService] Full prompt being sent to GPT:', prompt);
+      
+      // Build the user prompt based on command and highlighted text
+      let userPrompt;
+      if (highlightedText) {
+        // Create a prompt that clearly includes both the command and the highlighted text
+        userPrompt = `${command}\n\nHIGHLIGHTED TEXT:\n"""${highlightedText}"""`;
+      } else {
+        // Just use the command as the prompt
+        userPrompt = command;
+      }
+      
+      console.log('[AIService] Sending prompt to GPT:', {
+        hasHighlightedText: Boolean(highlightedText),
+        highlightedTextLength: highlightedText ? highlightedText.length : 0,
+        command,
+        promptPreview: userPrompt.substring(0, 100) + (userPrompt.length > 100 ? '...' : '')
+      });
 
       // Get model and temperature settings from config
       const model = await this.getService('config').getAIModel() || 'gpt-4';
@@ -129,7 +159,7 @@ class AIService extends BaseService {
           model: model,
           messages: [
             { role: 'system', content: systemPrompt },
-            { role: 'user', content: prompt }
+            { role: 'user', content: userPrompt }
           ],
           temperature: temperature,
         }, { signal: controller.signal })
@@ -153,7 +183,7 @@ class AIService extends BaseService {
           console.log('[AIService] Response too similar to highlighted text, retrying with clearer prompt');
           
           // Retry with a clearer prompt that explicitly tells the model not to echo back the highlighted text
-          const retryPrompt = `${command}\n\nIMPORTANT: Do NOT repeat back the highlighted text. Instead, respond directly to the command above.`;
+          const retryPrompt = `${command}\n\nHIGHLIGHTED TEXT:\n"""${highlightedText}"""\n\nIMPORTANT: Do NOT repeat back the highlighted text. Instead, respond directly to the command above.`;
           
           const retryResponse = await this.openai.chat.completions.create({
             model: model,

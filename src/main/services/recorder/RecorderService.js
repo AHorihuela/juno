@@ -156,44 +156,27 @@ class RecorderService extends BaseService {
         logger.info('Using system default device for recording');
       }
       
-      // Check microphone permission
-      logger.debug('Checking microphone permission before recording...');
-      await this.micManager.checkMicrophonePermission(selectedDeviceId);
+      // OPTIMIZATION: Run permission check, microphone setup, start sound and UI updates in parallel
+      const initPromises = [];
       
-      // Configure recording options
-      const recordingOptions = {
-        sampleRate: 16000,
-        channels: 1,
-        audioType: 'raw'
-      };
+      // Check microphone permission (async)
+      initPromises.push(
+        (async () => {
+          logger.debug('Checking microphone permission before recording...');
+          await this.micManager.checkMicrophonePermission(selectedDeviceId);
+        })()
+      );
       
-      if (selectedDeviceId) {
-        recordingOptions.device = selectedDeviceId;
-      }
+      // Play start sound (non-blocking)
+      initPromises.push(
+        this.getService('audio').playStartSound().catch(soundError => {
+          logger.error('Error playing start sound:', { metadata: { error: soundError } });
+          // Continue with recording even if sound fails
+        })
+      );
       
-      logger.debug('Starting recording with settings:', { metadata: { recordingOptions } });
-      
-      // OPTIMIZATION: Play start sound immediately in non-blocking way
-      // This allows the sound to start playing while we set up the recorder
-      this.getService('audio').playStartSound().catch(soundError => {
-        logger.error('Error playing start sound:', { metadata: { error: soundError } });
-        // Continue with recording even if sound fails
-      });
-      
-      // Start the recorder immediately to reduce latency
-      try {
-        this.recorder = record.record(recordingOptions);
-        this.recording = true;
-        logger.debug('Recorder instance created successfully');
-      } catch (recorderError) {
-        logger.error('Failed to create recorder instance:', { metadata: { error: recorderError } });
-        throw new Error(`Failed to initialize recorder: ${recorderError.message}`);
-      }
-      
-      // Perform these operations in parallel after recording has started
-      // OPTIMIZATION: Removed the start sound from this Promise.all since we're playing it earlier
-      Promise.all([
-        // Start tracking recording session in context service
+      // Start context tracking (async)
+      initPromises.push(
         (async () => {
           try {
             logger.debug('Starting recording session in context service...');
@@ -201,9 +184,11 @@ class RecorderService extends BaseService {
           } catch (error) {
             logger.error('Error in context service:', { metadata: { error } });
           }
-        })(),
-        
-        // Show the overlay
+        })()
+      );
+      
+      // Show overlay (async)
+      initPromises.push(
         (async () => {
           try {
             logger.debug('Showing overlay...');
@@ -218,62 +203,85 @@ class RecorderService extends BaseService {
           } catch (error) {
             logger.error('Error showing overlay:', { metadata: { error } });
           }
-        })(),
+        })()
+      );
+      
+      // Configure recording options
+      const recordingOptions = {
+        sampleRate: 16000,
+        channels: 1,
+        audioType: 'raw'
+      };
+      
+      if (selectedDeviceId) {
+        recordingOptions.device = selectedDeviceId;
+      }
+      
+      logger.debug('Starting recording with settings:', { metadata: { recordingOptions } });
+      
+      // Start the recorder immediately to reduce latency
+      try {
+        this.recorder = record.record(recordingOptions);
+        this.recording = true;
+        logger.debug('Recorder instance created successfully');
         
-        // Handle background audio
+        // CRITICAL FIX: Set up stream data event handlers
+        const stream = this.recorder.stream();
+        
+        // Add data listener to collect audio chunks
+        stream.on('data', (chunk) => {
+          if (!this.recording || this.paused) return;
+          
+          // Process and analyze audio chunk
+          this.audioData.push(chunk);
+          
+          // Run the audio analyzer on this chunk for speech detection
+          const analysisResult = this.audioAnalyzer.analyzeChunk(chunk);
+          
+          // Log audio levels for debugging at verbose level
+          logger.debug('Audio chunk received:', { 
+            metadata: { 
+              chunkSize: chunk.length,
+              chunkNumber: this.audioData.length,
+              rms: analysisResult.rms,
+              hasSound: analysisResult.hasSound
+            } 
+          });
+        });
+        
+        // Add error handler for stream errors
+        stream.on('error', (error) => {
+          logger.error('Recording stream error:', { metadata: { error } });
+          this.getService('notification').showNotification(
+            'Recording Error',
+            'An error occurred during recording: ' + error.message,
+            'error'
+          );
+          this.stop().catch(stopError => {
+            logger.error('Error stopping recording after stream error:', { metadata: { error: stopError } });
+          });
+        });
+        
+      } catch (recorderError) {
+        logger.error('Failed to create recorder instance:', { metadata: { error: recorderError } });
+        throw new Error(`Failed to initialize recorder: ${recorderError.message}`);
+      }
+      
+      // OPTIMIZATION: Handle background audio in parallel with other init tasks
+      initPromises.push(
         (async () => {
           try {
             logger.debug('Handling background audio...');
-            const shouldPauseBackgroundAudio = await this.backgroundAudio.shouldPauseBackgroundAudio();
-            if (shouldPauseBackgroundAudio) {
-              this.backgroundAudio.pauseBackgroundAudio();
-              logger.debug('Background audio paused');
-            }
+            await this.backgroundAudio.pauseBackgroundAudio();
           } catch (error) {
             logger.error('Error handling background audio:', { metadata: { error } });
           }
         })()
-      ]).catch(error => {
-        logger.error('Error in parallel operations:', { metadata: { error } });
-      });
-
-      // Log audio data for testing
-      this.recorder.stream()
-        .on('data', (data) => {
-          try {
-            // Check audio levels
-            const hasSound = this.audioAnalyzer.processBuffer(data, this.paused);
-            
-            this.audioData.push(data);
-            this.emit('data', data);
-            
-            // Only log occasionally to avoid flooding logs
-            if (this.audioData.length % 10 === 0) {
-              logger.debug('Audio data received:', {
-                metadata: {
-                  chunkSize: data.length,
-                  totalSize: this.audioData.reduce((sum, chunk) => sum + chunk.length, 0),
-                  chunks: this.audioData.length,
-                  hasSound
-                }
-              });
-            }
-          } catch (error) {
-            logger.error('Error processing audio data:', { metadata: { error } });
-          }
-        })
-        .on('error', (err) => {
-          logger.error('Recording error:', { metadata: { error: err } });
-          this.getService('notification').showNotification(
-            'Recording Error',
-            err.message || 'Failed to record audio',
-            'error'
-          );
-          this.emit('error', err);
-          this.stop();
-        });
-
-      this.emit('start');
+      );
+      
+      // Wait for all initialization tasks to complete
+      await Promise.all(initPromises);
+      
       logger.info('Recording started successfully');
       
       // Update the overlay to show active state
@@ -385,37 +393,44 @@ class RecorderService extends BaseService {
         }
       });
 
-      // Skip transcription if no real audio content detected or recording is too short
-      if (!hasAudioContent || !hasRealSpeech || !hasMinimumDuration) {
-        logger.info('No significant audio content detected or recording too short, skipping transcription', {
+      // Only skip transcription if the recording is too short
+      if (!hasMinimumDuration) {
+        logger.info('Recording too short, skipping transcription', {
           metadata: {
-            hasAudioContent,
-            hasRealSpeech,
-            hasMinimumDuration
+            recordingDuration: recordingDuration.toFixed(2) + 's',
+            minimumRequired: '1.5s'
           }
         });
         
-        // Show different messages based on the issue
-        if (!hasMinimumDuration) {
-          this.getService('notification').showNotification({
-            title: 'Recording Too Short',
-            body: 'Please record for at least 1.5 seconds.',
-            type: 'info'
-          });
-        } else {
-          // Enhanced notification with more details
-          const percentageValue = Math.round(audioAnalysis.percentageAboveThreshold);
-          const rmsValue = audioAnalysis.averageRMS;
-          const peakRMSValue = audioAnalysis.peakRMS;
-          this.getService('notification').showNotification(
-            'No Audio Detected',
-            `No speech was detected (Avg RMS: ${rmsValue}, Peak RMS: ${peakRMSValue}). Try speaking louder or adjusting your microphone.`,
-            'info'
-          );
-        }
+        this.getService('notification').showNotification({
+          title: 'Recording Too Short',
+          body: 'Please record for at least 1.5 seconds.',
+          type: 'info'
+        });
         
         this.emit('stop');
         return;
+      }
+      
+      // Show a notification if audio levels are low, but still attempt transcription
+      if (!hasAudioContent || !hasRealSpeech) {
+        logger.info('Low audio levels detected, but attempting transcription anyway', {
+          metadata: {
+            hasAudioContent,
+            hasRealSpeech,
+            averageRMS: audioAnalysis.averageRMS,
+            peakRMS: audioAnalysis.peakRMS
+          }
+        });
+        
+        // Show notification but don't skip transcription
+        const rmsValue = audioAnalysis.averageRMS;
+        const peakRMSValue = audioAnalysis.peakRMS;
+        this.getService('notification').showNotification(
+          'Low Audio Detected',
+          `Audio levels are low (Avg: ${rmsValue}, Peak: ${peakRMSValue}). Attempting transcription anyway.`,
+          'info'
+        );
       }
 
       // Combine all audio data into a single buffer

@@ -76,9 +76,19 @@ if (!gotTheLock) {
 // Handle second instance
 app.on('second-instance', () => {
   logger.info('Second instance detected, focusing main window');
-  const mainWindowService = serviceRegistry.get('windowManager');
-  if (mainWindowService) {
-    mainWindowService.showMainWindow();
+  
+  // Fix: Use windowManager service correctly
+  const windowManagerService = serviceRegistry.get('windowManager');
+  if (windowManagerService) {
+    // The method is showWindow, not showMainWindow
+    try {
+      windowManagerService.showWindow();
+      logger.info('Main window focused successfully');
+    } catch (error) {
+      logger.error('Failed to focus main window:', { metadata: { error } });
+    }
+  } else {
+    logger.error('Window manager service not found');
   }
 });
 
@@ -194,9 +204,14 @@ app.whenReady().then(async () => {
 // Handle app activation (macOS)
 app.on('activate', () => {
   logger.info('Application activated');
-  const mainWindowService = serviceRegistry.get('windowManager');
-  if (mainWindowService) {
-    mainWindowService.showMainWindow();
+  const windowManagerService = serviceRegistry.get('windowManager');
+  if (windowManagerService) {
+    try {
+      windowManagerService.showWindow();
+      logger.info('Main window activated successfully');
+    } catch (error) {
+      logger.error('Failed to activate main window:', { metadata: { error } });
+    }
   }
 });
 

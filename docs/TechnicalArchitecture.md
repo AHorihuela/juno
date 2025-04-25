@@ -59,6 +59,32 @@
 - Improved prompt formatting
 - Added detection for redundant responses
 
+### TextInsertionService Optimizations
+- Implemented precompiled AppleScript files for faster execution
+- Added robust timeout handling with configurable limits
+- Improved clipboard verification and recovery
+- Added retry mechanism for AppleScript execution
+- Enhanced error handling with user-friendly fallbacks
+- Optimized delay times based on real-world testing
+- Replaced exec with execFile for better security and performance
+
+### SelectionService Optimizations
+- Implemented parallel strategy execution as the default method
+- Added timeout limits for both individual strategies and overall operations
+- Increased cache TTL to reduce redundant selection operations
+- Added cancellation support for long-running operations
+- Improved fallback mechanisms when strategies fail
+- Enhanced logging with detailed metadata
+- Used improved AppNameProvider with better caching
+
+### AppleScriptExecutor Improvements
+- Added support for compiled script files for better performance
+- Implemented proper error handling for timeout rejection
+- Added maxBuffer parameter to handle large text selections
+- Replaced exec with execFile for better security and performance
+- Added script compilation capabilities for frequently used scripts
+- Enhanced retry mechanisms with exponential backoff
+
 ## Future Optimization Opportunities
 
 1. **Simplify UI Feedback**

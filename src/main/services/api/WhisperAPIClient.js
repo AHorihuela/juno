@@ -14,7 +14,38 @@ class WhisperAPIClient {
     this.resourceManager = resourceManager;
     this.configService = configService;
     this.dictionaryService = dictionaryService;
-    this.cache = new APICache({ ttl: 30 * 60 * 1000 }); // 30 minute cache
+    
+    // OPTIMIZATION: Increased cache TTL to reduce API calls
+    this.cache = new APICache({ ttl: 60 * 60 * 1000 }); // 60 minute cache (up from 30)
+    
+    // OPTIMIZATION: Keep tracking metrics for analysis
+    this.metrics = {
+      totalRequests: 0,
+      cacheHits: 0,
+      cacheMisses: 0,
+      errors: 0,
+      totalResponseTime: 0,
+      lastResponseTime: 0
+    };
+    
+    // OPTIMIZATION: Preload API key at initialization
+    this._apiKeyPromise = this._preloadApiKey();
+  }
+
+  /**
+   * Preload OpenAI API key at initialization
+   * @returns {Promise<string>} API key
+   * @private
+   */
+  async _preloadApiKey() {
+    try {
+      const apiKey = await this.configService.getOpenAIApiKey();
+      console.log('[WhisperAPI] Preloaded OpenAI API key');
+      return apiKey;
+    } catch (error) {
+      console.error('[WhisperAPI] Failed to preload API key:', error);
+      return null;
+    }
   }
 
   /**
@@ -23,15 +54,26 @@ class WhisperAPIClient {
    * @throws {APIError} If API key is not configured
    */
   async validateAndGetApiKey() {
-    const apiKey = await this.configService.getOpenAIApiKey();
-    console.log('[WhisperAPI] Retrieved OpenAI API key');
-    
-    if (!apiKey) {
-      throw new APIError('OpenAI API key not configured', {
-        code: 'ERR_API_KEY_MISSING'
+    try {
+      // Use preloaded key if available
+      const apiKey = await this._apiKeyPromise;
+      console.log('Retrieved OpenAI API key, length:', apiKey ? apiKey.length : 0);
+      
+      if (!apiKey) {
+        throw new APIError('OpenAI API key not configured', {
+          code: 'ERR_API_KEY_MISSING'
+        });
+      }
+      return apiKey;
+    } catch (error) {
+      if (error instanceof APIError) {
+        throw error;
+      }
+      throw new APIError('Failed to retrieve OpenAI API key', {
+        code: 'ERR_API_KEY_RETRIEVAL',
+        metadata: { originalError: error }
       });
     }
-    return apiKey;
   }
 
   /**
@@ -67,6 +109,11 @@ class WhisperAPIClient {
    * @throws {APIError} If transcription fails
    */
   async transcribeAudio(audioFilePath, options = {}) {
+    const startTime = Date.now();
+    
+    // Track total requests
+    this.metrics.totalRequests++;
+    
     const {
       useCache = true,
       language = 'en',
@@ -79,26 +126,41 @@ class WhisperAPIClient {
         const cacheKey = await this.generateCacheKey(audioFilePath);
         const cachedResult = this.cache.get('transcribe', { cacheKey });
         if (cachedResult) {
+          // Track cache hit
+          this.metrics.cacheHits++;
           console.log('[WhisperAPI] Using cached transcription result');
+          
+          // Track response time
+          this.metrics.lastResponseTime = Date.now() - startTime;
           return cachedResult;
+        } else {
+          // Track cache miss
+          this.metrics.cacheMisses++;
         }
       }
 
       console.log('[WhisperAPI] Sending request to Whisper API...');
       
-      // Get file stats
-      const fileStats = await fs.promises.stat(audioFilePath);
+      // OPTIMIZATION: Run file stats and OpenAI client initialization in parallel
+      const [fileStats, openai, dictionaryPrompt] = await Promise.all([
+        // Get file stats
+        fs.promises.stat(audioFilePath),
+        
+        // Get OpenAI client (potentially from resource cache)
+        this.resourceManager.getOpenAIClient(),
+        
+        // Generate dictionary prompt for better accuracy
+        this.dictionaryService.generateWhisperPrompt()
+      ]);
+      
       const audioLengthSeconds = this.calculateAudioDuration(fileStats);
       console.log(`[WhisperAPI] Estimated audio duration: ${audioLengthSeconds.toFixed(2)}s`);
       
-      // Get OpenAI client
-      const openai = await this.resourceManager.getOpenAIClient();
-      
-      // Generate dictionary prompt for better accuracy
-      const dictionaryPrompt = await this.dictionaryService.generateWhisperPrompt();
-      
       // Create file stream
       const fileStream = fs.createReadStream(audioFilePath);
+      
+      // OPTIMIZATION: Set shorter timeout for short audio clips
+      const requestTimeout = Math.max(5000, Math.min(15000, audioLengthSeconds * 500));
       
       // Create API request with optimized parameters
       const response = await openai.audio.transcriptions.create({
@@ -108,9 +170,16 @@ class WhisperAPIClient {
         prompt: dictionaryPrompt,
         temperature,  // Lower temperature reduces hallucinations
         response_format: 'json'  // Use simple JSON format for faster processing
+      }, {
+        timeout: requestTimeout // Dynamic timeout based on audio length
       });
 
       console.log('[WhisperAPI] Response received');
+      
+      // Track response time
+      const responseTime = Date.now() - startTime;
+      this.metrics.lastResponseTime = responseTime;
+      this.metrics.totalResponseTime += responseTime;
       
       // Cache the result if caching is enabled
       if (useCache) {
@@ -120,9 +189,31 @@ class WhisperAPIClient {
       
       return response;
     } catch (error) {
+      // Track errors
+      this.metrics.errors++;
+      
       console.error('[WhisperAPI] Error details:', error);
-      throw new APIError(`Whisper API transcription failed: ${error.message}`, {
-        code: 'ERR_WHISPER_API',
+      
+      // Check for specific error types for better error messages
+      let errorMessage = error.message;
+      let errorCode = 'ERR_WHISPER_API';
+      
+      if (error.status === 429) {
+        errorMessage = 'Rate limit exceeded. Please try again in a moment.';
+        errorCode = 'ERR_RATE_LIMIT';
+      } else if (error.status === 413) {
+        errorMessage = 'Audio file too large for processing.';
+        errorCode = 'ERR_FILE_TOO_LARGE';
+      } else if (error.status === 400 && error.code === 'audio_too_short') {
+        errorMessage = 'Audio file is too short. Minimum audio length is 0.1 seconds.';
+        errorCode = 'ERR_AUDIO_TOO_SHORT';
+      } else if (error.code === 'ETIMEDOUT' || error.code === 'ESOCKETTIMEDOUT') {
+        errorMessage = 'Network timeout. Check your internet connection and try again.';
+        errorCode = 'ERR_NETWORK_TIMEOUT';
+      }
+      
+      throw new APIError(`Whisper API transcription failed: ${errorMessage}`, {
+        code: errorCode,
         metadata: { originalError: error }
       });
     }
@@ -133,7 +224,14 @@ class WhisperAPIClient {
    * @returns {Object} Cache statistics
    */
   getCacheStats() {
-    return this.cache.getStats();
+    return {
+      cacheStats: this.cache.getStats(),
+      metrics: this.metrics,
+      averageResponseTime: this.metrics.totalRequests > 0 ? 
+        Math.round(this.metrics.totalResponseTime / this.metrics.totalRequests) : 0,
+      hitRate: this.metrics.totalRequests > 0 ? 
+        (this.metrics.cacheHits / this.metrics.totalRequests * 100).toFixed(1) + '%' : '0%'
+    };
   }
 
   /**
@@ -141,6 +239,7 @@ class WhisperAPIClient {
    */
   clearCache() {
     this.cache.clear();
+    console.log('[WhisperAPI] Cache cleared');
   }
 }
 
