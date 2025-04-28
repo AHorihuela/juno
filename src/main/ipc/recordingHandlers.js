@@ -11,6 +11,13 @@ const logger = LogManager.getLogger('RecordingHandlers');
 function setupRecordingHandlers(serviceRegistry) {
   logger.info('Setting up recording handlers...');
   
+  // Log available services for debugging
+  logger.debug('Available services for recording:', { 
+    metadata: { 
+      services: Array.from(serviceRegistry.services.keys()) 
+    } 
+  });
+  
   // Handle start recording request
   ipcMain.handle('start-recording', async () => {
     logger.info('start-recording called from renderer');
@@ -51,6 +58,18 @@ function setupRecordingHandlers(serviceRegistry) {
         logger.error('Error testing microphone access:', { metadata: { error: micError } });
       }
       
+      // Check available methods on recorder
+      const methods = Object.getOwnPropertyNames(Object.getPrototypeOf(recorder))
+        .filter(name => typeof recorder[name] === 'function' && name !== 'constructor');
+      
+      logger.debug('Available recorder methods:', { metadata: { methods } });
+      
+      // Verify start method exists
+      if (typeof recorder.start !== 'function') {
+        logger.error('Recorder service missing start method');
+        throw new Error('Recorder service missing start method');
+      }
+      
       await recorder.start();
       logger.info('Recording started successfully');
       return { success: true };
@@ -78,8 +97,19 @@ function setupRecordingHandlers(serviceRegistry) {
       }
       
       logger.info('Stopping recording...');
+      
+      // Verify stop method exists
+      if (typeof recorder.stop !== 'function') {
+        logger.error('Recorder service missing stop method');
+        throw new Error('Recorder service missing stop method');
+      }
+      
       await recorder.stop();
       logger.info('Recording stopped successfully');
+      
+      // Check transcription and insertion flow
+      logger.debug('Recording stopped, waiting for transcription and text insertion events...');
+      
       return { success: true };
     } catch (error) {
       logger.error('Failed to stop recording:', { metadata: { error } });

@@ -5,6 +5,8 @@ const LogManager = require('../utils/LogManager');
 // Get a logger for this module
 const logger = LogManager.getLogger('IPCHandlers');
 
+console.log('[IPCHandlers] Module loaded');
+
 function setupIpcHandlers(mainWindow, serviceRegistry) {
   logger.info('Setting up IPC handlers with mainWindow and serviceRegistry');
   
@@ -211,6 +213,24 @@ function setupIpcHandlers(mainWindow, serviceRegistry) {
       console.error('Error getting AI usage stats:', error);
       throw new Error(`Failed to get AI usage stats: ${error.message}`);
     }
+  });
+
+  // Example: Add logs to recording-related IPC events
+  ipcMain.on('start-recording', (event, ...args) => {
+    console.log('[IPCHandlers] Received start-recording event with args:', args);
+    // ... existing code ...
+  });
+  ipcMain.on('stop-recording', (event, ...args) => {
+    console.log('[IPCHandlers] Received stop-recording event with args:', args);
+    // ... existing code ...
+  });
+  ipcMain.on('start-transcription', (event, ...args) => {
+    console.log('[IPCHandlers] Received start-transcription event with args:', args);
+    // ... existing code ...
+  });
+  ipcMain.on('stop-transcription', (event, ...args) => {
+    console.log('[IPCHandlers] Received stop-transcription event with args:', args);
+    // ... existing code ...
   });
 }
 

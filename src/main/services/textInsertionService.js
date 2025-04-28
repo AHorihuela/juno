@@ -60,6 +60,8 @@ class TextInsertionService extends BaseService {
    * @private
    */
   async _createAppleScriptFiles() {
+    logger.info('Creating AppleScript files for text insertion');
+    
     // Script for standard paste operation
     const pasteScript = `
       on run
@@ -82,11 +84,59 @@ class TextInsertionService extends BaseService {
       end run
     `;
     
-    // Write scripts to temporary files
-    await Promise.all([
-      fs.promises.writeFile(this.applescriptPath.paste, pasteScript),
-      fs.promises.writeFile(this.applescriptPath.replaceSelection, replaceSelectionScript)
-    ]);
+    try {
+      // Ensure temp directory exists
+      const tempDir = os.tmpdir();
+      
+      // Log the paths
+      logger.debug('AppleScript paths:', {
+        metadata: {
+          paste: this.applescriptPath.paste,
+          replaceSelection: this.applescriptPath.replaceSelection,
+          tempDir
+        }
+      });
+      
+      // Write scripts to temporary files with more robust error handling
+      await Promise.all([
+        fs.promises.writeFile(this.applescriptPath.paste, pasteScript)
+          .catch(err => {
+            logger.error(`Failed to write paste script to ${this.applescriptPath.paste}:`, err);
+            throw err;
+          }),
+        fs.promises.writeFile(this.applescriptPath.replaceSelection, replaceSelectionScript)
+          .catch(err => {
+            logger.error(`Failed to write replace script to ${this.applescriptPath.replaceSelection}:`, err);
+            throw err;
+          })
+      ]);
+      
+      // Verify files were created
+      const [pasteExists, replaceExists] = await Promise.all([
+        fs.promises.access(this.applescriptPath.paste, fs.constants.R_OK)
+          .then(() => true)
+          .catch(() => false),
+        fs.promises.access(this.applescriptPath.replaceSelection, fs.constants.R_OK)
+          .then(() => true)
+          .catch(() => false)
+      ]);
+      
+      logger.info('AppleScript file creation status:', {
+        metadata: {
+          pasteExists,
+          replaceExists 
+        }
+      });
+      
+      if (!pasteExists || !replaceExists) {
+        throw new Error('Failed to verify AppleScript files');
+      }
+      
+      logger.info('AppleScript files created successfully');
+    } catch (error) {
+      logger.error('Failed to create AppleScript files:', error);
+      // Continue initialization, we'll use inline scripts as fallback
+    }
   }
   
   /**
@@ -212,6 +262,7 @@ class TextInsertionService extends BaseService {
    */
   async insertText(text, replaceHighlight = false) {
     if (!this.initialized) {
+      logger.error('TextInsertionService not initialized');
       throw this.emitError(new Error('TextInsertionService not initialized'));
     }
 
@@ -223,9 +274,11 @@ class TextInsertionService extends BaseService {
     // Normalize text to empty string if falsy
     if (!text) {
       text = '';
+      logger.debug('Empty text provided, normalizing to empty string');
     }
 
     if (process.platform !== 'darwin') {
+      logger.error('Text insertion is only supported on macOS');
       throw this.emitError(new Error('Text insertion is only supported on macOS'));
     }
 
@@ -240,6 +293,7 @@ class TextInsertionService extends BaseService {
     logger.info('Starting text insertion', { 
       metadata: {
         textLength: text.length,
+        textPreview: text.substring(0, 50) + (text.length > 50 ? '...' : ''),
         hasHighlight: Boolean(replaceHighlight),
         highlightLength: typeof replaceHighlight === 'string' ? replaceHighlight.length : 0
       }
@@ -251,7 +305,9 @@ class TextInsertionService extends BaseService {
 
     try {
       // Save current clipboard
+      logger.debug('Attempting to save current clipboard');
       this.saveClipboard();
+      logger.debug('Clipboard saved successfully');
 
       // For better UX, don't automatically add space (this can be added back if needed)
       const textToInsert = text;
@@ -262,6 +318,16 @@ class TextInsertionService extends BaseService {
       
       // Verify clipboard content
       const verifyClipboard = clipboard.readText();
+      logger.debug('Clipboard verification', {
+        metadata: {
+          success: verifyClipboard === textToInsert,
+          expectedLength: textToInsert.length,
+          actualLength: verifyClipboard.length,
+          expectedPreview: textToInsert.substring(0, 30) + '...',
+          actualPreview: verifyClipboard.substring(0, 30) + '...'
+        }
+      });
+      
       if (verifyClipboard !== textToInsert) {
         logger.warn('Clipboard verification failed', { 
           metadata: { 
@@ -270,11 +336,23 @@ class TextInsertionService extends BaseService {
           } 
         });
         // Retry clipboard write once
+        logger.debug('Retrying clipboard write');
         clipboard.writeText(textToInsert);
+        
+        // Verify again
+        const secondVerify = clipboard.readText();
+        logger.debug('Second clipboard verification', {
+          metadata: {
+            success: secondVerify === textToInsert,
+            expectedLength: textToInsert.length,
+            actualLength: secondVerify.length
+          }
+        });
       }
 
       // Check if we should actually try to replace selection
       const shouldReplaceSelection = Boolean(replaceHighlight);
+      logger.debug('Should replace selection:', shouldReplaceSelection);
       
       // Check if we need to try simpler insertion method first
       const trySimpleInsertionFirst = !shouldReplaceSelection || 
@@ -298,9 +376,11 @@ class TextInsertionService extends BaseService {
             const scriptPath = this.applescriptPath.paste;
             
             if (!fs.existsSync(scriptPath)) {
+              logger.warn('AppleScript file not found:', scriptPath);
               throw new Error('AppleScript file not found: ' + scriptPath);
             }
             
+            logger.debug('Executing AppleScript from file:', scriptPath);
             return await this._executeAppleScript(scriptPath);
           },
           
@@ -308,6 +388,7 @@ class TextInsertionService extends BaseService {
           async () => {
             logger.debug('Trying insertion method 2: Inline paste AppleScript');
             const script = `tell application "System Events" to keystroke "v" using {command down}`;
+            logger.debug('Executing inline AppleScript:', script);
             return await this._executeInlineAppleScript(script);
           },
           
@@ -320,7 +401,7 @@ class TextInsertionService extends BaseService {
                 keystroke "v" using {command down}
               end tell
             `;
-            
+            logger.debug('Executing delayed inline AppleScript');
             return await this._executeInlineAppleScript(script);
           }
         );
@@ -369,68 +450,76 @@ class TextInsertionService extends BaseService {
       for (const method of methods) {
         methodIndex++;
         try {
+          logger.debug(`Attempting insertion method ${methodIndex}`);
           await method();
-          logger.info(`Text insertion successful using method ${methodIndex}`);
+          logger.info(`Method ${methodIndex} succeeded`);
           success = true;
           break;
-        } catch (methodError) {
-          logger.warn(`Method ${methodIndex} failed:`, { 
+        } catch (error) {
+          logger.error(`Method ${methodIndex} failed:`, { 
             metadata: { 
-              error: methodError,
-              message: methodError.message
+              error, 
+              message: error.message
             } 
           });
-          
-          lastError = methodError;
-          
-          // Wait a bit before trying the next method
-          await new Promise(resolve => setTimeout(resolve, 200));
+          lastError = error;
+          // Continue to next method
         }
       }
       
-      if (!success) {
-        throw new Error('All insertion methods failed: ' + (lastError?.message || 'Unknown error'));
+      // Check if we need to restore the clipboard
+      if (this.originalClipboard !== null) {
+        // Wait a short time to ensure paste completes
+        await new Promise(resolve => setTimeout(resolve, this.timeouts.clipboardRestore));
+        logger.debug('Attempting to restore clipboard');
+        this.restoreClipboard();
+        logger.debug('Clipboard restored successfully');
       }
-
-      // Minimal wait before restoring clipboard to avoid race conditions
-      await new Promise(resolve => setTimeout(resolve, this.timeouts.clipboardRestore));
       
-      this.restoreClipboard();
+      this.isInserting = false;
+      
+      if (!success) {
+        if (lastError) {
+          this.emitError(lastError);
+          logger.error('All insertion methods failed, last error:', { 
+            metadata: { error: lastError }
+          });
+          return false;
+        }
+      }
+      
       logger.info('Text insertion completed successfully');
-
+      this.emit('text-inserted', { 
+        textLength: text.length,
+        wasReplacement: shouldReplaceSelection
+      });
+      
       return true;
     } catch (error) {
-      logger.error('Failed to insert text:', { 
-        metadata: { 
-          error,
-          name: error.name,
-          message: error.message,
-          stack: error.stack,
-          // Add more detailed error diagnostics
-          platform: process.platform,
-          clipboardAvailable: Boolean(clipboard),
-          textLength: text?.length || 0,
-          code: error.code,
-          signal: error.signal,
-          command: error.cmd 
-        } 
-      });
+      this.isInserting = false;
       
-      // Show popup with copy button
-      this.getService('notification').showNotification({
-        title: 'Text Insertion Failed',
-        body: 'Text copied to clipboard. Press Cmd+V to paste manually.',
-        type: 'info'
+      // Ensure clipboard is restored on error
+      try {
+        if (this.originalClipboard !== null) {
+          this.restoreClipboard();
+          logger.debug('Clipboard restored after error');
+        }
+      } catch (restoreError) {
+        logger.error('Error restoring clipboard:', { 
+          metadata: { error: restoreError }
+        });
+      }
+      
+      logger.error('Error during text insertion:', { 
+        metadata: { 
+          error, 
+          message: error.message,
+          stack: error.stack
+        }
       });
-
-      // Keep text in clipboard for manual pasting
-      clipboard.writeText(text);
-      logger.debug('Text kept in clipboard for manual pasting');
       
       this.emitError(error);
       return false;
-    } finally {
-      this.isInserting = false;
     }
   }
 

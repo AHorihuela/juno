@@ -456,6 +456,55 @@ class ConfigService extends BaseService {
   getAppDataPath() {
     return app.getPath('userData');
   }
+
+  /**
+   * Returns a config object for the requested section (e.g., 'ai', 'selection', 'notification', etc.)
+   * @param {string} section
+   * @returns {Promise<Object>} config object for the section
+   */
+  async getConfig(section) {
+    const store = await this.initializeStore();
+    let config = {};
+    switch (section) {
+      case 'ai':
+        config = {
+          defaultProvider: await this.getAIModel(),
+          defaultModel: await this.getAIModel(),
+          temperature: await this.getAITemperature(),
+          // Add more AI-related config as needed
+        };
+        break;
+      case 'selection':
+        config = {
+          // Example: selection method, add more as needed
+          method: store.get('selectionMethod', 'macos-script'),
+        };
+        break;
+      case 'notification':
+        config = {
+          defaultTimeout: store.get('notificationTimeout', 5000),
+          maxQueueSize: store.get('notificationMaxQueueSize', 5),
+          appIcon: store.get('notificationAppIcon', null),
+        };
+        break;
+      case 'tts':
+        config = {
+          // Add TTS-related config as needed
+        };
+        break;
+      case 'transcription':
+        config = {
+          // Add transcription-related config as needed
+        };
+        break;
+      default:
+        // Return all config if no section is specified or unknown
+        config = store.store;
+        break;
+    }
+    console.log(`[ConfigService] getConfig('${section}') ->`, config);
+    return config;
+  }
 }
 
 module.exports = () => new ConfigService(); 

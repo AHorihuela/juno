@@ -18,7 +18,7 @@ const serviceRegistry = new ServiceRegistry();
 
 // Import service factories
 const configService = require('./src/main/services/configService');
-const recorderService = require('./src/main/services/recorder');
+const RecorderService = require('./src/main/services/recorder/RecorderService');
 const transcriptionService = require('./src/main/services/transcriptionService');
 const notificationService = require('./src/main/services/notificationService');
 const trayService = require('./src/main/services/trayService');
@@ -107,7 +107,7 @@ async function initializeServices() {
       .register('dictionary', dictionaryService())
       .register('textProcessing', textProcessingService())
       .register('audio', audioFeedbackService())
-      .register('recorder', recorderService())
+      .register('recorder', new RecorderService())
       .register('transcription', transcriptionService())
       .register('ai', aiService())
       .register('context', contextService())
@@ -171,32 +171,21 @@ function setupAllIpcHandlers(mainWindow) {
 
 // Handle app ready event
 app.whenReady().then(async () => {
-  logger.info('Application ready');
-  
-  // Initialize services
-  await initializeServices();
-  
-  // Create main window
+  console.log('[Main] App ready event fired');
   try {
-    console.log('Creating window...');
+    // Initialize all services first
+    await initializeServices();
+    // Now create the main window
+    console.log('[Main] Creating main window...');
     const mainWindow = createMainWindow(serviceRegistry);
-    
     // Setup error handlers with the main window
     setupErrorHandlers(mainWindow, serviceRegistry);
-    
     // Setup IPC handlers with the main window
     setupAllIpcHandlers(mainWindow);
-    
     // Log success
     logger.info('Main window created successfully');
   } catch (error) {
-    logger.error('Failed to create main window', { 
-      metadata: { 
-        error, 
-        message: error.message,
-        stack: error.stack 
-      } 
-    });
+    console.error('[Main] Error creating main window:', error);
     app.exit(1);
   }
 });
@@ -251,4 +240,6 @@ process.on('unhandledRejection', (reason) => {
       stack: reason.stack 
     } 
   });
-}); 
+});
+
+console.log('[Main] main.js loaded'); 

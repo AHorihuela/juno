@@ -11,6 +11,8 @@ const LogManager = require('../utils/LogManager');
 // Get a logger for this module
 const logger = LogManager.getLogger('TranscriptionService');
 
+console.log('[TranscriptionService] Module loaded');
+
 class TranscriptionService extends BaseService {
   constructor() {
     super('Transcription');
@@ -112,47 +114,83 @@ class TranscriptionService extends BaseService {
    */
   async processAndInsertText(transcribedText) {
     if (!transcribedText) {
+      logger.warn('No transcribed text to process');
       return false;
     }
     
     try {
       const normalizedText = transcribedText.trim();
-      logger.debug(`Processing transcribed text: "${normalizedText}"`);
+      logger.debug(`Processing transcribed text: "${normalizedText.substring(0, 50)}${normalizedText.length > 50 ? '...' : ''}"`);
       
       // Check if this is an AI command
       const aiService = this.services.get('ai');
+      logger.debug(`AI service available: ${Boolean(aiService)}`);
+      
       if (aiService && await aiService.isAICommand(normalizedText)) {
         logger.info('AI command detected, processing...');
         
         // Get selection service 
         const selectionService = this.services.get('selection');
+        logger.debug(`Selection service available: ${Boolean(selectionService)}`);
         
         // Get highlighted text for context if available
-        const selectedText = await selectionService?.getSelectedText().catch(err => {
-          logger.warn('Failed to get selected text for AI context:', err);
-          return '';
-        });
+        let selectedText = '';
+        try {
+          if (selectionService && typeof selectionService.getSelectedText === 'function') {
+            selectedText = await selectionService.getSelectedText();
+            logger.debug(`Selected text retrieved, length: ${selectedText.length}`);
+          } else {
+            logger.warn('Selection service not available or missing getSelectedText method');
+          }
+        } catch (selectionError) {
+          logger.warn('Failed to get selected text for AI context:', selectionError);
+        }
         
         logger.debug(`Selected text for AI context: ${selectedText ? 
           `"${selectedText.substring(0, 30)}..." (${selectedText.length} chars)` : 
           'none'}`);
           
         // Process AI request
-        const aiResponse = await aiService.processRequest(normalizedText, selectedText);
-        if (aiResponse) {
-          logger.info('Inserting AI response');
-          await this.insertText(aiResponse);
-          return true;
-        } else {
-          logger.warn('AI processing returned empty response');
-          this.notify('AI returned no response', 'warning');
+        logger.debug('Calling AI service processRequest method');
+        try {
+          const aiResponse = await aiService.processRequest(normalizedText, selectedText);
+          if (aiResponse) {
+            logger.info('AI response received, inserting text');
+            await this.insertText(aiResponse);
+            return true;
+          } else {
+            logger.warn('AI processing returned empty response');
+            this.notify('AI returned no response', 'warning');
+            return false;
+          }
+        } catch (aiError) {
+          logger.error('Error processing AI request:', aiError);
+          this.notify(`AI error: ${aiError.message}`, 'error');
           return false;
         }
       } else {
         // This is regular text, just insert it
         logger.info('Inserting regular transcribed text');
-        await this.insertText(normalizedText);
-        return true;
+        
+        // Get text insertion service
+        const textInsertionService = this.services.get('textInsertion');
+        logger.debug(`Text insertion service available: ${Boolean(textInsertionService)}`);
+        
+        if (!textInsertionService) {
+          logger.error('Text insertion service not available');
+          this.notify('Text insertion service not available', 'error');
+          return false;
+        }
+        
+        try {
+          const insertionResult = await this.insertText(normalizedText);
+          logger.debug(`Text insertion result: ${insertionResult}`);
+          return insertionResult;
+        } catch (insertionError) {
+          logger.error('Error during text insertion:', insertionError);
+          this.notify(`Text insertion failed: ${insertionError.message}`, 'error');
+          return false; 
+        }
       }
     } catch (error) {
       logger.error('Error processing transcribed text:', error);
@@ -170,22 +208,54 @@ class TranscriptionService extends BaseService {
   async insertText(text) {
     try {
       if (!text) {
+        logger.warn('No text provided for insertion');
         return false;
       }
       
       const textInsertionService = this.services.get('textInsertion');
       if (!textInsertionService) {
+        logger.error('Text insertion service not available');
         throw new Error('Text insertion service not available');
       }
       
-      logger.debug(`Inserting text: "${text.substring(0, 30)}${text.length > 30 ? '...' : ''}"`);
-      await textInsertionService.insertText(text);
+      logger.debug(`Inserting text: "${text.substring(0, 30)}${text.length > 30 ? '...' : ''}" (${text.length} chars)`);
       
-      return true;
+      // Check if the service methods exist
+      if (typeof textInsertionService.insertText !== 'function') {
+        logger.error('Text insertion service missing insertText method');
+        throw new Error('Text insertion service missing insertText method');
+      }
+      
+      // Call the insertText method with detailed logging
+      logger.debug('Calling textInsertionService.insertText');
+      const result = await textInsertionService.insertText(text);
+      logger.debug(`Text insertion result: ${result}`);
+      
+      if (!result) {
+        logger.warn('Text insertion returned false');
+        // Show a backup notification with copy button
+        this.notify('Text insertion failed, but text has been copied to clipboard', 'info');
+        // Keep text in clipboard as fallback
+        const { clipboard } = require('electron');
+        clipboard.writeText(text);
+      }
+      
+      return result;
     } catch (error) {
       logger.error('Error inserting text:', error);
       this.notify(`Failed to insert text: ${error.message}`, 'error');
       this.emit('error', error);
+      
+      // Fallback: Copy to clipboard for manual paste
+      try {
+        const { clipboard } = require('electron');
+        clipboard.writeText(text);
+        logger.debug('Text copied to clipboard as fallback');
+        this.notify('Text copied to clipboard for manual pasting', 'info');
+      } catch (clipboardError) {
+        logger.error('Error copying to clipboard:', clipboardError);
+      }
+      
       return false;
     }
   }
@@ -574,6 +644,28 @@ class TranscriptionService extends BaseService {
       normalCount: this.processingStats.normalTranscriptionCount,
       errorCount: this.processingStats.errorCount
     });
+  }
+
+  async startTranscription(...args) {
+    console.log('[TranscriptionService] startTranscription called with args:', args);
+    try {
+      // ... existing code ...
+      console.log('[TranscriptionService] Transcription started');
+    } catch (error) {
+      console.error('[TranscriptionService] Error starting transcription:', error);
+      throw error;
+    }
+  }
+
+  async stopTranscription(...args) {
+    console.log('[TranscriptionService] stopTranscription called with args:', args);
+    try {
+      // ... existing code ...
+      console.log('[TranscriptionService] Transcription stopped');
+    } catch (error) {
+      console.error('[TranscriptionService] Error stopping transcription:', error);
+      throw error;
+    }
   }
 }
 

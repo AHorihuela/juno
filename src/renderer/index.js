@@ -38,4 +38,18 @@ if (!container) {
   } catch (error) {
     console.error('[React] Error during React initialization:', error);
   }
-} 
+}
+
+console.log('[Renderer] index.js loaded');
+
+window.addEventListener('DOMContentLoaded', () => {
+  console.log('[Renderer] DOMContentLoaded');
+});
+
+window.addEventListener('error', (event) => {
+  console.error('[Renderer] Global error:', event.error || event.message);
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('[Renderer] Unhandled promise rejection:', event.reason);
+}); 
