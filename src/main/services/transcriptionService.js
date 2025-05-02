@@ -48,6 +48,28 @@ class TranscriptionService extends BaseService {
       this.getService('dictionary')
     );
     logger.info('Initialized WhisperAPIClient');
+    
+    // Initialize AppNameProvider
+    try {
+      // Try to get it from the SelectionService first
+      const selectionService = this.getService('selection');
+      if (selectionService && selectionService.appNameProvider) {
+        this.appNameProvider = selectionService.appNameProvider;
+        logger.info('Using AppNameProvider from SelectionService');
+      } else {
+        // If not available, initialize our own instance
+        const AppNameProvider = require('./selection/AppNameProvider');
+        this.appNameProvider = new AppNameProvider();
+        logger.info('Initialized standalone AppNameProvider');
+      }
+    } catch (error) {
+      logger.error('Failed to initialize AppNameProvider:', error);
+      // Create a fallback provider that always returns 'unknown'
+      this.appNameProvider = {
+        getActiveAppName: async () => 'unknown'
+      };
+      logger.info('Using fallback AppNameProvider');
+    }
   }
 
   async _shutdown() {
@@ -123,14 +145,14 @@ class TranscriptionService extends BaseService {
       logger.debug(`Processing transcribed text: "${normalizedText.substring(0, 50)}${normalizedText.length > 50 ? '...' : ''}"`);
       
       // Check if this is an AI command
-      const aiService = this.services.get('ai');
+      const aiService = this.getService('ai');
       logger.debug(`AI service available: ${Boolean(aiService)}`);
       
       if (aiService && await aiService.isAICommand(normalizedText)) {
         logger.info('AI command detected, processing...');
         
         // Get selection service 
-        const selectionService = this.services.get('selection');
+        const selectionService = this.getService('selection');
         logger.debug(`Selection service available: ${Boolean(selectionService)}`);
         
         // Get highlighted text for context if available
@@ -164,7 +186,12 @@ class TranscriptionService extends BaseService {
             return false;
           }
         } catch (aiError) {
-          logger.error('Error processing AI request:', aiError);
+          logger.error('Error processing AI request:', { 
+            metadata: { 
+              error: aiError.message, 
+              stack: aiError.stack 
+            } 
+          });
           this.notify(`AI error: ${aiError.message}`, 'error');
           return false;
         }
@@ -173,7 +200,7 @@ class TranscriptionService extends BaseService {
         logger.info('Inserting regular transcribed text');
         
         // Get text insertion service
-        const textInsertionService = this.services.get('textInsertion');
+        const textInsertionService = this.getService('textInsertion');
         logger.debug(`Text insertion service available: ${Boolean(textInsertionService)}`);
         
         if (!textInsertionService) {
@@ -187,13 +214,23 @@ class TranscriptionService extends BaseService {
           logger.debug(`Text insertion result: ${insertionResult}`);
           return insertionResult;
         } catch (insertionError) {
-          logger.error('Error during text insertion:', insertionError);
+          logger.error('Error during text insertion:', { 
+            metadata: { 
+              error: insertionError.message, 
+              stack: insertionError.stack 
+            } 
+          });
           this.notify(`Text insertion failed: ${insertionError.message}`, 'error');
           return false; 
         }
       }
     } catch (error) {
-      logger.error('Error processing transcribed text:', error);
+      logger.error('Error processing transcribed text:', { 
+        metadata: { 
+          error: error.message, 
+          stack: error.stack 
+        } 
+      });
       this.notify(`Error processing text: ${error.message}`, 'error');
       this.emit('error', error);
       return false;
@@ -212,7 +249,7 @@ class TranscriptionService extends BaseService {
         return false;
       }
       
-      const textInsertionService = this.services.get('textInsertion');
+      const textInsertionService = this.getService('textInsertion');
       if (!textInsertionService) {
         logger.error('Text insertion service not available');
         throw new Error('Text insertion service not available');
@@ -226,23 +263,51 @@ class TranscriptionService extends BaseService {
         throw new Error('Text insertion service missing insertText method');
       }
       
-      // Call the insertText method with detailed logging
-      logger.debug('Calling textInsertionService.insertText');
-      const result = await textInsertionService.insertText(text);
-      logger.debug(`Text insertion result: ${result}`);
+      // Retry mechanism for text insertion
+      let attempts = 0;
+      const maxAttempts = 2;
+      let lastError = null;
       
-      if (!result) {
-        logger.warn('Text insertion returned false');
-        // Show a backup notification with copy button
-        this.notify('Text insertion failed, but text has been copied to clipboard', 'info');
-        // Keep text in clipboard as fallback
-        const { clipboard } = require('electron');
-        clipboard.writeText(text);
+      while (attempts < maxAttempts) {
+        try {
+          // Call the insertText method with detailed logging
+          logger.debug(`Calling textInsertionService.insertText (attempt ${attempts + 1}/${maxAttempts})`);
+          const result = await textInsertionService.insertText(text);
+          logger.debug(`Text insertion result: ${result}`);
+          
+          if (!result) {
+            logger.warn('Text insertion returned false');
+            // Show a backup notification with copy button
+            this.notify('Text copied to clipboard for manual pasting', 'info');
+            // Keep text in clipboard as fallback
+            const { clipboard } = require('electron');
+            clipboard.writeText(text);
+          }
+          
+          return result;
+        } catch (err) {
+          lastError = err;
+          logger.warn(`Text insertion attempt ${attempts + 1} failed`, {
+            metadata: { error: err.message }
+          });
+          attempts++;
+          
+          if (attempts < maxAttempts) {
+            // Wait before retrying
+            await new Promise(resolve => setTimeout(resolve, 300 * attempts));
+          }
+        }
       }
       
-      return result;
+      // If we reach here, all attempts failed
+      throw lastError;
     } catch (error) {
-      logger.error('Error inserting text:', error);
+      logger.error('Error inserting text:', { 
+        metadata: { 
+          error: error.message, 
+          stack: error.stack 
+        } 
+      });
       this.notify(`Failed to insert text: ${error.message}`, 'error');
       this.emit('error', error);
       
@@ -267,7 +332,7 @@ class TranscriptionService extends BaseService {
    */
   notify(message, type = 'info') {
     try {
-      const notificationService = this.services.get('notification');
+      const notificationService = this.getService('notification');
       if (notificationService) {
         notificationService.show({
           title: 'Transcription',

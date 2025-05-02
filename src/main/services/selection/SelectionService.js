@@ -55,6 +55,16 @@ class SelectionService extends EventEmitter {
     
     // IPC handler for renderer process
     this.ipcHandler = null;
+    
+    // Initialize AppNameProvider
+    this.appNameProvider = new AppNameProvider();
+    
+    // Initialize strategies
+    this.strategies = [
+      new ElectronSelectionStrategy(),
+      new AccessibilitySelectionStrategy(),
+      new ClipboardSelectionStrategy()
+    ];
   }
   
   /**
@@ -82,6 +92,15 @@ class SelectionService extends EventEmitter {
         logger.debug(`Selection service configured with method: ${this.options.selectionMethod}`);
       } else {
         logger.warn('Config service not available, using default selection settings');
+      }
+      
+      // Preload app name to warm up the cache
+      try {
+        logger.debug('Preloading app name...');
+        await this.appNameProvider.preloadAppName();
+        logger.debug('App name preloaded successfully');
+      } catch (appNameError) {
+        logger.warn('Failed to preload app name:', appNameError);
       }
       
       this.initialized = true;
