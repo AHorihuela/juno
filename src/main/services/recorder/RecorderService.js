@@ -449,10 +449,17 @@ class RecorderService extends BaseService {
         .then(transcription => {
           if (transcription) {
             this.emit('transcription', transcription);
+            
+            // Check if transcription is a string before using string methods
+            const isString = typeof transcription === 'string';
+            const transcriptionPreview = isString ? 
+              `${transcription.substring(0, 50)}${transcription.length > 50 ? '...' : ''}` : 
+              '[non-string result]';
+            
             logger.info('Transcription received:', { 
               metadata: { 
-                transcriptionLength: transcription.length,
-                transcriptionPreview: transcription.substring(0, 50) + '...'
+                transcriptionLength: isString ? transcription.length : 'n/a',
+                transcriptionPreview
               } 
             });
           } else {
