@@ -148,15 +148,82 @@ class SelectionService extends EventEmitter {
     try {
       logger.debug('Getting selected text');
       
-      const selectedText = await this._getSelectionByMethod(this.options.selectionMethod);
+      // First try the cached value if it's recent
+      const now = Date.now();
+      if (this.selectionCache.text && (now - this.selectionCache.timestamp < this.selectionCacheTTL)) {
+        logger.debug('Using cached selection (age: ' + (now - this.selectionCache.timestamp) + 'ms)');
+        return this.selectionCache.text;
+      }
       
-      logger.debug(`Retrieved selected text: ${selectedText ? 
-        `"${selectedText.substring(0, 30)}${selectedText.length > 30 ? '...' : ''}" (${selectedText.length} chars)` : 
-        'none'}`);
+      // Use debounce to avoid multiple parallel calls
+      if (this.pendingSelectionRequest) {
+        logger.debug('Reusing pending selection request');
+        return new Promise((resolve) => {
+          const originalResolve = this.pendingSelectionRequestResolve;
+          this.pendingSelectionRequestResolve = (result) => {
+            originalResolve(result);
+            resolve(result);
+          };
+        });
+      }
+      
+      // Get the app name first for better strategy selection
+      const appName = await this.appNameProvider.getActiveAppName().catch(err => {
+        logger.warn('Error getting app name for selection:', err);
+        return 'unknown';
+      });
+      
+      logger.debug(`Getting selected text for app: ${appName}`);
+      
+      // Create a new promise that will be resolved when the selection is retrieved
+      const selectionPromise = new Promise((resolve) => {
+        this.pendingSelectionRequestResolve = resolve;
         
-      return selectedText || '';
+        // Use timeout to provide time for any previous operations to complete
+        this.pendingSelectionRequest = setTimeout(async () => {
+          try {
+            // First try with the configured method
+            let selectedText = await this._getSelectionByMethod(this.options.selectionMethod);
+            
+            // If that fails, try parallel strategies as fallback
+            if (!selectedText && process.platform === 'darwin') {
+              logger.debug('Primary method failed, trying parallel strategies');
+              selectedText = await this.getSelectionInParallel();
+            }
+            
+            // Cache the result if successful
+            if (selectedText) {
+              this.selectionCache = {
+                text: selectedText,
+                timestamp: Date.now()
+              };
+              logger.debug(`Selected text retrieved (${selectedText.length} chars): "${selectedText.substring(0, 30)}${selectedText.length > 30 ? '...' : ''}"`);
+            } else {
+              logger.debug('No selected text found');
+            }
+            
+            // Clear the pending request
+            this.pendingSelectionRequest = null;
+            this.pendingSelectionRequestResolve = null;
+            
+            // Resolve with the result
+            resolve(selectedText || '');
+          } catch (error) {
+            logger.error('Error getting selected text:', error);
+            
+            // Clear the pending request
+            this.pendingSelectionRequest = null;
+            this.pendingSelectionRequestResolve = null;
+            
+            // Resolve with empty string on error
+            resolve('');
+          }
+        }, this.debounceTime);
+      });
+      
+      return selectionPromise;
     } catch (error) {
-      logger.error('Error getting selected text:', error);
+      logger.error('Unexpected error in getSelectedText:', error);
       this.emit('error', error);
       return '';
     }

@@ -70,6 +70,28 @@ class TranscriptionService extends BaseService {
       };
       logger.info('Using fallback AppNameProvider');
     }
+    
+    // Listen for text insertion events from TextInsertionService
+    try {
+      const textInsertionService = this.getService('textInsertion');
+      if (textInsertionService) {
+        textInsertionService.on('textInserted', (result) => {
+          logger.debug('Received textInserted event:', { metadata: result });
+          
+          // If the insertion failed but we want to suppress error sound,
+          // emit our own event to let others know
+          if (result && !result.success && result.suppressErrorSound) {
+            this.emit('insertFailed', { 
+              suppressErrorSound: true,
+              length: result.length
+            });
+          }
+        });
+        logger.info('Set up text insertion event listener');
+      }
+    } catch (error) {
+      logger.warn('Error setting up text insertion event listener:', error);
+    }
   }
 
   async _shutdown() {
@@ -155,33 +177,110 @@ class TranscriptionService extends BaseService {
         const selectionService = this.getService('selection');
         logger.debug(`Selection service available: ${Boolean(selectionService)}`);
         
-        // Get highlighted text for context if available
+        // Get highlighted text for context if available - with more robust error handling
         let selectedText = '';
         try {
-          if (selectionService && typeof selectionService.getSelectedText === 'function') {
-            selectedText = await selectionService.getSelectedText();
-            logger.debug(`Selected text retrieved, length: ${selectedText.length}`);
+          logger.debug('Attempting to get selected text...');
+          
+          if (!selectionService) {
+            logger.warn('Selection service not available, proceeding without selected text');
+          } else if (typeof selectionService.getSelectedText !== 'function') {
+            logger.warn('Selection service missing getSelectedText method');
           } else {
-            logger.warn('Selection service not available or missing getSelectedText method');
+            // Try multiple attempts to get selected text as it sometimes fails on first try
+            logger.debug('Calling selectionService.getSelectedText()');
+            
+            // First try - sometimes fails silently
+            selectedText = await selectionService.getSelectedText();
+            
+            if (!selectedText && process.platform === 'darwin') {
+              // On macOS, we can try a second time after a small delay
+              logger.debug('First attempt returned no text, trying again after delay...');
+              await new Promise(resolve => setTimeout(resolve, 100));
+              selectedText = await selectionService.getSelectedText();
+              
+              if (!selectedText) {
+                // Last attempt - try using the clipboard as fallback
+                logger.debug('Second attempt failed, trying clipboard fallback...');
+                try {
+                  // Try clipboard-based fallback if available
+                  if (typeof selectionService._getSelectionFromClipboard === 'function') {
+                    selectedText = await selectionService._getSelectionFromClipboard();
+                    logger.debug('Got selection from clipboard fallback');
+                  }
+                } catch (clipboardError) {
+                  logger.warn('Clipboard fallback failed:', clipboardError);
+                }
+              }
+            }
+            
+            logger.debug(`Selected text retrieved, length: ${selectedText ? selectedText.length : 0}`);
+            
+            if (selectedText) {
+              logger.debug(`Selection content: "${selectedText.substring(0, 50)}${selectedText.length > 50 ? '...' : ''}"`);
+            } else {
+              logger.debug('No text selected in the active application');
+              // Notify user that no text is selected
+              this.notify('No text is selected. The AI command will run without context.', 'info');
+            }
           }
         } catch (selectionError) {
           logger.warn('Failed to get selected text for AI context:', selectionError);
+          // Continue with empty selection, but notify user
+          this.notify('Could not access selected text. The AI command will run without context.', 'warning');
         }
         
         logger.debug(`Selected text for AI context: ${selectedText ? 
           `"${selectedText.substring(0, 30)}..." (${selectedText.length} chars)` : 
           'none'}`);
           
-        // Process AI request
-        logger.debug('Calling AI service processRequest method');
+        // Process AI request - check if processCommand exists first, 
+        // fall back to processRequest if it doesn't
+        logger.debug('Checking for AI processing methods');
+        let aiProcessMethod;
+        
+        if (typeof aiService.processCommand === 'function') {
+          logger.debug('Using aiService.processCommand method');
+          aiProcessMethod = 'processCommand';
+        } else if (typeof aiService.processRequest === 'function') {
+          logger.debug('Using aiService.processRequest method');
+          aiProcessMethod = 'processRequest';
+        } else {
+          logger.error('AI service has no valid processing method');
+          this.notify('AI service misconfigured', 'error');
+          return false;
+        }
+        
         try {
-          const aiResponse = await aiService.processRequest(normalizedText, selectedText);
+          // Log the actual values being passed
+          logger.debug(`Calling AI service ${aiProcessMethod} with:`, {
+            command: normalizedText,
+            hasSelectedText: Boolean(selectedText),
+            selectedTextLength: selectedText ? selectedText.length : 0
+          });
+          
+          const aiResponse = await aiService[aiProcessMethod](normalizedText, selectedText);
+          
           if (aiResponse) {
-            logger.info('AI response received, inserting text');
-            await this.insertText(aiResponse);
-            return true;
+            // Check if the response is a string or an object
+            let responseText = aiResponse;
+            
+            // Handle response object format (from newer AI service versions)
+            if (typeof aiResponse === 'object' && aiResponse !== null) {
+              responseText = aiResponse.text || aiResponse.response || '';
+            }
+            
+            if (responseText) {
+              logger.info('AI response received, inserting text');
+              await this.insertText(responseText);
+              return true;
+            } else {
+              logger.warn('AI processing returned empty response');
+              this.notify('AI returned no response', 'warning');
+              return false;
+            }
           } else {
-            logger.warn('AI processing returned empty response');
+            logger.warn('AI processing returned null response');
             this.notify('AI returned no response', 'warning');
             return false;
           }
@@ -308,8 +407,6 @@ class TranscriptionService extends BaseService {
           stack: error.stack 
         } 
       });
-      this.notify(`Failed to insert text: ${error.message}`, 'error');
-      this.emit('error', error);
       
       // Fallback: Copy to clipboard for manual paste
       try {
@@ -317,10 +414,18 @@ class TranscriptionService extends BaseService {
         clipboard.writeText(text);
         logger.debug('Text copied to clipboard as fallback');
         this.notify('Text copied to clipboard for manual pasting', 'info');
+        
+        // Add a flag to the error to suppress error sounds
+        // since the text is at least available in the clipboard
+        if (error) {
+          error.suppressErrorSound = true;
+        }
       } catch (clipboardError) {
         logger.error('Error copying to clipboard:', clipboardError);
       }
       
+      this.notify(`Failed to insert text: ${error.message}`, 'error');
+      this.emit('error', error);
       return false;
     }
   }
@@ -542,8 +647,9 @@ class TranscriptionService extends BaseService {
       const apiPromise = this.apiClient.transcribeAudio(tempFile, {
         useCache: true,
         language: 'en',
-        temperature: 0.0,
-        response_format: 'json' // Ensure we get JSON for faster parsing
+        temperature: 0.3, // Slight increase from 0.0 to allow better formatting 
+        response_format: 'json', // Ensure we get JSON for faster parsing
+        formatText: true // Enable text formatting with proper capitalization and punctuation
       });
       
       // Add timeout to the API call to prevent hanging

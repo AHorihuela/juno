@@ -4,6 +4,7 @@ const player = require('node-wav-player');
 const fs = require('fs');
 const { exec } = require('child_process');
 const BaseService = require('./BaseService');
+const os = require('os');
 
 // Change this number (1-4) to test different variations
 const CURRENT_VARIATION = 1;
@@ -72,14 +73,60 @@ class AudioFeedbackService extends BaseService {
         this.useNativeFallback = true;
         console.log('[AudioFeedback] Using native audio player as requested by environment variable');
       } else {
-        // Quick test to see if node-wav-player works
+        // Test if node-wav-player actually works by trying to play a silent sound
         try {
-          // We'll just check if the module is available, without actually playing a test sound
-          // This avoids the overhead of creating and playing a test file
-          if (typeof player.play !== 'function') {
-            throw new Error('player.play is not a function');
+          console.log('[AudioFeedback] Testing node-wav-player with silent test...');
+          
+          // Create a temporary silent WAV file for testing
+          const tempDir = path.join(os.tmpdir());
+          const testFile = path.join(tempDir, 'juno-test-sound.wav');
+          
+          // Copy a small portion of the start sound to use as a test
+          try {
+            // Read the first 1KB of the start sound
+            const testData = fs.readFileSync(this.startPath, { start: 0, end: 1024 });
+            fs.writeFileSync(testFile, testData);
+            console.log('[AudioFeedback] Created test sound file:', testFile);
+          } catch (fileError) {
+            console.warn('[AudioFeedback] Could not create test sound file:', fileError);
+            throw new Error('Could not create test sound file');
           }
-          console.log('[AudioFeedback] node-wav-player is available');
+          
+          // Try to play the test file with very low volume
+          const testSuccess = await Promise.race([
+            new Promise((resolve) => {
+              player.play({
+                path: testFile,
+                sync: true,
+              })
+              .then(() => {
+                resolve(true);
+              })
+              .catch((err) => {
+                console.warn('[AudioFeedback] Player test failed:', err);
+                resolve(false);
+              });
+            }),
+            new Promise((resolve) => setTimeout(() => {
+              console.warn('[AudioFeedback] Player test timed out');
+              resolve(false);
+            }, 1000))
+          ]);
+          
+          // Clean up test file
+          try {
+            fs.unlinkSync(testFile);
+          } catch (err) {
+            console.warn('[AudioFeedback] Could not clean up test file:', err);
+          }
+          
+          if (testSuccess) {
+            console.log('[AudioFeedback] node-wav-player test succeeded');
+            this.useNativeFallback = false;
+          } else {
+            console.warn('[AudioFeedback] node-wav-player test failed, using native fallback');
+            this.useNativeFallback = true;
+          }
         } catch (error) {
           console.warn('[AudioFeedback] node-wav-player test failed, will use native fallback:', error);
           this.useNativeFallback = true;
@@ -129,25 +176,43 @@ class AudioFeedbackService extends BaseService {
   // Play sound using native player
   playNativeSound(soundPath, sync = false) {
     if (process.platform === 'darwin') {
-      const cmd = `afplay "${soundPath}"`;
+      // On macOS, use afplay with specified volume for better control
+      const cmd = `afplay -v 2.0 "${soundPath}"`;
+      
       if (sync) {
         return new Promise((resolve, reject) => {
-          exec(cmd, (error) => {
+          // Create a child process to monitor and control
+          const process = exec(cmd, (error) => {
             if (error) {
               console.error('[AudioFeedback] Native player error:', error);
               reject(error);
-            } else {
-              resolve();
             }
+            // Note: We don't resolve here because we'll do that on the 'exit' event
+          });
+          
+          process.on('exit', (code) => {
+            if (code === 0) {
+              console.log('[AudioFeedback] Native playback completed successfully');
+              resolve();
+            } else {
+              console.error('[AudioFeedback] Native playback failed with code:', code);
+              reject(new Error(`afplay exited with code ${code}`));
+            }
+          });
+          
+          // Also handle process errors
+          process.on('error', (err) => {
+            console.error('[AudioFeedback] Native playback process error:', err);
+            reject(err);
           });
         });
       } else {
-        // Async execution for better performance
-        exec(cmd, (error) => {
-          if (error) {
-            console.error('[AudioFeedback] Native player error:', error);
-          }
+        // Async execution for better performance, but still track errors
+        const process = exec(cmd);
+        process.on('error', (error) => {
+          console.error('[AudioFeedback] Native player async error:', error);
         });
+        
         return Promise.resolve();
       }
     } else if (process.platform === 'win32') {
@@ -210,25 +275,30 @@ class AudioFeedbackService extends BaseService {
     const startTime = Date.now();
     console.log('[AudioFeedback] Playing start sound from:', this.startPath);
     
-    // Always play start sound asynchronously to avoid delaying the recording
-    if (this.useNativeFallback) {
-      this.playNativeSound(this.startPath, false);
-    } else {
+    try {
+      // For start sound, we'll make it synchronous but with a short timeout
+      // This ensures the sound is heard without delaying recording too much
+      await Promise.race([
+        this.useNativeFallback 
+          ? this.playNativeSound(this.startPath, true) // Use sync mode
+          : player.play({
+              path: this.startPath,
+              sync: true // Wait for completion
+            }),
+        new Promise(resolve => setTimeout(resolve, 500)) // Max 500ms timeout
+      ]);
+      
+      console.log('[AudioFeedback] Start sound completed in:', Date.now() - startTime, 'ms');
+    } catch (error) {
+      console.warn('[AudioFeedback] Start sound playback failed, falling back to native player:', error);
       try {
-        player.play({
-          path: this.startPath,
-          sync: false // Always async for better responsiveness
-        }).catch(error => {
-          console.warn('[AudioFeedback] node-wav-player failed, falling back to native player:', error);
-          this.playNativeSound(this.startPath, false);
-        });
-      } catch (error) {
-        console.warn('[AudioFeedback] node-wav-player failed, falling back to native player:', error);
-        this.playNativeSound(this.startPath, false);
+        // Try native player as fallback
+        await this.playNativeSound(this.startPath, true);
+      } catch (fallbackError) {
+        console.error('[AudioFeedback] Native fallback also failed:', fallbackError);
       }
     }
     
-    console.log('[AudioFeedback] Start sound triggered, time to trigger:', Date.now() - startTime, 'ms');
     return Promise.resolve();
   }
 
@@ -241,25 +311,30 @@ class AudioFeedbackService extends BaseService {
     const startTime = Date.now();
     console.log('[AudioFeedback] Playing stop sound from:', this.stopPath);
     
-    // Always play stop sound asynchronously
-    if (this.useNativeFallback) {
-      this.playNativeSound(this.stopPath, false);
-    } else {
+    try {
+      // For stop sound, we'll make it synchronous but with a short timeout
+      // This ensures the sound is heard without delaying UI response too much
+      await Promise.race([
+        this.useNativeFallback 
+          ? this.playNativeSound(this.stopPath, true) // Use sync mode
+          : player.play({
+              path: this.stopPath,
+              sync: true // Wait for completion
+            }),
+        new Promise(resolve => setTimeout(resolve, 500)) // Max 500ms timeout
+      ]);
+      
+      console.log('[AudioFeedback] Stop sound completed in:', Date.now() - startTime, 'ms');
+    } catch (error) {
+      console.warn('[AudioFeedback] Stop sound playback failed, falling back to native player:', error);
       try {
-        player.play({
-          path: this.stopPath,
-          sync: false
-        }).catch(error => {
-          console.warn('[AudioFeedback] node-wav-player failed, falling back to native player:', error);
-          this.playNativeSound(this.stopPath, false);
-        });
-      } catch (error) {
-        console.warn('[AudioFeedback] node-wav-player failed, falling back to native player:', error);
-        this.playNativeSound(this.stopPath, false);
+        // Try native player as fallback
+        await this.playNativeSound(this.stopPath, true);
+      } catch (fallbackError) {
+        console.error('[AudioFeedback] Native fallback also failed:', fallbackError);
       }
     }
     
-    console.log('[AudioFeedback] Stop sound triggered, time to trigger:', Date.now() - startTime, 'ms');
     return Promise.resolve();
   }
 }

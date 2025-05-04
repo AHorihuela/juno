@@ -139,6 +139,8 @@ class WhisperAPIClient {
    * @param {boolean} options.useCache - Whether to use cache
    * @param {string} options.language - Language code
    * @param {number} options.temperature - Temperature for model
+   * @param {boolean} options.formatText - Whether to format the transcribed text
+   * @param {string} options.response_format - Response format
    * @returns {Promise<Object>} Transcription result
    * @throws {APIError} If transcription fails
    */
@@ -151,7 +153,9 @@ class WhisperAPIClient {
     const {
       useCache = true,
       language = 'en',
-      temperature = 0.0
+      temperature = 0.0,
+      formatText = false,
+      response_format = 'json'
     } = options;
 
     try {
@@ -233,14 +237,26 @@ class WhisperAPIClient {
       // OPTIMIZATION: Set shorter timeout for short audio clips
       const requestTimeout = Math.max(5000, Math.min(15000, audioLengthSeconds * 500));
       
+      // Enhance dictionary prompt with formatting instructions if needed
+      let enhancedPrompt = dictionaryPrompt;
+      if (formatText) {
+        // Add formatting instructions to improve capitalization and punctuation
+        enhancedPrompt = enhancedPrompt + 
+          ' Please use proper capitalization, punctuation, and paragraph breaks. ' +
+          'Format as natural text with proper capitalization at the start of sentences, ' +
+          'use commas where appropriate, and add periods at the end of sentences.';
+        
+        logger.debug('Using enhanced prompt with formatting instructions');
+      }
+      
       // Create API request with optimized parameters
       const response = await openai.audio.transcriptions.create({
         file: fileStream,
         model: 'whisper-1',
         language,
-        prompt: dictionaryPrompt,
-        temperature,  // Lower temperature reduces hallucinations
-        response_format: 'json'  // Use simple JSON format for faster processing
+        prompt: enhancedPrompt,
+        temperature, // User-specified temperature for controlling creativity
+        response_format // User-specified response format
       }, {
         timeout: requestTimeout // Dynamic timeout based on audio length
       });
@@ -251,6 +267,12 @@ class WhisperAPIClient {
       const responseTime = Date.now() - startTime;
       this.metrics.lastResponseTime = responseTime;
       this.metrics.totalResponseTime += responseTime;
+      
+      // Post-process the text if formatting is requested
+      if (formatText && response && response.text) {
+        // Apply additional formatting if needed
+        response.text = this._formatTranscribedText(response.text);
+      }
       
       // Cache the result if caching is enabled
       if (useCache) {
@@ -288,6 +310,59 @@ class WhisperAPIClient {
         metadata: { originalError: error }
       });
     }
+  }
+
+  /**
+   * Format transcribed text to improve readability
+   * @param {string} text - Raw transcribed text
+   * @returns {string} Formatted text
+   * @private
+   */
+  _formatTranscribedText(text) {
+    if (!text) return text;
+    
+    // Apply a series of formatting rules
+    let formattedText = text;
+    
+    // 1. Ensure first character is capitalized
+    if (formattedText.length > 0) {
+      formattedText = formattedText.charAt(0).toUpperCase() + formattedText.slice(1);
+    }
+    
+    // 2. Make sure sentences start with capital letters
+    formattedText = formattedText.replace(/([.!?]\s+)([a-z])/g, (match, p1, p2) => {
+      return p1 + p2.toUpperCase();
+    });
+    
+    // 3. Capitalize common proper nouns
+    const properNouns = ['juno', 'gpt', 'openai', 'microsoft', 'google', 'apple', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday', 'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+    for (const noun of properNouns) {
+      const regex = new RegExp(`\\b${noun}\\b`, 'gi');
+      formattedText = formattedText.replace(regex, noun.charAt(0).toUpperCase() + noun.slice(1));
+    }
+    
+    // 4. Make sure there's a period at the end if not present
+    if (formattedText.length > 0 && 
+        !formattedText.endsWith('.') && 
+        !formattedText.endsWith('!') && 
+        !formattedText.endsWith('?')) {
+      formattedText += '.';
+    }
+    
+    // 5. Fix spacing after punctuation
+    formattedText = formattedText
+      .replace(/([.,!?;:])(?=[a-zA-Z])/g, '$1 ')  // Add space after punctuation if missing
+      .replace(/\s+/g, ' ')                       // Remove extra spaces
+      .trim();
+    
+    // 6. Add simple paragraph breaks for long text (over 200 chars)
+    if (formattedText.length > 200) {
+      // Look for natural break points (end of sentences) and add paragraph breaks
+      formattedText = formattedText.replace(/([.!?])\s+(?=[A-Z])/g, '$1\n\n');
+    }
+    
+    // Return the formatted text
+    return formattedText;
   }
 
   /**

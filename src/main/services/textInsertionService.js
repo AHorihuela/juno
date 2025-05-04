@@ -301,267 +301,115 @@ class TextInsertionService extends BaseService {
   }
 
   /**
-   * Insert text into the active field
+   * Insert text at the current cursor position
    * @param {string} text - Text to insert
-   * @param {string|boolean} replaceHighlight - Text to replace or boolean indicating replacement
-   * @returns {Promise<boolean>} - True if insertion was successful
+   * @param {boolean} replaceHighlight - Whether to replace highlighted text
+   * @returns {Promise<boolean>} Success status
    */
   async insertText(text, replaceHighlight = false) {
-    if (!this.initialized) {
-      logger.error('TextInsertionService not initialized');
-      pasteLogger.logOperation('INSERT_FAILED', { reason: 'Service not initialized' });
-      throw this.emitError(new Error('TextInsertionService not initialized'));
-    }
-
+    // If already inserting, wait for completion
     if (this.isInserting) {
-      logger.info('Text insertion already in progress, skipping');
-      pasteLogger.logOperation('INSERT_SKIPPED', { reason: 'Insertion already in progress' });
-      return false;
-    }
-
-    // Normalize text to empty string if falsy
-    if (!text) {
-      text = '';
-      logger.debug('Empty text provided, normalizing to empty string');
-      pasteLogger.logOperation('NORMALIZE_TEXT', { original: text, normalized: '' });
-    }
-
-    if (process.platform !== 'darwin') {
-      logger.error('Text insertion is only supported on macOS');
-      pasteLogger.logOperation('PLATFORM_UNSUPPORTED', { platform: process.platform });
-      
-      // Fallback: Copy to clipboard for manual pasting even on unsupported platforms
-      try {
-        clipboard.writeText(text);
-        logger.debug('Text copied to clipboard as fallback (unsupported platform)');
-        pasteLogger.logOperation('FALLBACK_CLIPBOARD', { textLength: text.length });
-        
-        this.getService('notification').showNotification({
-          title: 'Text Copied to Clipboard',
-          body: 'Press Cmd+V or Ctrl+V to paste manually.',
-          type: 'info'
-        });
-        
-        return true; // Return true since we at least copied to clipboard
-      } catch (clipboardError) {
-        logger.error('Error copying to clipboard:', clipboardError);
-        pasteLogger.logOperation('CLIPBOARD_ERROR', { error: clipboardError.message });
-        throw this.emitError(new Error('Text insertion is only supported on macOS'));
+      logger.debug('Another insertion in progress, queueing this insertion');
+      await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms
+      if (this.isInserting) {
+        logger.warn('Previous insertion still in progress after delay, might cause conflicts');
       }
     }
 
-    // Normalize replaceHighlight parameter
-    // If it's a string but empty or just whitespace, treat it as false
-    // This prevents attempting to replace non-existent selections
-    if (typeof replaceHighlight === 'string' && replaceHighlight.trim() === '') {
-      replaceHighlight = false;
-      logger.debug('Empty highlight string provided, will not attempt replacement');
-      pasteLogger.logOperation('NORMALIZE_HIGHLIGHT', { original: replaceHighlight, normalized: false });
-    }
-
-    logger.info('Starting text insertion', { 
-      metadata: {
-        textLength: text.length,
-        textPreview: text.substring(0, 50) + (text.length > 50 ? '...' : ''),
-        hasHighlight: Boolean(replaceHighlight),
-        highlightLength: typeof replaceHighlight === 'string' ? replaceHighlight.length : 0
-      }
-    });
-    
-    pasteLogger.logOperation('INSERT_START', {
-      textLength: text.length,
-      textPreview: text.substring(0, 50) + (text.length > 50 ? '...' : ''),
-      hasHighlight: Boolean(replaceHighlight),
-      highlightLength: typeof replaceHighlight === 'string' ? replaceHighlight.length : 0
-    });
-
+    // Track state during insertion
     this.isInserting = true;
-    let retryCount = 0;
-    let lastError = null;
+    const startTime = Date.now();
+    let success = false;
+    let errorNotificationSuppressed = false;
 
     try {
-      // Save current clipboard
-      logger.debug('Attempting to save current clipboard');
+      logger.info(`Inserting text (${text.length} chars)`);
+      
+      // Validate text
+      if (!text) {
+        logger.warn('Empty text provided for insertion');
+        return false;
+      }
+
+      // IMPORTANT: Save original clipboard content
       this.saveClipboard();
-      logger.debug('Clipboard saved successfully');
-      pasteLogger.logOperation('CLIPBOARD_SAVED', { 
-        originalLength: this.originalClipboard?.length || 0 
-      });
-
-      // For better UX, don't automatically add space (this can be added back if needed)
-      const textToInsert = text;
-
-      // Copy new text to clipboard
-      logger.debug('Writing new text to clipboard');
-      clipboard.writeText(textToInsert);
-      pasteLogger.logOperation('CLIPBOARD_WRITE', { 
-        textLength: textToInsert.length 
-      });
       
-      // Verify clipboard content - add a small delay to ensure clipboard is updated
+      // Wait a moment for clipboard save to complete
       await new Promise(resolve => setTimeout(resolve, this.timeouts.clipboardWait));
-      const verifyClipboard = clipboard.readText();
       
-      const clipboardVerified = verifyClipboard === textToInsert;
-      logger.debug('Clipboard verification', {
-        metadata: {
-          success: clipboardVerified,
-          expectedLength: textToInsert.length,
-          actualLength: verifyClipboard.length,
-          expectedPreview: textToInsert.substring(0, 30) + '...',
-          actualPreview: verifyClipboard.substring(0, 30) + '...'
-        }
-      });
+      // Copy new text to clipboard
+      clipboard.writeText(text);
+      logger.debug('Text copied to clipboard for insertion');
       
-      pasteLogger.logOperation('CLIPBOARD_VERIFY', {
-        success: clipboardVerified,
-        expectedLength: textToInsert.length,
-        actualLength: verifyClipboard.length
-      });
+      // Wait for clipboard to update
+      await new Promise(resolve => setTimeout(resolve, this.timeouts.clipboardWait));
       
-      if (!clipboardVerified) {
-        logger.warn('Clipboard verification failed', { 
-          metadata: { 
-            expected: textToInsert.length,
-            actual: verifyClipboard.length
-          } 
-        });
-        // Retry clipboard write once with delay
-        await new Promise(resolve => setTimeout(resolve, this.timeouts.clipboardWait));
-        logger.debug('Retrying clipboard write');
-        clipboard.writeText(textToInsert);
-        pasteLogger.logOperation('CLIPBOARD_RETRY', { 
-          textLength: textToInsert.length 
-        });
+      // Attempt to paste using primary method
+      const pastingResult = await this._attemptPaste(replaceHighlight);
+      success = pastingResult.success;
+      
+      // If primary paste failed, try aggressive approach
+      if (!success) {
+        logger.debug('Primary paste attempt failed, trying aggressive approach');
+        const aggressiveResult = await this._attemptPasteAggressive(replaceHighlight);
+        success = aggressiveResult.success;
         
-        // Verify again after a small delay
-        await new Promise(resolve => setTimeout(resolve, this.timeouts.clipboardWait));
-        const secondVerify = clipboard.readText();
-        
-        const secondVerifySuccess = secondVerify === textToInsert;
-        logger.debug('Second clipboard verification', {
-          metadata: {
-            success: secondVerifySuccess,
-            expectedLength: textToInsert.length,
-            actualLength: secondVerify.length
-          }
-        });
-        
-        pasteLogger.logOperation('CLIPBOARD_VERIFY_2', {
-          success: secondVerifySuccess,
-          expectedLength: textToInsert.length,
-          actualLength: secondVerify.length
-        });
-        
-        // If we still can't set the clipboard, keep the original text there
-        // and show notification
-        if (!secondVerifySuccess) {
-          logger.error('Failed to set clipboard after retry');
-          pasteLogger.logOperation('CLIPBOARD_FAILED', { 
-            expected: textToInsert.length,
-            actual: secondVerify.length
-          });
+        if (!success) {
+          logger.warn('All paste attempts failed');
           
-          this.getService('notification').showNotification({
-            title: 'Clipboard Error',
-            body: 'Could not copy text to clipboard. Please try again.',
-            type: 'error'
-          });
+          // Show a popup with the text and instructions
+          this.showCopyPopup(text);
           
-          this.isInserting = false;
-          return false;
+          // Even though actual pasting failed, we're suppressing the error sound
+          // since the content is available in clipboard for manual pasting
+          errorNotificationSuppressed = true;
         }
       }
-
-      // Attempt automatic paste using various methods
-      let success = await this._attemptPaste(replaceHighlight);
-      pasteLogger.logOperation('PASTE_ATTEMPT_1', { success });
       
-      // If pasting failed initially, try a more aggressive approach with a delay
-      if (!success) {
-        logger.warn('Initial paste attempt failed, trying again after delay...');
-        await new Promise(resolve => setTimeout(resolve, 500));
-        success = await this._attemptPasteAggressive(replaceHighlight);
-        pasteLogger.logOperation('PASTE_ATTEMPT_AGGRESSIVE', { success });
-      }
+      // Wait before restoring clipboard
+      await new Promise(resolve => setTimeout(resolve, this.timeouts.clipboardRestore));
       
-      // If all automatic methods failed, notify the user that text is in the clipboard
-      if (!success) {
-        logger.warn('All paste methods failed, text remains in clipboard');
-        pasteLogger.logOperation('PASTE_FAILED_ALL', { inClipboard: true });
-        
-        this.getService('notification').showNotification({
-          title: 'Text Copied to Clipboard',
-          body: 'Press Cmd+V to paste manually.',
-          type: 'info'
-        });
+      // Log insertion attempt details
+      const duration = Date.now() - startTime;
+      if (success) {
+        logger.info(`Text insertion successful (${duration}ms)`);
       } else {
-        pasteLogger.logOperation('PASTE_SUCCESS', { method: 'automatic' });
+        logger.warn(`Text insertion failed, but clipboard contains the text (${duration}ms)`);
       }
       
-      return true; // Return true even if automated paste failed, since text is in clipboard
+      return success;
     } catch (error) {
-      this.isInserting = false;
+      const duration = Date.now() - startTime;
+      logger.error(`Text insertion error (${duration}ms):`, error);
       
-      // Ensure clipboard is restored on error
-      try {
-        if (this.originalClipboard !== null) {
-          this.restoreClipboard();
-          logger.debug('Clipboard restored after error');
-          pasteLogger.logOperation('CLIPBOARD_RESTORED', { reason: 'error' });
-        }
-      } catch (restoreError) {
-        logger.error('Error restoring clipboard:', { 
-          metadata: { error: restoreError }
-        });
-        pasteLogger.logOperation('CLIPBOARD_RESTORE_ERROR', { 
-          error: restoreError.message 
-        });
-      }
+      // Show copy popup as fallback
+      this.showCopyPopup(text);
       
-      logger.error('Error during text insertion:', { 
-        metadata: { 
-          error, 
-          message: error.message,
-          stack: error.stack
-        }
-      });
-      
-      pasteLogger.logOperation('INSERT_ERROR', { 
-        error: error.message,
-        stack: error.stack
-      });
-      
-      // Last resort - copy to clipboard and notify user
-      try {
-        clipboard.writeText(text);
-        logger.debug('Text copied to clipboard as last resort fallback');
-        pasteLogger.logOperation('LAST_RESORT_CLIPBOARD', { 
-          textLength: text.length 
-        });
-        
-        this.getService('notification').showNotification({
-          title: 'Error During Text Insertion',
-          body: 'Text copied to clipboard. Press Cmd+V to paste manually.',
-          type: 'warning'
-        });
-        return true; // Return true since we at least copied to clipboard
-      } catch (clipboardError) {
-        logger.error('Final clipboard fallback failed:', clipboardError);
-        pasteLogger.logOperation('FINAL_CLIPBOARD_ERROR', { 
-          error: clipboardError.message 
-        });
-      }
-      
-      this.emitError(error);
+      // Return false but suppress the error sound since text is at least in clipboard
+      errorNotificationSuppressed = true;
       return false;
     } finally {
-      // Ensure the isInserting flag is reset
-      setTimeout(() => {
-        this.isInserting = false;
-        logger.debug('Reset insertion flag');
-        pasteLogger.logOperation('INSERT_FLAG_RESET', {});
-      }, 100);
+      // Always restore the original clipboard, even on errors
+      try {
+        this.restoreClipboard();
+      } catch (clipboardError) {
+        logger.error('Error restoring clipboard:', clipboardError);
+      }
+      
+      // Set flag to allow next insertion
+      this.isInserting = false;
+      
+      // Emit event for telemetry
+      // Use suppressErrorSound flag to prevent playing error sound for certain cases
+      if (success) {
+        this.emit('textInserted', { success: true, length: text.length });
+      } else {
+        this.emit('textInserted', { 
+          success: false, 
+          length: text.length,
+          suppressErrorSound: errorNotificationSuppressed
+        });
+      }
     }
   }
   
@@ -705,7 +553,7 @@ class TextInsertionService extends BaseService {
       await new Promise(resolve => setTimeout(resolve, 200)); // Increased from 100 to 200ms
     }
     
-    return success;
+    return { success };
   }
 
   /**
@@ -787,7 +635,7 @@ class TextInsertionService extends BaseService {
       await new Promise(resolve => setTimeout(resolve, 300));
     }
     
-    return success;
+    return { success };
   }
 
   /**
@@ -813,4 +661,5 @@ class TextInsertionService extends BaseService {
 }
 
 // Export a factory function instead of a singleton
+module.exports = () => new TextInsertionService(); 
 module.exports = () => new TextInsertionService(); 

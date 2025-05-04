@@ -447,17 +447,58 @@ class RecorderService extends BaseService {
       logger.info('Sending audio for transcription...');
       this.getService('transcription').transcribeAudio(completeAudioData)
         .then(transcription => {
-          this.emit('transcription', transcription);
-          logger.info('Transcription received:', { 
-            metadata: { 
-              transcriptionLength: transcription ? transcription.length : 0,
-              transcriptionPreview: transcription ? transcription.substring(0, 50) + '...' : 'None'
-            } 
-          });
+          if (transcription) {
+            this.emit('transcription', transcription);
+            logger.info('Transcription received:', { 
+              metadata: { 
+                transcriptionLength: transcription.length,
+                transcriptionPreview: transcription.substring(0, 50) + '...'
+              } 
+            });
+          } else {
+            // Handle empty transcription (but don't treat as error)
+            logger.warn('Empty transcription received');
+            // No need to show error notification since TranscriptionService already handles this
+          }
         })
         .catch(error => {
-          logger.error('Transcription error:', { metadata: { error } });
-          this.getService('notification').showTranscriptionError(error);
+          // Only log as error and show notification if it's a real error
+          logger.error('Transcription error:', { 
+            metadata: { 
+              error: error.message || 'Unknown error',
+              stack: error.stack
+            },
+            system: {
+              platform: process.platform,
+              arch: process.arch,
+              nodeVersion: process.version,
+              memory: process.memoryUsage(),
+              cpus: require('os').cpus().length
+            }
+          });
+          
+          // Check if this is a suppressed error that we shouldn't play sound for
+          // This can be the case when text is in the clipboard but insertion failed
+          const shouldSuppressErrorSound = error && 
+            error.suppressErrorSound === true;
+          
+          // Only show error notification if we're not suppressing the error
+          if (!shouldSuppressErrorSound) {
+            this.getService('notification').showNotification(
+              'Transcription Failed',
+              error.message || 'Failed to transcribe audio',
+              'error'
+            );
+          } else {
+            // For suppressed errors, show a more helpful notification
+            this.getService('notification').showNotification(
+              'Manual Paste Required',
+              'Text is in your clipboard. Press Cmd+V or Ctrl+V to paste.',
+              'info'
+            );
+            logger.info('Error sound suppressed for clipboard fallback scenario');
+          }
+          
           this.emit('error', error);
         });
 
