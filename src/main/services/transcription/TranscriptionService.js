@@ -206,17 +206,7 @@ class TranscriptionService extends EventEmitter {
           .catch(err => logger.error('Microphone access check failed:', err));
       }
       
-      // Play notification AFTER recording has started
-      // Use setTimeout to ensure it doesn't block
-      setTimeout(() => {
-        this.notificationManager.showNotification('Starting voice recognition', 'info', {
-          audioFeedback: true,
-          soundId: 'start-recording',
-          visual: false
-        });
-      }, 0);
-      
-      // Wait for recording confirmation and engine
+      // Wait for recording confirmation and engine (first priority)
       const [result] = await Promise.all([
         recordingPromise,
         enginePromise.catch(err => {
@@ -225,10 +215,22 @@ class TranscriptionService extends EventEmitter {
         })
       ]);
       
+      // NOW play the start sound AFTER recording has successfully started
+      // This ensures we don't delay the start of recording
       if (result) {
-        // Show success notification AFTER everything is ready
+        // Play notification sound without blocking the main flow
         setTimeout(() => {
-          this.notificationManager.showNotification('Voice recognition active', 'info');
+          // Play an audible confirmation that recording has started
+          this.notificationManager.showNotification('Starting voice recognition', 'info', {
+            audioFeedback: true,
+            soundId: 'start-recording',
+            visual: false // Only play sound, don't show visual notification
+          });
+          
+          // Also show success notification after the sound
+          setTimeout(() => {
+            this.notificationManager.showNotification('Voice recognition active', 'info');
+          }, 300); // Short delay after sound
         }, 0);
       }
       
@@ -258,12 +260,24 @@ class TranscriptionService extends EventEmitter {
       // Stop the recording manager
       await this.recordingManager.stopRecording();
       
-      // Play an audible stop sound
-      await this.notificationManager.showNotification('Stopping voice recognition', 'stop', {
-        audioFeedback: true,
-        soundId: 'stop-recording',
-        visual: false  // Only play sound, don't show visual notification
-      });
+      // Play stop sound directly through the audio service if available
+      try {
+        const audioService = this.services.get('audio');
+        if (audioService && typeof audioService.playStopSound === 'function') {
+          logger.debug('Playing stop sound directly through audio service');
+          await audioService.playStopSound();
+        } else {
+          // Fallback to notification manager for backward compatibility
+          await this.notificationManager.showNotification('Stopping voice recognition', 'stop', {
+            audioFeedback: true,
+            soundId: 'stop-recording',
+            visual: false  // Only play sound, don't show visual notification
+          });
+        }
+      } catch (soundError) {
+        logger.warn('Error playing stop sound:', soundError);
+        // Continue even if sound fails
+      }
       
       this.notificationManager.showNotification('Voice recognition stopped', 'info');
       

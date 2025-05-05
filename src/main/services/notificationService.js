@@ -43,27 +43,58 @@ class NotificationService extends BaseService {
     }
   }
 
-  showNotification(title, body, type = 'info') {
+  /**
+   * Show a notification
+   * @param {Object|string} options - Notification options or message string
+   * @param {string} type - Notification type (if options is a string)
+   * @returns {Promise<void>}
+   */
+  async show(options, type = 'info') {
     try {
-      if (!this.initialized) {
-        throw new Error('NotificationService not initialized');
+      // Convert string to object format
+      if (typeof options === 'string') {
+        options = {
+          title: 'Juno',
+          body: options,
+          type: type
+        };
       }
-
-      const notification = new Notification({
-        title,
-        body,
-        silent: true, // We'll handle the sound separately
-        icon: type === 'error' ? path.join(__dirname, '../../../assets/icons/error.png') : undefined
-      });
-
-      notification.show();
-
-      // Play sound for errors
-      if (type === 'error') {
-        this.playErrorSound();
+      
+      // If the type is error and we're on macOS, temporarily suppress system sounds
+      if (options.type === 'error' && process.platform === 'darwin') {
+        try {
+          // Suppress macOS system alert sound temporarily
+          const { exec } = require('child_process');
+          exec('osascript -e "set volume alert volume 0"', (err) => {
+            if (err) {
+              console.warn('Failed to lower system alert volume:', err);
+            } else {
+              // Restore after 3 seconds
+              setTimeout(() => {
+                exec('osascript -e "set volume alert volume 5"', () => {});
+              }, 3000);
+            }
+          });
+        } catch (error) {
+          console.warn('Error suppressing macOS system sounds:', error);
+        }
       }
+      
+      // For error type, we'll play our own sound instead of relying on the system
+      if (options.type === 'error' && !options.suppressErrorSound) {
+        // Play sound for errors
+        if (!options.silent) {
+          this.playErrorSound();
+        }
+      }
+      
+      // Send to main window via IPC
+      this.ipcMain.emit('show-notification', options);
+      
+      return true;
     } catch (error) {
-      this.emitError(error);
+      console.error('Error showing notification:', error);
+      return false;
     }
   }
 
@@ -164,6 +195,46 @@ class NotificationService extends BaseService {
       error.message || 'Failed to process AI command',
       'error'
     );
+  }
+
+  /**
+   * Suppress macOS system alert sounds temporarily
+   * @param {number} duration - How long to suppress sounds in milliseconds
+   * @returns {Promise<void>}
+   */
+  suppressMacSystemSounds(duration = 3000) {
+    if (process.platform !== 'darwin') return;
+    
+    try {
+      const { exec } = require('child_process');
+      
+      // Get current volume first
+      exec('osascript -e "get volume alert volume"', (err, stdout) => {
+        const currentVolume = stdout.trim() || '5';
+        
+        // Set volume to 0
+        exec('osascript -e "set volume alert volume 0"', (lowerErr) => {
+          if (lowerErr) {
+            console.warn('Failed to lower system alert volume:', lowerErr);
+          } else {
+            console.log(`Suppressed macOS system sounds for ${duration}ms`);
+            
+            // Restore after duration
+            setTimeout(() => {
+              exec(`osascript -e "set volume alert volume ${currentVolume}"`, (restoreErr) => {
+                if (restoreErr) {
+                  console.warn('Failed to restore system alert volume:', restoreErr);
+                } else {
+                  console.log('Restored macOS system sound volume');
+                }
+              });
+            }, duration);
+          }
+        });
+      });
+    } catch (error) {
+      console.warn('Error managing macOS system sounds:', error);
+    }
   }
 }
 

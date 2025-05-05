@@ -157,36 +157,87 @@ class RecorderTranscription {
       }
     });
     
+    // Temporarily suppress system sounds on macOS to prevent the system error sound
+    // This is a targeted workaround for macOS system sounds
+    if (process.platform === 'darwin') {
+      try {
+        const { exec } = require('child_process');
+        // Lower the alert volume temporarily
+        exec('osascript -e "set volume alert volume 0"', (err) => {
+          if (err) {
+            logger.warn('Failed to lower system alert volume:', err);
+          } else {
+            // Restore after 2 seconds
+            setTimeout(() => {
+              exec('osascript -e "set volume alert volume 5"', (restoreErr) => {
+                if (restoreErr) {
+                  logger.warn('Failed to restore system alert volume:', restoreErr);
+                }
+              });
+            }, 2000);
+          }
+        });
+      } catch (macErr) {
+        logger.warn('Error suppressing macOS system sounds:', macErr);
+      }
+    }
+    
     // Check if this is a suppressed error that we shouldn't play sound for
     // This can be the case when text is in the clipboard but insertion failed
-    const shouldSuppressErrorSound = error && 
-      error.suppressErrorSound === true;
+    // OR when the error happens during the end of the recording flow
+    // (which means the stop sound has already played)
+    let shouldSuppressErrorSound = error && 
+      (error.suppressErrorSound === true || 
+       error.message?.includes('catch') ||  // Common error in transcription flow
+       error.message?.includes('undefined') ||  // Common error in transcription flow
+       error.message?.includes('API')); // API errors should not repeat the error sound
+    
+    // Always suppress error sound on macOS to avoid system sounds
+    if (process.platform === 'darwin') {
+      shouldSuppressErrorSound = true;
+      logger.info('Suppressing error sound on macOS to avoid system sounds');
+    }
     
     // Get notification service
     const notificationService = this.serviceProvider?.getService('notification');
     
-    if (notificationService && typeof notificationService.showNotification === 'function') {
+    if (notificationService && typeof notificationService.show === 'function') {
       // Only show error notification if we're not suppressing the error
       if (!shouldSuppressErrorSound) {
-        notificationService.showNotification(
-          'Transcription Failed',
-          error?.message || 'Failed to transcribe audio',
-          'error'
-        );
+        notificationService.show({
+          title: 'Transcription Failed',
+          body: error?.message || 'Failed to transcribe audio',
+          type: 'error'
+        });
       } else {
         // For suppressed errors, show a more helpful notification
-        notificationService.showNotification(
-          'Manual Paste Required',
-          'Text is in your clipboard. Press Cmd+V or Ctrl+V to paste.',
-          'info'
-        );
-        logger.info('Error sound suppressed for clipboard fallback scenario');
+        if (error?.message?.includes('API')) {
+          // API error
+          notificationService.show({
+            title: 'Transcription Service Issue',
+            body: 'There was a problem with the transcription service. Your recording is complete.',
+            type: 'warning'
+          });
+        } else {
+          // Other suppressed errors
+          notificationService.show({
+            title: 'Processing Issue',
+            body: 'Your recording is complete, but there was an issue with text processing.',
+            type: 'info'
+          });
+        }
+        logger.info('Error sound suppressed for error:', error?.message);
       }
     }
     
     // Emit error event
     if (typeof emitEvent === 'function') {
-      emitEvent('error', error);
+      // Set suppressErrorSound flag to true for the emitted error
+      // to ensure other handlers know this error sound should be suppressed
+      const modifiedError = error || new Error('Unknown transcription error');
+      modifiedError.suppressErrorSound = true;
+      
+      emitEvent('error', modifiedError);
     }
     
     return null;

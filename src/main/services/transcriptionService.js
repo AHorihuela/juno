@@ -121,6 +121,18 @@ class TranscriptionService extends BaseService {
       
       logger.info(`Processing audio data (${audioData.length} bytes) from app: ${activeApp}`);
       
+      // Enable audio feedback for the next sounds
+      try {
+        const audioService = this.getService('audio');
+        if (audioService && typeof audioService.enableAudio === 'function') {
+          audioService.enableAudio();
+          logger.debug('Enabled audio feedback for transcription process');
+        }
+      } catch (audioError) {
+        logger.warn('Error enabling audio feedback:', audioError);
+        // Continue even if enabling audio fails
+      }
+      
       // Transcribe the audio
       const transcribedText = await this.transcribeAudio(audioData);
       
@@ -144,9 +156,30 @@ class TranscriptionService extends BaseService {
       return result;
     } catch (error) {
       logger.error('Error processing audio:', error);
+      
+      // Add a flag to suppress error sound for any error coming from 
+      // the audio processing pipeline, since the stop sound already played
+      error.suppressErrorSound = true;
+      
       this.notify(`Error processing audio: ${error.message}`, 'error');
       this.emit('error', error);
       return false;
+    } finally {
+      // Disable audio feedback after processing completes
+      // This ensures no unexpected sounds play after the processing is done
+      try {
+        const audioService = this.getService('audio');
+        if (audioService && typeof audioService.disableAudio === 'function') {
+          // Increase wait time to ensure insertion has completed before disabling audio
+          // This prevents race conditions where audio is disabled before text insertion completes
+          setTimeout(() => {
+            audioService.disableAudio();
+            logger.debug('Disabled audio feedback after transcription process');
+          }, 2000); // Increased from 1000ms to 2000ms
+        }
+      } catch (audioError) {
+        logger.warn('Error disabling audio feedback:', audioError);
+      }
     }
   }
 
@@ -296,6 +329,7 @@ class TranscriptionService extends BaseService {
    * @returns {Promise<boolean>} Success status
    */
   async insertText(text) {
+    const startTime = Date.now();
     try {
       if (!text) {
         logger.warn('No text provided for insertion');
@@ -325,8 +359,9 @@ class TranscriptionService extends BaseService {
         try {
           // Call the insertText method with detailed logging
           logger.debug(`Calling textInsertionService.insertText (attempt ${attempts + 1}/${maxAttempts})`);
+          const insertStartTime = Date.now();
           const result = await textInsertionService.insertText(text);
-          logger.debug(`Text insertion result: ${result}`);
+          logger.debug(`Text insertion attempt completed in ${Date.now() - insertStartTime}ms, result: ${result}`);
           
           if (!result) {
             logger.warn('Text insertion returned false');
@@ -337,10 +372,12 @@ class TranscriptionService extends BaseService {
             clipboard.writeText(text);
           }
           
+          // Log total insertion time
+          logger.info(`Text insertion completed in ${Date.now() - startTime}ms (${attempts + 1} attempts)`);
           return result;
         } catch (err) {
           lastError = err;
-          logger.warn(`Text insertion attempt ${attempts + 1} failed`, {
+          logger.warn(`Text insertion attempt ${attempts + 1} failed after ${Date.now() - startTime}ms`, {
             metadata: { error: err.message }
           });
           attempts++;
@@ -355,7 +392,7 @@ class TranscriptionService extends BaseService {
       // If we reach here, all attempts failed
       throw lastError;
     } catch (error) {
-      logger.error('Error inserting text:', { 
+      logger.error(`Text insertion failed after ${Date.now() - startTime}ms:`, { 
         metadata: { 
           error: error.message, 
           stack: error.stack 
@@ -412,9 +449,17 @@ class TranscriptionService extends BaseService {
    * @private
    */
   async _processAICommand(text, highlightedText) {
+    const startTime = Date.now();
+    const timings = {
+      contextGathering: 0,
+      aiProcessing: 0,
+      textInsertion: 0,
+      total: 0
+    };
+    
     try {
       // Show processing notification with faster timeout
-      this.getService('notification').showNotification({
+      this.getService('notification').show({
         title: 'Processing AI Command',
         body: 'Analyzing context...',
         type: 'info',
@@ -425,7 +470,11 @@ class TranscriptionService extends BaseService {
       
       const aiService = this.getService('ai');
       // Set a timeout for AI processing
-      const aiProcessingPromise = aiService.processCommand(text, highlightedText);
+      const aiProcessingStartTime = Date.now();
+      const aiProcessingPromise = aiService.processCommand(text, highlightedText).then(result => {
+        timings.aiProcessing = Date.now() - aiProcessingStartTime;
+        return result;
+      });
       
       // Add timeout to prevent hanging on slow AI responses
       const aiResponse = await Promise.race([
@@ -443,11 +492,17 @@ class TranscriptionService extends BaseService {
         logger.info('AI request was cancelled, timed out, or failed');
         
         // Fall back to normal text processing
-        this.getService('notification').showNotification({
+        this.getService('notification').show({
           title: 'AI Processing Failed',
           body: 'Falling back to normal transcription.',
           type: 'warning',
           timeout: 1500
+        });
+        
+        timings.total = Date.now() - startTime;
+        logger.info('AI command processing failed, fallback triggered', {
+          aiProcessingTime: `${timings.aiProcessing}ms`,
+          totalTime: `${timings.total}ms`
         });
         
         return null; // Signal to fall back to normal processing
@@ -467,20 +522,32 @@ class TranscriptionService extends BaseService {
       }
       
       // Insert the AI response, passing highlighted text for replacement
+      const textInsertionStartTime = Date.now();
       await this.getService('textInsertion').insertText(aiResponse.text, highlightedText);
+      timings.textInsertion = Date.now() - textInsertionStartTime;
       
       // Update stats
       this.processingStats.aiCommandCount++;
       
+      // Log total AI processing time
+      timings.total = Date.now() - startTime;
+      logger.info('AI command processing completed', {
+        aiProcessingTime: `${timings.aiProcessing}ms (${Math.round(timings.aiProcessing/timings.total*100)}%)`,
+        textInsertionTime: `${timings.textInsertion}ms (${Math.round(timings.textInsertion/timings.total*100)}%)`,
+        totalTime: `${timings.total}ms (100%)`
+      });
+      
       return aiResponse.text;
     } catch (aiError) {
-      logger.error('Error processing AI command:', aiError);
+      // Calculate total time even when error occurs
+      timings.total = Date.now() - startTime;
+      logger.error(`AI command processing failed after ${timings.total}ms:`, aiError);
       
       // Fall back to normal text processing if AI fails
       logger.info('Falling back to normal text processing due to AI error');
       
       // Show notification to user
-      this.getService('notification').showNotification({
+      this.getService('notification').show({
         title: 'AI Processing Failed',
         body: 'Falling back to normal transcription.',
         type: 'warning',
@@ -509,7 +576,7 @@ class TranscriptionService extends BaseService {
         body += ` from ${contextUsage.applicationName}`;
       }
       
-      this.getService('notification').showNotification({
+      this.getService('notification').show({
         title,
         body,
         type: 'success',
@@ -550,6 +617,15 @@ class TranscriptionService extends BaseService {
     let tempFile = null;
     const AudioUtils = require('./utils/AudioUtils');
     
+    // Add timing markers for performance tracking
+    const timings = {
+      start: startTime,
+      audioConversion: 0,
+      apiRequest: 0,
+      textProcessing: 0,
+      total: 0
+    };
+    
     try {
       if (!this.initialized) {
         throw new Error('TranscriptionService not initialized');
@@ -563,7 +639,7 @@ class TranscriptionService extends BaseService {
         const cachedText = this.audioSignatureCache.get(audioSignature);
         
         // Fast path: Skip API call and process text directly
-        this.getService('notification').showNotification({
+        this.getService('notification').show({
           title: 'Using cached transcription',
           body: 'Processing text...',
           type: 'success',
@@ -578,10 +654,13 @@ class TranscriptionService extends BaseService {
       // ENHANCED OPTIMIZATION: Run multiple independent operations in parallel
       const parallelOperations = [
         // 1. Convert PCM to WAV (CPU-intensive)
-        AudioUtils.convertPcmToWav(audioBuffer),
+        AudioUtils.convertPcmToWav(audioBuffer).then(result => {
+          timings.audioConversion = Date.now() - startTime;
+          return result;
+        }),
         
         // 2. Show notification (network/UI operation)
-        this.getService('notification')?.showNotification({
+        this.getService('notification')?.show({
           title: 'Processing Audio',
           body: 'Preparing your recording...',
           type: 'info',
@@ -635,17 +714,34 @@ class TranscriptionService extends BaseService {
       tempFile = tempFilePath;
 
       // Make API request using the WhisperAPIClient with timeout
-      const apiPromise = this.apiClient.transcribeAudio(tempFile, apiOptions);
+      const apiStartTime = Date.now();
+      const apiPromise = this.apiClient.transcribeAudio(tempFile, apiOptions).then(result => {
+        timings.apiRequest = Date.now() - apiStartTime;
+        return result;
+      });
       
       // Add timeout to the API call to prevent hanging
-      const response = await Promise.race([
-        apiPromise,
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Whisper API timeout')), this.timeouts.apiRequest)
-        )
-      ]);
+      // Ensure proper error handling by wrapping all promises in a try/catch block
+      let response;
+      try {
+        response = await Promise.race([
+          apiPromise,
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Whisper API timeout')), this.timeouts.apiRequest)
+          )
+        ]);
+      } catch (apiError) {
+        // Handle API-specific errors appropriately
+        logger.error('API error during transcription:', apiError);
+        throw new Error(`Transcription API error: ${apiError.message || 'Unknown API error'}`);
+      }
       
-      const transcribedText = response.text;
+      // Ensure response exists before accessing properties
+      if (!response) {
+        throw new Error('Empty response from transcription API');
+      }
+      
+      const transcribedText = response.text || '';
       
       // Start cache update in the background without waiting
       if (audioSignature && transcribedText) {
@@ -656,7 +752,7 @@ class TranscriptionService extends BaseService {
       // If transcription is empty, show notification and return early
       if (!transcribedText || transcribedText.trim() === '') {
         logger.info('Empty transcription received, skipping processing');
-        this.getService('notification').showNotification({
+        this.getService('notification').show({
           title: 'No Speech Detected',
           body: 'The recording contained no recognizable speech.',
           type: 'info',
@@ -666,10 +762,14 @@ class TranscriptionService extends BaseService {
       }
       
       // Now process the text while simultaneously showing a notification
-      const [processedText, _] = await Promise.all([
-        this.processAndInsertText(transcribedText),
-        (this.getService('notification')?.showNotification instanceof Function 
-          ? this.getService('notification').showNotification({
+      const textProcessingStartTime = Date.now();
+      const [insertionResult, _] = await Promise.all([
+        this.processAndInsertText(transcribedText).then(result => {
+          timings.textProcessing = Date.now() - textProcessingStartTime;
+          return result;
+        }),
+        (this.getService('notification')?.show instanceof Function 
+          ? this.getService('notification').show({
               title: 'Transcribing',
               body: 'Processing text...',
               type: 'success',
@@ -681,8 +781,29 @@ class TranscriptionService extends BaseService {
           : Promise.resolve(null))
       ]);
       
+      // Check if text insertion was successful
+      if (!insertionResult) {
+        logger.warn('Text processing/insertion was not successful, attempting fallback');
+        
+        // Try direct insertion as fallback
+        try {
+          const textInsertionService = this.getService('textInsertion');
+          if (textInsertionService && typeof textInsertionService.insertText === 'function') {
+            logger.debug('Attempting direct text insertion fallback');
+            await textInsertionService.insertText(transcribedText);
+          } else {
+            // Use clipboard as last resort
+            const { clipboard } = require('electron');
+            clipboard.writeText(transcribedText);
+            logger.debug('Text copied to clipboard as last resort fallback');
+            this.notify('Text copied to clipboard for manual pasting', 'info');
+          }
+        } catch (fallbackError) {
+          logger.error('Fallback text insertion failed:', fallbackError);
+        }
+      }
+      
       // OPTIMIZATION: Clean up in the background
-      // Don't await this, let it run after we've returned
       setTimeout(() => {
         AudioUtils.cleanupTempFile(tempFile).catch(err => {
           logger.error('Error cleaning up temp file:', err);
@@ -691,7 +812,13 @@ class TranscriptionService extends BaseService {
       
       // Log performance
       const totalTime = Date.now() - startTime;
-      logger.info(`Total processing time: ${totalTime}ms`);
+      timings.total = totalTime;
+      logger.info(`Performance breakdown:`, {
+        audioConversion: `${timings.audioConversion}ms (${Math.round(timings.audioConversion/totalTime*100)}%)`,
+        apiRequest: `${timings.apiRequest}ms (${Math.round(timings.apiRequest/totalTime*100)}%)`, 
+        textProcessing: `${timings.textProcessing}ms (${Math.round(timings.textProcessing/totalTime*100)}%)`,
+        total: `${totalTime}ms (100%)`
+      });
 
       return transcribedText;
     } catch (error) {
@@ -701,7 +828,7 @@ class TranscriptionService extends BaseService {
       this.processingStats.errorCount++;
       
       // Show error notification
-      this.getService('notification').showNotification({
+      this.getService('notification').show({
         title: 'Transcription Failed',
         body: error.name === 'APIError'
           ? `API Error: ${error.message}` 

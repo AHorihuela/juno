@@ -25,6 +25,9 @@ class AudioFeedbackService extends BaseService {
       const initStartTime = Date.now();
       console.log('[AudioFeedback] Starting initialization at:', initStartTime);
       
+      // Add a flag to control when audio can play
+      this.audioEnabled = false;
+      
       // Ensure app is ready
       if (!app.isReady()) {
         console.log('[AudioFeedback] Waiting for app to be ready...');
@@ -92,26 +95,9 @@ class AudioFeedbackService extends BaseService {
             throw new Error('Could not create test sound file');
           }
           
-          // Try to play the test file with very low volume
-          const testSuccess = await Promise.race([
-            new Promise((resolve) => {
-              player.play({
-                path: testFile,
-                sync: true,
-              })
-              .then(() => {
-                resolve(true);
-              })
-              .catch((err) => {
-                console.warn('[AudioFeedback] Player test failed:', err);
-                resolve(false);
-              });
-            }),
-            new Promise((resolve) => setTimeout(() => {
-              console.warn('[AudioFeedback] Player test timed out');
-              resolve(false);
-            }, 1000))
-          ]);
+          // Try to play the test file with very low volume - SKIP ACTUAL PLAYBACK
+          // Just set result to true to avoid actual sound playing
+          const testSuccess = true;
           
           // Clean up test file
           try {
@@ -121,7 +107,7 @@ class AudioFeedbackService extends BaseService {
           }
           
           if (testSuccess) {
-            console.log('[AudioFeedback] node-wav-player test succeeded');
+            console.log('[AudioFeedback] node-wav-player test skipped, assuming success');
             this.useNativeFallback = false;
           } else {
             console.warn('[AudioFeedback] node-wav-player test failed, using native fallback');
@@ -133,8 +119,16 @@ class AudioFeedbackService extends BaseService {
         }
       }
 
-      // Preload sounds for faster playback
-      await this.preloadSounds();
+      // Skip actual preloading to prevent startup sounds
+      console.log('[AudioFeedback] Preparing sound paths without playback');
+      this.preloadedSounds = {
+        start: this.startPath,
+        stop: this.stopPath
+      };
+      
+      // Service is initialized but audio is still disabled
+      // until enableAudio() is explicitly called
+      console.log('[AudioFeedback] Service initialized with audio disabled');
 
     } catch (error) {
       console.error('[AudioFeedback] Initialization error:', error);
@@ -149,28 +143,12 @@ class AudioFeedbackService extends BaseService {
 
   // Preload sounds into memory for faster playback
   async preloadSounds() {
-    try {
-      if (!this.useNativeFallback) {
-        // For node-wav-player, we can't really preload, but we can prepare the paths
-        this.preloadedSounds.start = this.startPath;
-        this.preloadedSounds.stop = this.stopPath;
-      } else {
-        // For native players, we can at least cache the file paths
-        this.preloadedSounds.start = this.startPath;
-        this.preloadedSounds.stop = this.stopPath;
-        
-        // On macOS, we can use afplay -q to preload the audio engine
-        if (process.platform === 'darwin') {
-          exec(`afplay -v 0.01 -q "${this.startPath}"`, () => {
-            console.log('[AudioFeedback] Preloaded audio engine on macOS');
-          });
-        }
-      }
-      console.log('[AudioFeedback] Sounds preloaded');
-    } catch (error) {
-      console.warn('[AudioFeedback] Failed to preload sounds:', error);
-      // Continue anyway, we'll load on demand
-    }
+    console.log('[AudioFeedback] Skipping sound preloading to prevent startup sounds');
+    // Just prepare the paths without actually playing anything
+    this.preloadedSounds = {
+      start: this.startPath,
+      stop: this.stopPath
+    };
   }
 
   // Play sound using native player
@@ -266,10 +244,28 @@ class AudioFeedbackService extends BaseService {
     }
   }
 
+  // Add a method to explicitly enable audio playback
+  enableAudio() {
+    this.audioEnabled = true;
+    console.log('[AudioFeedback] Audio playback enabled');
+  }
+
+  // Add a method to explicitly disable audio playback
+  disableAudio() {
+    this.audioEnabled = false;
+    console.log('[AudioFeedback] Audio playback disabled');
+  }
+
   async playStartSound() {
     if (!this.initialized) {
       console.error('[AudioFeedback] Service not initialized when trying to play start sound');
       return Promise.resolve(); // Don't block recording if sound fails
+    }
+
+    // Check if audio is enabled 
+    if (!this.audioEnabled) {
+      console.log('[AudioFeedback] Start sound skipped - audio disabled');
+      return Promise.resolve();
     }
 
     const startTime = Date.now();
@@ -306,6 +302,12 @@ class AudioFeedbackService extends BaseService {
     if (!this.initialized) {
       console.error('[AudioFeedback] Service not initialized when trying to play stop sound');
       return Promise.resolve(); // Don't block recording if sound fails
+    }
+
+    // Check if audio is enabled
+    if (!this.audioEnabled) {
+      console.log('[AudioFeedback] Stop sound skipped - audio disabled');
+      return Promise.resolve();
     }
 
     const startTime = Date.now();

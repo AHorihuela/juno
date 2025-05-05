@@ -195,8 +195,16 @@ class NotificationManager extends EventEmitter {
       
       logger.debug(`Playing audio feedback: ${soundId}`);
       
-      // Play the sound
-      if (typeof this.audioService.playFeedback === 'function') {
+      // Map specific sound IDs to specialized methods if available
+      if (soundId === 'start-recording' && typeof this.audioService.playStartSound === 'function') {
+        await this.audioService.playStartSound();
+        return true;
+      } else if (soundId === 'stop-recording' && typeof this.audioService.playStopSound === 'function') {
+        await this.audioService.playStopSound();
+        return true;
+      } 
+      // Fall back to generic sound methods
+      else if (typeof this.audioService.playFeedback === 'function') {
         await this.audioService.playFeedback(soundId);
         return true;
       } else if (typeof this.audioService.play === 'function') {

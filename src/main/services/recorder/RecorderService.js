@@ -198,10 +198,24 @@ class RecorderService extends BaseService {
     
     // Play start sound (non-blocking)
     initPromises.push(
-      this.getService('audio').playStartSound().catch(soundError => {
-        logger.error('Error playing start sound:', { metadata: { error: soundError } });
-        // Continue with recording even if sound fails
-      })
+      (async () => {
+        try {
+          const audioService = this.getService('audio');
+          // First, explicitly enable audio (important for our new audio control system)
+          if (typeof audioService.enableAudio === 'function') {
+            audioService.enableAudio();
+            logger.info('Audio feedback explicitly enabled for recording start');
+          }
+          
+          // Now play the start sound
+          logger.debug('Playing start sound...');
+          await audioService.playStartSound();
+          logger.debug('Start sound completed');
+        } catch (soundError) {
+          logger.error('Error playing start sound:', { metadata: { error: soundError } });
+          // Continue with recording even if sound fails
+        }
+      })()
     );
     
     // Start context tracking (async)
@@ -442,8 +456,49 @@ class RecorderService extends BaseService {
     // Play stop sound
     try {
       logger.debug('Playing stop sound...');
-      await this.getService('audio').playStopSound();
+      
+      // Get audio service
+      const audioService = this.getService('audio');
+      
+      // First, explicitly enable audio to ensure sound plays
+      if (audioService && typeof audioService.enableAudio === 'function') {
+        audioService.enableAudio();
+        logger.info('Audio feedback explicitly enabled for stop sound');
+      }
+      
+      // Play the stop sound
+      await audioService.playStopSound();
       logger.debug('Stop sound completed');
+      
+      // Disable Mac system sounds temporarily to prevent potential error sounds
+      // This is a workaround for the system error sound that might be playing
+      try {
+        // Only on macOS
+        if (process.platform === 'darwin') {
+          // Use applescript to temporarily lower system sound volume
+          const { exec } = require('child_process');
+          exec('osascript -e "set volume alert volume 0"', (error) => {
+            if (error) {
+              logger.warn('Failed to lower system alert volume:', error);
+            } else {
+              logger.debug('Temporarily lowered system alert volume');
+              
+              // Restore system volume after 2 seconds
+              setTimeout(() => {
+                exec('osascript -e "set volume alert volume 5"', (restoreError) => {
+                  if (restoreError) {
+                    logger.warn('Failed to restore system alert volume:', restoreError);
+                  } else {
+                    logger.debug('Restored system alert volume');
+                  }
+                });
+              }, 2000);
+            }
+          });
+        }
+      } catch (systemSoundError) {
+        logger.warn('Error managing system sounds:', systemSoundError);
+      }
     } catch (error) {
       logger.error('Error playing stop sound:', { metadata: { error } });
     }
@@ -586,6 +641,18 @@ class RecorderService extends BaseService {
     
     logger.info('Stopping recording...');
     try {
+      // First, suppress macOS system sounds to prevent the error sound
+      // at the end of recording, especially helpful if there will be transcription errors
+      try {
+        const notificationService = this.getService('notification');
+        if (notificationService && typeof notificationService.suppressMacSystemSounds === 'function') {
+          notificationService.suppressMacSystemSounds(5000); // 5 seconds should cover transcription time
+          logger.debug('Suppressed macOS system sounds for recording stop');
+        }
+      } catch (soundError) {
+        logger.warn('Error suppressing macOS system sounds:', soundError);
+      }
+      
       await this.shutdownRecorder();
       
       const audioAnalysis = this.analyzeRecordedAudio();
