@@ -126,9 +126,8 @@ class AudioFeedbackService extends BaseService {
         stop: this.stopPath
       };
       
-      // Service is initialized but audio is still disabled
-      // until enableAudio() is explicitly called
-      console.log('[AudioFeedback] Service initialized with audio disabled');
+      // Service is initialized with audio enabled by default
+      console.log('[AudioFeedback] Service initialized with audio enabled by default');
 
     } catch (error) {
       console.error('[AudioFeedback] Initialization error:', error);
@@ -272,7 +271,7 @@ class AudioFeedbackService extends BaseService {
     console.log('[AudioFeedback] Playing start sound from:', this.startPath);
     
     try {
-      // For start sound, we'll make it synchronous but with a short timeout
+      // For start sound, we'll make it synchronous but with a longer timeout
       // This ensures the sound is heard without delaying recording too much
       await Promise.race([
         this.useNativeFallback 
@@ -281,17 +280,22 @@ class AudioFeedbackService extends BaseService {
               path: this.startPath,
               sync: true // Wait for completion
             }),
-        new Promise(resolve => setTimeout(resolve, 500)) // Max 500ms timeout
+        new Promise(resolve => setTimeout(resolve, 800)) // Longer timeout (800ms) for better reliability
       ]);
       
       console.log('[AudioFeedback] Start sound completed in:', Date.now() - startTime, 'ms');
     } catch (error) {
-      console.warn('[AudioFeedback] Start sound playback failed, falling back to native player:', error);
+      console.warn('[AudioFeedback] Start sound playback failed, trying native player:', error);
+      
       try {
-        // Try native player as fallback
-        await this.playNativeSound(this.startPath, true);
+        // Always try native player as a second attempt
+        await Promise.race([
+          this.playNativeSound(this.startPath, true),
+          new Promise(resolve => setTimeout(resolve, 500)) // Timeout for native player
+        ]);
+        console.log('[AudioFeedback] Native player completed start sound in:', Date.now() - startTime, 'ms');
       } catch (fallbackError) {
-        console.error('[AudioFeedback] Native fallback also failed:', fallbackError);
+        console.error('[AudioFeedback] All start sound playback methods failed:', fallbackError);
       }
     }
     

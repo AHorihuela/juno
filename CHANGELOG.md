@@ -8,8 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Critical path testing script (`npm run test:critical`)
-- Comprehensive architecture documentation
+- Documentation index file for easier navigation
+- More detailed installation and setup instructions
+- Improved text insertion reliability
+- Enhanced selection handling
 
 ### Changed
 - Refactored WindowManager to consolidate window management functionality
@@ -20,8 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated documentation to reflect architectural changes
 
 ### Fixed
+- Fixed AI command detection issues with trigger word "Juno" and action verbs
+- Fixed notification service methods to properly show notifications
+- Fixed audio feedback service to enable audio playback by default
 - Improved error handling in audio processing
 - Fixed memory leaks in window management
+- Fixed AIService module export pattern
 
 ## [1.0.0] - 2024-02-25
 

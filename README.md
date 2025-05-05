@@ -39,7 +39,8 @@ Juno follows a modular, service-oriented architecture that separates concerns an
   - **MicrophoneManager**: Handles microphone permissions and device selection
   - **AudioLevelAnalyzer**: Processes audio data to detect levels and silence
   - **BackgroundAudioController**: Controls background audio (pause/resume)
-- **MemoryManager**: Optimizes application memory usage
+- **AIService**: Manages AI interactions with OpenAI's models
+- **DictionaryService**: Maintains custom word dictionary for improved transcription
 - **ServiceRegistry**: Manages service lifecycle and dependencies
 
 ### Renderer Process (Frontend)
@@ -161,33 +162,22 @@ This will create platform-specific installers in the `dist` directory:
 
 Additional documentation is available in the `docs` directory:
 
-- [Architecture Overview](docs/architecture-overview.md): High-level overview of Juno's architecture and recent improvements
+- [Documentation Index](docs/index.md): Complete index of all documentation files
+- [Architecture Overview](docs/architecture-overview.md): High-level overview of Juno's architecture
 - [Transcription and AI Methodology](docs/transcription-and-ai-methodology.md): Details on how speech recognition and AI processing work
-- Architecture documentation in each module directory:
-  - [Main Process Architecture](src/main/README.md)
-  - [Renderer Process Architecture](src/renderer/README.md)
-- [Changelog](CHANGELOG.md): Track all notable changes to the project
+- [Technical Architecture](docs/TechnicalArchitecture.md): Detailed technical specifications and design decisions
+- [Command Detection](docs/command-detection.md): How command triggers and action verbs are detected
+- [Building Instructions](docs/building.md): Detailed build instructions for different platforms
 
-## 🤝 Contributing
+Additional implementation details:
+- [Text Insertion Improvements](text-insertion-improvements.md): Recent improvements to text insertion reliability
+- [Selection Handling Fixes](selection-fixes.md): Fixes for selection-related issues
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Architecture documentation in key modules:
+- [Main Process Architecture](src/main/README.md)
+- [Renderer Process Architecture](src/renderer/README.md)
+- [Dictionary Service](src/main/services/dictionary/README.md)
 
-When contributing, please follow our modular architecture and consider:
-- Creating focused, single-responsibility modules
-- Writing tests for new functionality
-- Documenting your changes
-- Following the existing code style
-
-## 📄 License
-
-This project is licensed under the ISC License - see the LICENSE file for details.
-
-## 🙏 Acknowledgments
-
-- OpenAI for Whisper and GPT APIs
-- Electron community
-- React and React Router teams
-- All contributors and users
 
 ---
 
