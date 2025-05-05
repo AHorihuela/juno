@@ -105,7 +105,6 @@ npm start
 ### Basic Controls
 - **Start Recording**: Double-tap ⌘+⇧+Space (Command+Shift+Space)
 - **Stop Recording**: Single-tap ⌘+⇧+Space or press Escape
-- **Cancel Recording**: Press Escape
 
 ### AI Commands
 1. Start recording
