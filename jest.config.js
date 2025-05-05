@@ -9,7 +9,7 @@ module.exports = {
     'electron': '<rootDir>/__mocks__/electron/index.js',
   },
   transform: {
-    '^.+\\.(js|jsx)$': ['babel-jest', { configFile: './config/.babelrc' }]
+    '^.+\\.(js|jsx)$': 'babel-jest'
   },
   testMatch: [
     '<rootDir>/src/**/__tests__/**/*.{js,jsx}',

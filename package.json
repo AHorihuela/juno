@@ -59,6 +59,7 @@
     "webpack-cli": "^5.1.4"
   },
   "dependencies": {
+    "axios": "^1.9.0",
     "date-fns": "^4.1.0",
     "electron-store": "^10.0.1",
     "form-data": "^4.0.2",
@@ -78,7 +79,9 @@
     "directories": {
       "output": "dist"
     },
-    "asarUnpack": ["**/*.node"],
+    "asarUnpack": [
+      "**/*.node"
+    ],
     "mac": {
       "icon": "assets/icon.png",
       "target": [
