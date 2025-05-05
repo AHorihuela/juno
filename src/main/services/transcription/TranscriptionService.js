@@ -2,15 +2,21 @@
  * TranscriptionService for real-time speech-to-text capabilities
  * 
  * This service:
- * - Manages audio recording and processing
- * - Performs speech-to-text transcription
- * - Detects voice commands and triggers actions
+ * - Coordinates the audio recording and transcription process
+ * - Manages service lifecycle and initialization
+ * - Emits events for transcription results
  */
 
 const { EventEmitter } = require('events');
 const path = require('path');
 const fs = require('fs');
 const logger = require('../../logger');
+
+// Import specialized modules
+const TranscriptionEngine = require('./modules/TranscriptionEngine');
+const RecordingManager = require('./modules/RecordingManager');
+const CommandProcessor = require('./modules/CommandProcessor');
+const NotificationManager = require('./modules/NotificationManager');
 
 class TranscriptionService extends EventEmitter {
   constructor(options = {}) {
@@ -31,10 +37,14 @@ class TranscriptionService extends EventEmitter {
     this.recognitionActive = false;
     this.lastTranscription = '';
     this.currentSessionId = null;
-    this.commandQueue = [];
-    this.transcriptionEngine = null;
     this.processingQueue = [];
     this.isProcessingQueue = false;
+    
+    // Initialize sub-modules
+    this.engine = new TranscriptionEngine();
+    this.recordingManager = new RecordingManager();
+    this.commandProcessor = new CommandProcessor();
+    this.notificationManager = new NotificationManager();
   }
   
   /**
@@ -74,8 +84,16 @@ class TranscriptionService extends EventEmitter {
         logger.warn('Config service not available, using default transcription settings');
       }
       
-      // Initialize the transcription engine
-      await this._initializeTranscriptionEngine();
+      // Initialize sub-modules
+      await Promise.all([
+        this.engine.initialize(services, this.options),
+        this.recordingManager.initialize(services),
+        this.commandProcessor.initialize(services),
+        this.notificationManager.initialize(services)
+      ]);
+      
+      // Set up event listeners
+      this._setupEventListeners();
       
       this.initialized = true;
       logger.info('Transcription service initialized successfully');
@@ -95,26 +113,13 @@ class TranscriptionService extends EventEmitter {
     try {
       await this.stopRecording();
       
-      if (this.transcriptionEngine) {
-        // Cleanup the transcription engine
-        try {
-          if (typeof this.transcriptionEngine.stop === 'function') {
-            this.transcriptionEngine.stop();
-          }
-          
-          if (typeof this.transcriptionEngine.close === 'function') {
-            this.transcriptionEngine.close();
-          }
-          
-          if (typeof this.transcriptionEngine.abort === 'function') {
-            this.transcriptionEngine.abort();
-          }
-        } catch (engineError) {
-          logger.warn('Error stopping transcription engine:', engineError);
-        }
-        
-        this.transcriptionEngine = null;
-      }
+      // Shutdown sub-modules
+      await Promise.all([
+        this.engine.shutdown(),
+        this.recordingManager.shutdown(),
+        this.commandProcessor.shutdown(),
+        this.notificationManager.shutdown()
+      ]);
       
       this.initialized = false;
       logger.info('Transcription service shutdown complete');
@@ -122,6 +127,41 @@ class TranscriptionService extends EventEmitter {
       logger.error('Error shutting down transcription service:', error);
       throw error;
     }
+  }
+  
+  /**
+   * Set up event listeners for sub-modules
+   * @private
+   */
+  _setupEventListeners() {
+    // Handle engine events
+    this.engine.on('transcription', (data) => {
+      this.emit('transcription', data);
+      this.processTranscription(data.text, data.isFinal);
+    });
+    
+    this.engine.on('error', (error) => {
+      logger.error('Transcription engine error:', error);
+      this.notificationManager.showNotification(`Transcription error: ${error.message}`, 'error');
+      this.emit('error', error);
+    });
+    
+    // Handle recording manager events
+    this.recordingManager.on('recording-started', (data) => {
+      this.isRecording = true;
+      this.currentSessionId = data.sessionId;
+      this.emit('recording-started', data);
+    });
+    
+    this.recordingManager.on('recording-stopped', () => {
+      this.isRecording = false;
+      this.emit('recording-stopped', { sessionId: this.currentSessionId });
+    });
+    
+    // Handle command processor events
+    this.commandProcessor.on('command-processed', (result) => {
+      this.emit('command-processed', result);
+    });
   }
   
   /**
@@ -146,26 +186,36 @@ class TranscriptionService extends EventEmitter {
       this.currentSessionId = `trans-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
       
       // Check if we can access the microphone
-      const hasMicrophoneAccess = await this._checkMicrophoneAccess();
+      const hasMicrophoneAccess = await this.recordingManager.checkMicrophoneAccess();
       if (!hasMicrophoneAccess) {
         logger.error('Microphone access denied');
-        this._showNotification('Microphone access denied. Voice commands are unavailable.', 'error');
+        this.notificationManager.showNotification('Microphone access denied. Voice commands are unavailable.', 'error');
         return false;
       }
       
-      // Start the recognition
-      const result = await this._startRecognition();
+      // Play an audible start sound first
+      await this.notificationManager.showNotification('Starting voice recognition', 'info', {
+        audioFeedback: true,
+        soundId: 'start-recording',
+        visual: false  // Only play sound, don't show visual notification
+      });
+      
+      // Start the engine and recording
+      await this.engine.start(this.options);
+      
+      // Start the recording manager
+      const result = await this.recordingManager.startRecording({
+        sessionId: this.currentSessionId
+      });
       
       if (result) {
-        this.isRecording = true;
-        this.emit('recording-started', { sessionId: this.currentSessionId });
-        this._showNotification('Voice recognition active', 'info');
+        this.notificationManager.showNotification('Voice recognition active', 'info');
       }
       
       return result;
     } catch (error) {
       logger.error('Error starting recording:', error);
-      this._showNotification(`Error starting voice recognition: ${error.message}`, 'error');
+      this.notificationManager.showNotification(`Error starting voice recognition: ${error.message}`, 'error');
       return false;
     }
   }
@@ -182,12 +232,20 @@ class TranscriptionService extends EventEmitter {
     try {
       logger.info('Stopping recording and transcription');
       
-      // Stop the recognition
-      await this._stopRecognition();
+      // Stop the engine
+      await this.engine.stop();
       
-      this.isRecording = false;
-      this.emit('recording-stopped', { sessionId: this.currentSessionId });
-      this._showNotification('Voice recognition stopped', 'info');
+      // Stop the recording manager
+      await this.recordingManager.stopRecording();
+      
+      // Play an audible stop sound
+      await this.notificationManager.showNotification('Stopping voice recognition', 'stop', {
+        audioFeedback: true,
+        soundId: 'stop-recording',
+        visual: false  // Only play sound, don't show visual notification
+      });
+      
+      this.notificationManager.showNotification('Voice recognition stopped', 'info');
       
       return true;
     } catch (error) {
@@ -227,327 +285,49 @@ class TranscriptionService extends EventEmitter {
       // Save last transcription to avoid duplicates
       this.lastTranscription = text;
       
-      // Emit raw transcription event
-      this.emit('transcription', { text, isFinal });
-      
       // Only process commands for final transcriptions
       if (!isFinal) {
         return { processed: false, reason: 'not-final' };
       }
       
-      // Check for AI service
-      const aiService = this.services.get('ai');
-      if (!aiService) {
-        logger.warn('AI service not available, cannot process commands');
-        return { processed: false, reason: 'no-ai-service' };
+      // Add to processing queue
+      this.processingQueue.push({ text, timestamp: Date.now() });
+      
+      // Start processing queue if not already processing
+      if (!this.isProcessingQueue) {
+        await this._processQueue();
       }
       
-      // Process text for AI commands using AI service
-      try {
-        const result = await aiService.processText(text);
-        return result;
-      } catch (aiError) {
-        logger.error('Error processing text with AI service:', aiError);
-        this._showNotification(`Error processing command: ${aiError.message}`, 'error');
-        return { processed: false, reason: 'ai-processing-error', error: aiError };
-      }
-      
+      return { processed: true };
     } catch (error) {
       logger.error('Error processing transcription:', error);
-      return { processed: false, reason: 'processing-error', error };
+      return { processed: false, reason: 'error', error };
     }
   }
   
   /**
-   * Initialize the speech-to-text engine
-   * @returns {Promise<boolean>} Success status
-   * @private
-   */
-  async _initializeTranscriptionEngine() {
-    try {
-      logger.debug('Initializing transcription engine');
-      
-      // This is a placeholder for the actual transcription engine initialization
-      // Implement your preferred speech-to-text integration here
-      
-      // For demo purposes, we'll create a mock engine
-      this.transcriptionEngine = {
-        start: () => {
-          logger.debug('Mock transcription engine started');
-          this.recognitionActive = true;
-          
-          // Simulate occasional transcriptions
-          this._mockTranscriptionInterval = setInterval(() => {
-            if (this.recognitionActive) {
-              // Simulate interim results
-              this._handleTranscriptionResult({
-                results: [
-                  {
-                    isFinal: false,
-                    alternatives: [{ transcript: 'This is an interim result' }]
-                  }
-                ]
-              });
-              
-              // Simulate final result after a delay
-              setTimeout(() => {
-                if (this.recognitionActive) {
-                  this._handleTranscriptionResult({
-                    results: [
-                      {
-                        isFinal: true,
-                        alternatives: [{ transcript: 'Hey Juno, what time is it?' }]
-                      }
-                    ]
-                  });
-                }
-              }, 2000);
-            }
-          }, 10000);
-          
-          return Promise.resolve(true);
-        },
-        stop: () => {
-          logger.debug('Mock transcription engine stopped');
-          this.recognitionActive = false;
-          
-          if (this._mockTranscriptionInterval) {
-            clearInterval(this._mockTranscriptionInterval);
-            this._mockTranscriptionInterval = null;
-          }
-          
-          return Promise.resolve(true);
-        }
-      };
-      
-      // In a real implementation, you would use a proper speech recognition API:
-      // - For web: Web Speech API
-      // - For desktop: Google Cloud Speech-to-Text, Azure Speech, etc.
-      // - For local processing: Vosk, DeepSpeech, etc.
-      
-      logger.debug('Transcription engine initialized successfully');
-      return true;
-    } catch (error) {
-      logger.error('Error initializing transcription engine:', error);
-      return false;
-    }
-  }
-  
-  /**
-   * Check for microphone access
-   * @returns {Promise<boolean>} Whether microphone access is granted
-   * @private
-   */
-  async _checkMicrophoneAccess() {
-    try {
-      logger.debug('Checking microphone access');
-      
-      // This is a placeholder for actual microphone permission checking
-      // Implement your preferred method based on the platform
-      
-      // For demo purposes, we'll assume microphone access is granted
-      return true;
-    } catch (error) {
-      logger.error('Error checking microphone access:', error);
-      return false;
-    }
-  }
-  
-  /**
-   * Start the speech recognition
-   * @returns {Promise<boolean>} Success status
-   * @private
-   */
-  async _startRecognition() {
-    try {
-      if (!this.transcriptionEngine) {
-        logger.error('Transcription engine not initialized');
-        return false;
-      }
-      
-      logger.debug('Starting speech recognition');
-      
-      // Set up result handler
-      if (this.transcriptionEngine) {
-        this.transcriptionEngine.onresult = this._handleTranscriptionResult.bind(this);
-        this.transcriptionEngine.onerror = this._handleTranscriptionError.bind(this);
-        this.transcriptionEngine.onend = this._handleTranscriptionEnd.bind(this);
-      }
-      
-      // Start the engine
-      await this.transcriptionEngine.start();
-      this.recognitionActive = true;
-      
-      logger.debug('Speech recognition started successfully');
-      return true;
-    } catch (error) {
-      logger.error('Error starting speech recognition:', error);
-      return false;
-    }
-  }
-  
-  /**
-   * Stop the speech recognition
-   * @returns {Promise<boolean>} Success status
-   * @private
-   */
-  async _stopRecognition() {
-    try {
-      if (!this.transcriptionEngine || !this.recognitionActive) {
-        this.recognitionActive = false;
-        return true;
-      }
-      
-      logger.debug('Stopping speech recognition');
-      
-      // Stop the engine
-      await this.transcriptionEngine.stop();
-      this.recognitionActive = false;
-      
-      logger.debug('Speech recognition stopped successfully');
-      return true;
-    } catch (error) {
-      logger.error('Error stopping speech recognition:', error);
-      this.recognitionActive = false;
-      return false;
-    }
-  }
-  
-  /**
-   * Handle transcription results
-   * @param {Object} event Transcription result event
-   * @private
-   */
-  _handleTranscriptionResult(event) {
-    try {
-      if (!event || !event.results || event.results.length === 0) {
-        return;
-      }
-      
-      // Get most recent result
-      const result = event.results[event.results.length - 1];
-      if (!result.alternatives || result.alternatives.length === 0) {
-        return;
-      }
-      
-      // Get transcript
-      const transcript = result.alternatives[0].transcript;
-      const isFinal = !!result.isFinal;
-      
-      logger.debug(`Transcription result: "${transcript}", isFinal: ${isFinal}`);
-      
-      // Process the transcription
-      if (transcript && transcript.trim()) {
-        // Add to processing queue
-        this.processingQueue.push({
-          text: transcript,
-          isFinal,
-          timestamp: Date.now()
-        });
-        
-        // Process the queue if not already processing
-        if (!this.isProcessingQueue) {
-          this._processQueue();
-        }
-      }
-    } catch (error) {
-      logger.error('Error handling transcription result:', error);
-    }
-  }
-  
-  /**
-   * Handle transcription errors
-   * @param {Object} error Transcription error event
-   * @private
-   */
-  _handleTranscriptionError(error) {
-    logger.error('Transcription error:', error);
-    
-    // Emit error event
-    this.emit('transcription-error', error);
-    
-    // Show notification
-    this._showNotification(`Transcription error: ${error.message || 'Unknown error'}`, 'error');
-    
-    // Restart recognition if it's a recoverable error
-    if (this.isRecording && this.recognitionActive) {
-      // In real implementation, check for specific error types that are recoverable
-      logger.debug('Attempting to restart recognition after error');
-      this._stopRecognition().then(() => {
-        setTimeout(() => {
-          if (this.isRecording) {
-            this._startRecognition();
-          }
-        }, 1000);
-      });
-    }
-  }
-  
-  /**
-   * Handle transcription end
-   * @private
-   */
-  _handleTranscriptionEnd() {
-    logger.debug('Transcription ended');
-    
-    // Restart if we should still be recording
-    if (this.isRecording && this.recognitionActive) {
-      logger.debug('Automatically restarting recognition');
-      setTimeout(() => {
-        if (this.isRecording) {
-          this._startRecognition();
-        }
-      }, 500);
-    }
-  }
-  
-  /**
-   * Process the transcription queue
+   * Process the queue of transcriptions
+   * @returns {Promise<void>}
    * @private
    */
   async _processQueue() {
-    if (this.processingQueue.length === 0) {
-      this.isProcessingQueue = false;
+    if (this.isProcessingQueue || this.processingQueue.length === 0) {
       return;
     }
     
     this.isProcessingQueue = true;
     
     try {
-      // Get the next item from the queue
-      const item = this.processingQueue.shift();
-      
-      // Process the transcription
-      await this.processTranscription(item.text, item.isFinal);
-      
-      // Continue processing the queue
-      setTimeout(() => {
-        this._processQueue();
-      }, 100);
-    } catch (error) {
-      logger.error('Error processing transcription queue:', error);
-      this.isProcessingQueue = false;
-    }
-  }
-  
-  /**
-   * Show a notification to the user
-   * @param {string} message Notification message
-   * @param {string} type Notification type
-   * @private
-   */
-  _showNotification(message, type = 'info') {
-    try {
-      const notificationService = this.services.get('notification');
-      if (notificationService) {
-        notificationService.show({
-          title: 'Voice Recognition',
-          body: message,
-          type: type
-        });
+      while (this.processingQueue.length > 0) {
+        const item = this.processingQueue.shift();
+        
+        // Process the transcription with the command processor
+        await this.commandProcessor.processCommand(item.text);
       }
     } catch (error) {
-      logger.warn('Failed to show notification:', error);
+      logger.error('Error processing transcription queue:', error);
+    } finally {
+      this.isProcessingQueue = false;
     }
   }
 }
