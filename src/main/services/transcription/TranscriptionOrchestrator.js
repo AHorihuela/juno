@@ -92,7 +92,7 @@ class TranscriptionOrchestrator extends BaseService {
     logger.info(`Command mode ${enabled ? 'enabled' : 'disabled'}`);
     
     // Show notification
-    this.getService('notification').showNotification({
+    this.getService('notification').show({
       title: 'Command Mode',
       body: `Command mode ${enabled ? 'enabled' : 'disabled'}`,
       type: 'info',
@@ -117,7 +117,7 @@ class TranscriptionOrchestrator extends BaseService {
     this.processingStats.totalRequests++;
     
     // Show initial notification
-    this.getService('notification').showNotification({
+    this.getService('notification').show({
       title: 'Processing Audio',
       body: 'Preparing your recording...',
       type: 'info',
@@ -141,7 +141,7 @@ class TranscriptionOrchestrator extends BaseService {
       const { wavData, tempFile } = await this.audioProcessingService.prepareAudioForTranscription(audioBuffer);
       
       // Show processing notification
-      this.getService('notification').showNotification({
+      this.getService('notification').show({
         title: 'Transcribing Audio',
         body: 'Converting speech to text...',
         type: 'info',
@@ -197,7 +197,7 @@ class TranscriptionOrchestrator extends BaseService {
       logger.error('Error processing audio transcription:', error);
       
       // Show error notification
-      this.getService('notification').showNotification({
+      this.getService('notification').show({
         title: 'Transcription Failed',
         body: 'Could not transcribe audio.',
         type: 'error',
@@ -227,7 +227,7 @@ class TranscriptionOrchestrator extends BaseService {
     logger.info('Using cached transcription result');
     
     // Show notification
-    this.getService('notification').showNotification({
+    this.getService('notification').show({
       title: 'Using Cached Result',
       body: 'Using previously transcribed text',
       type: 'info',
@@ -255,7 +255,7 @@ class TranscriptionOrchestrator extends BaseService {
       const aiService = await this.getService('ai');
       
       // Show notification
-      this.getService('notification').showNotification({
+      this.getService('notification').show({
         title: 'Processing AI Command',
         body: 'Executing your command...',
         type: 'info',
@@ -267,7 +267,7 @@ class TranscriptionOrchestrator extends BaseService {
       
       if (result.success) {
         // Show success notification
-        this.getService('notification').showNotification({
+        this.getService('notification').show({
           title: 'Command Completed',
           body: 'Your command was processed successfully',
           type: 'success',
@@ -275,7 +275,7 @@ class TranscriptionOrchestrator extends BaseService {
         });
       } else {
         // Show error notification
-        this.getService('notification').showNotification({
+        this.getService('notification').show({
           title: 'Command Failed',
           body: result.error || 'Failed to process command',
           type: 'error',
@@ -289,7 +289,7 @@ class TranscriptionOrchestrator extends BaseService {
       logger.error('Error processing AI command:', error);
       
       // Show error notification
-      this.getService('notification').showNotification({
+      this.getService('notification').show({
         title: 'Command Failed',
         body: 'Error processing AI command',
         type: 'error',
@@ -312,7 +312,7 @@ class TranscriptionOrchestrator extends BaseService {
       
       if (inserted) {
         // Show success notification
-        this.getService('notification').showNotification({
+        this.getService('notification').show({
           title: 'Text Inserted',
           body: 'Dictation complete',
           type: 'success',
@@ -320,7 +320,7 @@ class TranscriptionOrchestrator extends BaseService {
         });
       } else {
         // Show error notification
-        this.getService('notification').showNotification({
+        this.getService('notification').show({
           title: 'Insertion Failed',
           body: 'Could not insert dictated text',
           type: 'error',
@@ -331,7 +331,7 @@ class TranscriptionOrchestrator extends BaseService {
       logger.error('Error inserting dictation text:', error);
       
       // Show error notification
-      this.getService('notification').showNotification({
+      this.getService('notification').show({
         title: 'Insertion Failed',
         body: 'Error inserting dictated text',
         type: 'error',

@@ -40,16 +40,16 @@ class AICommandDetector {
 
     console.log('[AICommandDetector] Trigger word:', triggerWord);
 
-    // IMPROVEMENT 1: More flexible trigger word detection - check all words in first 5 positions
-    const firstFiveWords = words.slice(0, 5).map(w => w.replace(/[.,!?;:]$/, ''));
-    console.log('[AICommandDetector] Checking first five words:', firstFiveWords, 'against trigger word:', triggerWord.toLowerCase());
+    // Check for trigger word in the first THREE words (accounting for greetings)
+    const firstThreeWords = words.slice(0, 3).map(w => w.replace(/[.,!?;:]$/, ''));
+    console.log('[AICommandDetector] Checking first three words:', firstThreeWords, 'against trigger word:', triggerWord.toLowerCase());
 
-    // Check if trigger word appears at the start with valid prefix
-    for (let i = 0; i < firstFiveWords.length; i++) {
-      if (firstFiveWords[i] === triggerWord.toLowerCase()) {
+    // Check if the trigger word appears in the first three words
+    for (let i = 0; i < firstThreeWords.length; i++) {
+      if (firstThreeWords[i] === triggerWord.toLowerCase()) {
         // If not first word, check if previous words are greetings or common pronouns
-        if (i === 0 || firstFiveWords.slice(0, i).every(w => this.GREETINGS.has(w) || ['can', 'please', 'would', 'could', 'will', 'should'].includes(w))) {
-          console.log('[AICommandDetector] Trigger word matched with valid prefix');
+        if (i === 0 || firstThreeWords.slice(0, i).every(w => this.GREETINGS.has(w) || ['can', 'please', 'would', 'could', 'will', 'should'].includes(w))) {
+          console.log('[AICommandDetector] Trigger word matched within first three words');
           return true;
         }
       }
@@ -69,64 +69,33 @@ class AICommandDetector {
       actionVerbs ? actionVerbs.join(', ') : 'none'
     );
 
-    // IMPROVEMENT 2: Enhanced action verb detection
-    // Extract the potential command part (first 3-4 words)
+    // Check for action verbs in first TWO words
+    const firstTwoWords = words.slice(0, 2).map(w => w.replace(/[.,!?;:]$/, '').toLowerCase());
+    console.log('[AICommandDetector] Checking first two words for action verbs:', firstTwoWords);
+    
+    // Direct check of first two words against action verbs
+    for (let i = 0; i < firstTwoWords.length; i++) {
+      if (ACTION_VERBS.has(firstTwoWords[i])) {
+        console.log('[AICommandDetector] Action verb found in position', i, ':', firstTwoWords[i]);
+        return true;
+      }
+    }
+    
+    // Check for common phrase patterns with action verbs
     const commandPart = words.slice(0, Math.min(4, words.length)).join(' ').toLowerCase();
     console.log('[AICommandDetector] Command part:', commandPart);
     
-    // Check for verb patterns like "please summarize", "can you analyze", etc.
+    // Check for patterns like "please summarize", "can you analyze", etc.
     const commonPhrasePatterns = [
       'please', 'can you', 'would you', 'could you', 'i need', 'i want', 'help me'
     ];
     
-    // Check if any action verb is in the command part
+    // Check if any action verb is in the command part with common phrases
     for (const verb of ACTION_VERBS) {
-      if (commandPart.includes(verb)) {
-        console.log('[AICommandDetector] Action verb found in command part:', verb);
-        return true;
-      }
-      
-      // Check combinations with common phrases
       for (const phrase of commonPhrasePatterns) {
         if (commandPart.includes(`${phrase} ${verb}`)) {
           console.log('[AICommandDetector] Action verb found with common phrase:', `${phrase} ${verb}`);
           return true;
-        }
-      }
-    }
-
-    // Check first word against action verbs (more permissive than before)
-    if (words.length >= 1) {
-      const firstWord = words[0].replace(/[.,!?;:]$/, '').toLowerCase();
-      
-      // Check if first word is an action verb
-      const hasActionVerb = ACTION_VERBS.has(firstWord);
-      
-      console.log('[AICommandDetector] Action verb check:', {
-        firstWord,
-        hasActionVerb,
-        verbList: Array.from(ACTION_VERBS)
-      });
-      
-      if (hasActionVerb) {
-        return true;
-      }
-      
-      // Check second word if first word is a common article or pronoun
-      if (words.length >= 2) {
-        const articles = new Set(['the', 'a', 'an', 'this', 'that', 'these', 'those', 'my', 'your', 'please']);
-        if (articles.has(firstWord)) {
-          const secondWord = words[1].replace(/[.,!?;:]$/, '').toLowerCase();
-          const hasActionVerbSecond = ACTION_VERBS.has(secondWord);
-          
-          console.log('[AICommandDetector] Second word action verb check:', {
-            secondWord,
-            hasActionVerbSecond
-          });
-          
-          if (hasActionVerbSecond) {
-            return true;
-          }
         }
       }
     }

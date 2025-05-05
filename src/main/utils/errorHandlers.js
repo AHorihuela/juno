@@ -19,7 +19,7 @@ function setupErrorHandlers(mainWindow, serviceRegistry) {
       try {
         const notificationService = serviceRegistry.get('notification');
         if (notificationService && notificationService.initialized) {
-          notificationService.showNotification(
+          notificationService.show(
             'Application Error',
             'A window crashed and will be restarted.',
             'error'
@@ -57,7 +57,7 @@ function setupErrorHandlers(mainWindow, serviceRegistry) {
       try {
         const notificationService = serviceRegistry.get('notification');
         if (notificationService && notificationService.initialized) {
-          notificationService.showNotification(
+          notificationService.show(
             'Application Error',
             'The GPU process crashed. The application will restart.',
             'error'
@@ -95,7 +95,7 @@ function setupErrorHandlers(mainWindow, serviceRegistry) {
       try {
         const notificationService = serviceRegistry.get('notification');
         if (notificationService && notificationService.initialized) {
-          notificationService.showNotification(
+          notificationService.show(
             'Application Error',
             'An unexpected error occurred: ' + error.message,
             'error'

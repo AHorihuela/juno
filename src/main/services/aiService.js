@@ -33,6 +33,17 @@ class AIService extends BaseService {
   }
 
   /**
+   * Cancel the current request if one is in progress
+   */
+  cancelCurrentRequest() {
+    if (this.currentRequest && this.currentRequest.controller) {
+      console.log('[AIService] Cancelling current request');
+      this.currentRequest.controller.abort();
+      this.currentRequest = null;
+    }
+  }
+
+  /**
    * Initialize the OpenAI client with the API key from config
    * @returns {Promise<Object>} The initialized OpenAI client
    * @throws {Error} If API key is not configured
@@ -256,6 +267,51 @@ class AIService extends BaseService {
   }
   
   /**
+   * Check if the response is too similar to the highlighted text
+   * @param {string} response - The model's response text
+   * @param {string} highlightedText - The highlighted text
+   * @returns {boolean} True if the response is too similar to the highlighted text
+   * @private
+   */
+  _isResponseTooSimilarToHighlight(response, highlightedText) {
+    // If either text is very short, similarity check isn't meaningful
+    if (!response || !highlightedText || response.length < 20 || highlightedText.length < 20) {
+      return false;
+    }
+    
+    // Simple heuristic based on common substrings - if more than 60% of the response
+    // directly appears in the highlighted text, it's considered too similar
+    const minLength = Math.min(response.length, highlightedText.length);
+    const similarityThreshold = 0.6;
+    
+    // Normalize both texts for comparison (lowercase, remove extra whitespace)
+    const normalizedResponse = response.toLowerCase().replace(/\s+/g, ' ').trim();
+    const normalizedHighlight = highlightedText.toLowerCase().replace(/\s+/g, ' ').trim();
+    
+    // Look for long common substrings
+    let matchCount = 0;
+    const windowSize = 20; // Check for 20-character windows
+    
+    for (let i = 0; i <= normalizedResponse.length - windowSize; i++) {
+      const window = normalizedResponse.substring(i, i + windowSize);
+      if (normalizedHighlight.includes(window)) {
+        matchCount += windowSize;
+        i += windowSize - 1; // Skip ahead, but allow for some overlap
+      }
+    }
+    
+    const similarityRatio = matchCount / normalizedResponse.length;
+    console.log('[AIService] Response similarity check:', {
+      responseLength: normalizedResponse.length,
+      matchCount,
+      similarityRatio,
+      isTooSimilar: similarityRatio > similarityThreshold
+    });
+    
+    return similarityRatio > similarityThreshold;
+  }
+  
+  /**
    * Show feedback to the user about context being used
    * @private
    */
@@ -318,69 +374,13 @@ class AIService extends BaseService {
         }
       }
       
-      this.getService('notification').showNotification({
+      this.getService('notification').show({
         title: 'Processing AI Command',
         body: `Using ${contextTypeText}${appText} (${this.contextManager.formatContextSize(contextUsage.contextSize)})${relevanceText}`,
         type: 'info',
         timeout: 3000
       });
     }
-  }
-
-  /**
-   * Cancel the current request if one exists
-   */
-  cancelCurrentRequest() {
-    if (this.currentRequest) {
-      console.log('[AIService] Cancelling current request');
-      this.currentRequest.controller.abort();
-      this.currentRequest = null;
-    }
-  }
-  
-  /**
-   * Get detailed statistics about AI usage
-   * @returns {Object} AI usage statistics
-   */
-  getAIUsageStats() {
-    return {
-      lastContextUsage: this.contextManager.getLastContextUsage(),
-      formattedContextSize: this.contextManager.formatContextSize(this.contextManager.getLastContextUsage().contextSize),
-      timestamp: Date.now(),
-      stats: this.statsTracker.getStats(),
-      formattedResponseTime: this.statsTracker.formatResponseTime(this.statsTracker.getLastResponseTime()),
-      formattedAverageResponseTime: this.statsTracker.formatResponseTime(this.statsTracker.getAverageResponseTime())
-    };
-  }
-
-  /**
-   * Check if the response is too similar to the highlighted text
-   * @param {string} response - The AI response
-   * @param {string} highlightedText - The highlighted text
-   * @returns {boolean} True if the response is too similar to the highlighted text
-   * @private
-   */
-  _isResponseTooSimilarToHighlight(response, highlightedText) {
-    // Simple check: if the response contains a significant portion of the highlighted text
-    if (highlightedText.length > 100) {
-      // For longer highlighted text, check if a significant portion appears in the response
-      const normalizedResponse = response.toLowerCase().replace(/\s+/g, ' ');
-      const normalizedHighlight = highlightedText.toLowerCase().replace(/\s+/g, ' ');
-      
-      // Check if the response contains at least 70% of the highlighted text
-      const words = normalizedHighlight.split(' ');
-      let matchCount = 0;
-      
-      for (const word of words) {
-        if (word.length > 3 && normalizedResponse.includes(word)) {
-          matchCount++;
-        }
-      }
-      
-      return matchCount / words.length > 0.7;
-    }
-    
-    return false;
   }
 }
 

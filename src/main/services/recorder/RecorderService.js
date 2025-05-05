@@ -112,21 +112,26 @@ class RecorderService extends BaseService {
     }
   }
 
+  /**
+   * Sets the recording device and restarts recording if already active
+   * @param {string} deviceId - The device ID to set
+   * @returns {Promise<boolean>} - True if device was set successfully
+   */
   async setDevice(deviceId) {
-    logger.info('Setting recording device...', { metadata: { deviceId } });
+    logger.info('Setting recording device:', { metadata: { deviceId } });
     
     try {
-      // Check if we're currently recording
+      // Check if recording
       const wasRecording = this.recording;
+      
+      // If recording, stop first
       if (wasRecording) {
-        logger.info('Stopping current recording before changing device');
+        logger.info('Stopping recording to change device');
         await this.stop();
       }
-
-      // Set the device using the microphone manager
-      logger.debug('Calling micManager.setDevice...');
+      
+      // Set the device
       const success = await this.micManager.setDevice(deviceId);
-      logger.debug('Device set result:', { metadata: { success } });
       
       // If we were recording, restart with new device
       if (wasRecording && success) {
@@ -137,7 +142,7 @@ class RecorderService extends BaseService {
       return success;
     } catch (error) {
       logger.error('Error setting device:', { metadata: { error } });
-      this.getService('notification').showNotification(
+      this.getService('notification').show(
         'Microphone Error',
         error.message,
         'error'
@@ -317,7 +322,7 @@ class RecorderService extends BaseService {
       // Add error handler for stream errors
       stream.on('error', (error) => {
         logger.error('Recording stream error:', { metadata: { error } });
-        this.getService('notification').showNotification(
+        this.getService('notification').show(
           'Recording Error',
           'An error occurred during recording: ' + error.message,
           'error'
@@ -399,7 +404,7 @@ class RecorderService extends BaseService {
       return await this.finalizeStartup();
     } catch (error) {
       logger.error('Error starting recording:', { metadata: { error } });
-      this.getService('notification').showNotification(
+      this.getService('notification').show(
         'Recording Error',
         'Failed to start recording: ' + error.message,
         'error'
@@ -563,7 +568,7 @@ class RecorderService extends BaseService {
         }
       });
       
-      this.getService('notification').showNotification({
+      this.getService('notification').show({
         title: 'Recording Too Short',
         body: 'Please record for at least 1.5 seconds.',
         type: 'info'
@@ -586,7 +591,7 @@ class RecorderService extends BaseService {
       // Show notification but don't skip transcription
       const rmsValue = analysis.audioAnalysis.averageRMS;
       const peakRMSValue = analysis.audioAnalysis.peakRMS;
-      this.getService('notification').showNotification(
+      this.getService('notification').show(
         'Low Audio Detected',
         `Audio levels are low (Avg: ${rmsValue}, Peak: ${peakRMSValue}). Attempting transcription anyway.`,
         'info'
@@ -665,7 +670,7 @@ class RecorderService extends BaseService {
       logger.info('Recording stopped successfully');
     } catch (error) {
       logger.error('Failed to stop recording:', { metadata: { error } });
-      this.getService('notification').showNotification(
+      this.getService('notification').show(
         'Recording Error',
         error.message || 'Failed to stop recording',
         'error'

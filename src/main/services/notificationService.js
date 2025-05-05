@@ -89,7 +89,7 @@ class NotificationService extends BaseService {
       }
       
       // Send to main window via IPC
-      this.ipcMain.emit('show-notification', options);
+      this.emit('show-notification', options);
       
       return true;
     } catch (error) {
@@ -162,11 +162,11 @@ class NotificationService extends BaseService {
       }
     }
 
-    this.showNotification('API Error', message, 'error');
+    this.show('API Error', message, 'error');
   }
 
   showMicrophoneError() {
-    this.showNotification(
+    this.show(
       'Microphone Access Required',
       'Please grant microphone access in System Preferences > Security & Privacy > Microphone',
       'error'
@@ -174,7 +174,7 @@ class NotificationService extends BaseService {
   }
 
   showTranscriptionError(error) {
-    this.showNotification(
+    this.show(
       'Transcription Error',
       error.message || 'Failed to transcribe audio',
       'error'
@@ -182,7 +182,7 @@ class NotificationService extends BaseService {
   }
 
   showNoAudioDetected() {
-    this.showNotification(
+    this.show(
       'No Audio Detected',
       'No speech was detected during the recording. Try speaking louder or adjusting your microphone.',
       'info'
@@ -190,7 +190,7 @@ class NotificationService extends BaseService {
   }
 
   showAIError(error) {
-    this.showNotification(
+    this.show(
       'AI Processing Error',
       error.message || 'Failed to process AI command',
       'error'

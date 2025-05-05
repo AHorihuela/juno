@@ -31,7 +31,7 @@ class MicrophoneManager {
         
         if (status === 'denied') {
           logger.warn('Microphone permission denied by macOS');
-          this.services.notification.showNotification(
+          this.services.notification.show(
             'Microphone Access Required',
             'Please enable microphone access in System Preferences > Security & Privacy > Privacy > Microphone',
             'error'
@@ -39,7 +39,7 @@ class MicrophoneManager {
           return false;
         } else if (status === 'restricted') {
           logger.warn('Microphone access restricted by macOS');
-          this.services.notification.showNotification(
+          this.services.notification.show(
             'Microphone Access Restricted',
             'Microphone access is restricted by system policy. Please contact your system administrator.',
             'error'
@@ -51,7 +51,7 @@ class MicrophoneManager {
           logger.info('Microphone permission request result:', { metadata: { granted } });
           
           if (!granted) {
-            this.services.notification.showNotification(
+            this.services.notification.show(
               'Microphone Access Denied',
               'Microphone access is required for recording. Please enable it in System Preferences.',
               'error'
@@ -72,7 +72,7 @@ class MicrophoneManager {
       
       if (!hasAccess) {
         logger.warn('Microphone test failed - no access to device');
-        this.services.notification.showNotification(
+        this.services.notification.show(
           'Microphone Not Available',
           'Could not access the microphone. Please check your connections and permissions.',
           'error'
@@ -178,7 +178,7 @@ class MicrophoneManager {
       
       if (!deviceWorks) {
         logger.warn('Device test failed:', { metadata: { deviceId } });
-        this.services.notification.showNotification(
+        this.services.notification.show(
           'Microphone Test Failed',
           'Could not record audio with the selected microphone. Please try another device.',
           'error'
@@ -192,7 +192,7 @@ class MicrophoneManager {
       return true;
     } catch (error) {
       logger.error('Error setting device:', { metadata: { error } });
-      this.services.notification.showNotification(
+      this.services.notification.show(
         'Microphone Error',
         error.message || 'Failed to set microphone device',
         'error'

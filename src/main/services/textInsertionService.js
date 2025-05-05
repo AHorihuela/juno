@@ -645,7 +645,7 @@ class TextInsertionService extends BaseService {
   showCopyPopup(text) {
     try {
       logger.debug('Showing copy popup');
-      this.getService('notification').showNotification({
+      this.getService('notification').show({
         title: 'Text Available',
         body: 'Text copied to clipboard. Press Cmd+V to paste.',
         type: 'info'
@@ -661,5 +661,4 @@ class TextInsertionService extends BaseService {
 }
 
 // Export a factory function instead of a singleton
-module.exports = () => new TextInsertionService(); 
 module.exports = () => new TextInsertionService(); 

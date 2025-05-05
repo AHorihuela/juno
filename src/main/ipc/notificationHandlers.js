@@ -15,7 +15,7 @@ function setupNotificationHandlers(serviceRegistry) {
   ipcMain.on('show-notification', (_, notification) => {
     try {
       const notificationService = serviceRegistry.get('notification');
-      notificationService.showNotification(
+      notificationService.show(
         notification.title,
         notification.message,
         notification.type
