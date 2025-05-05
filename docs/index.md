@@ -9,6 +9,7 @@ This document serves as a central index for all documentation related to the Jun
 - [Functional Specification](FunctionalSpecification.md): Feature and functionality specifications
 - [Implementation Summary](ImplementationSummary.md): Summary of implementation details
 - [Transcription and AI Methodology](transcription-and-ai-methodology.md): Details on how speech recognition and AI processing work
+- [Documentation Update Summary](DOCUMENTATION_UPDATE.md): Overview of recent documentation updates and future recommendations
 
 ## Feature-Specific Documentation
 
