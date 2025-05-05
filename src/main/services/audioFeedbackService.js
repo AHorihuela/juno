@@ -25,8 +25,8 @@ class AudioFeedbackService extends BaseService {
       const initStartTime = Date.now();
       console.log('[AudioFeedback] Starting initialization at:', initStartTime);
       
-      // Add a flag to control when audio can play
-      this.audioEnabled = false;
+      // Enable audio by default for better user experience
+      this.audioEnabled = true;
       
       // Ensure app is ready
       if (!app.isReady()) {
