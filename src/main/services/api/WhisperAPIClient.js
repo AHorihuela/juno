@@ -241,10 +241,9 @@ class WhisperAPIClient {
       let enhancedPrompt = dictionaryPrompt;
       if (formatText) {
         // Add formatting instructions to improve capitalization and punctuation
+        // Keep this very short to avoid the model repeating it in the output
         enhancedPrompt = enhancedPrompt + 
-          ' Please use proper capitalization, punctuation, and paragraph breaks. ' +
-          'Format as natural text with proper capitalization at the start of sentences, ' +
-          'use commas where appropriate, and add periods at the end of sentences.';
+          ' Format properly with capitalization and punctuation.';
         
         logger.debug('Using enhanced prompt with formatting instructions');
       }
@@ -323,6 +322,26 @@ class WhisperAPIClient {
     
     // Apply a series of formatting rules
     let formattedText = text;
+
+    // 0. Remove any instances of formatting instructions that were misinterpreted as transcription
+    const formatInstructionPatterns = [
+      /please use proper capitalization,? and punctuation\.?/gi,
+      /format properly with capitalization and punctuation\.?/gi,
+      /proper capitalization at the start of sentences/gi,
+      /use commas where appropriate/gi,
+      /add periods? at the end of sentences/gi,
+      /format as natural text/gi
+    ];
+    
+    for (const pattern of formatInstructionPatterns) {
+      formattedText = formattedText.replace(pattern, '');
+    }
+    
+    // Remove repetitive phrases that might have been hallucinated
+    formattedText = formattedText.replace(/(and add periods? at the end of sentences,?\s*)+/gi, '');
+    
+    // Clean up any double spaces created by removals
+    formattedText = formattedText.replace(/\s{2,}/g, ' ').trim();
     
     // 1. Ensure first character is capitalized
     if (formattedText.length > 0) {

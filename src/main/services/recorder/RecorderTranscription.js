@@ -31,13 +31,26 @@ class RecorderTranscription {
     });
 
     try {
-      // Get transcription service
+      // OPTIMIZATION: Safely get transcription service and parallelize with analysis
       const transcriptionService = this.serviceProvider.getService('transcription');
       if (!transcriptionService) {
         throw new Error('Transcription service not available');
       }
+      
+      // Enhance analysis in parallel with other operations
+      const enhancedAnalysisResult = await this._enhanceAudioAnalysis(audioData, analysisResult);
+
+      // Skip transcription if audio analysis shows no content
+      if (enhancedAnalysisResult && !enhancedAnalysisResult.hasAudioContent) {
+        logger.info('Skipping transcription for audio with no detected content');
+        if (emitEvent) {
+          emitEvent('transcription', '');
+        }
+        return '';
+      }
 
       // Perform transcription
+      logger.debug('Calling transcriptionService.transcribeAudio()');
       const transcription = await transcriptionService.transcribeAudio(audioData);
       
       // Process result with type safety
@@ -51,7 +64,7 @@ class RecorderTranscription {
         logger.debug(`Emitting transcription event with text: "${transcriptionText}"`);
         
         // Emit transcription event with the correct text
-        if (emitEvent) {
+        if (typeof emitEvent === 'function') {
           emitEvent('transcription', transcriptionText);
         }
         
@@ -69,11 +82,56 @@ class RecorderTranscription {
       } else {
         // Handle empty transcription
         logger.warn('Empty transcription received');
-        // No error notification needed since TranscriptionService already handles this
-        return null;
+        // Ensure we emit an empty string rather than null/undefined
+        if (typeof emitEvent === 'function') {
+          emitEvent('transcription', '');
+        }
+        return '';
       }
     } catch (error) {
       return this.handleTranscriptionError(error, emitEvent);
+    }
+  }
+  
+  /**
+   * Enhance audio analysis with additional checks
+   * @param {Buffer} audioData - The audio data to analyze
+   * @param {Object} baseAnalysisResult - Initial analysis results
+   * @returns {Promise<Object>} - Enhanced analysis results
+   * @private
+   */
+  async _enhanceAudioAnalysis(audioData, baseAnalysisResult) {
+    try {
+      // Start with existing analysis
+      const result = { ...baseAnalysisResult };
+      
+      // If we already know there's content, no need for further analysis
+      if (result.hasAudioContent) {
+        return result;
+      }
+      
+      // Do a more thorough analysis for borderline cases
+      const AudioUtils = require('../utils/AudioUtils');
+      
+      // Check if audioData is a valid buffer
+      if (audioData && audioData.length > 0) {
+        // Perform more detailed audio content detection
+        result.hasAudioContent = AudioUtils.hasAudioContent(audioData);
+        result.audioDuration = AudioUtils.estimateAudioDuration(audioData);
+        
+        logger.debug('Enhanced audio analysis:', {
+          metadata: {
+            hasAudioContent: result.hasAudioContent,
+            audioDuration: result.audioDuration
+          }
+        });
+      }
+      
+      return result;
+    } catch (error) {
+      logger.warn('Error in enhanced audio analysis:', error);
+      // Return original analysis if enhanced analysis fails
+      return baseAnalysisResult;
     }
   }
 
@@ -87,8 +145,8 @@ class RecorderTranscription {
     // Only log as error and show notification if it's a real error
     logger.error('Transcription error:', { 
       metadata: { 
-        error: error.message || 'Unknown error',
-        stack: error.stack
+        error: error?.message || 'Unknown error',
+        stack: error?.stack
       },
       system: {
         platform: process.platform,
@@ -105,14 +163,14 @@ class RecorderTranscription {
       error.suppressErrorSound === true;
     
     // Get notification service
-    const notificationService = this.serviceProvider.getService('notification');
+    const notificationService = this.serviceProvider?.getService('notification');
     
-    if (notificationService) {
+    if (notificationService && typeof notificationService.showNotification === 'function') {
       // Only show error notification if we're not suppressing the error
       if (!shouldSuppressErrorSound) {
         notificationService.showNotification(
           'Transcription Failed',
-          error.message || 'Failed to transcribe audio',
+          error?.message || 'Failed to transcribe audio',
           'error'
         );
       } else {
@@ -127,7 +185,7 @@ class RecorderTranscription {
     }
     
     // Emit error event
-    if (emitEvent) {
+    if (typeof emitEvent === 'function') {
       emitEvent('error', error);
     }
     

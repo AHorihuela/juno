@@ -166,93 +166,40 @@ class TranscriptionService extends BaseService {
       const normalizedText = transcribedText.trim();
       logger.debug(`Processing transcribed text: "${normalizedText.substring(0, 50)}${normalizedText.length > 50 ? '...' : ''}"`);
       
-      // Check if this is an AI command
-      const aiService = this.getService('ai');
-      logger.debug(`AI service available: ${Boolean(aiService)}`);
+      // OPTIMIZATION: Initialize services in parallel rather than sequentially
+      const [aiService, textInsertionService, selectionService] = await Promise.all([
+        Promise.resolve(this.getService('ai')),
+        Promise.resolve(this.getService('textInsertion')),
+        Promise.resolve(this.getService('selection'))
+      ]);
       
-      if (aiService && await aiService.isAICommand(normalizedText)) {
+      logger.debug(`Service availability check: AI=${Boolean(aiService)}, TextInsertion=${Boolean(textInsertionService)}, Selection=${Boolean(selectionService)}`);
+      
+      // Check if this is an AI command - run async and non-blocking 
+      const isAICommand = aiService ? await aiService.isAICommand(normalizedText) : false;
+      
+      if (aiService && isAICommand) {
         logger.info('AI command detected, processing...');
         
-        // Get selection service 
-        const selectionService = this.getService('selection');
-        logger.debug(`Selection service available: ${Boolean(selectionService)}`);
+        // OPTIMIZATION: Start getting selected text in parallel with preparing AI services
+        const selectedTextPromise = this._getSelectedTextSafely(selectionService);
         
-        // Get highlighted text for context if available - with more robust error handling
-        let selectedText = '';
-        try {
-          logger.debug('Attempting to get selected text...');
-          
-          if (!selectionService) {
-            logger.warn('Selection service not available, proceeding without selected text');
-          } else if (typeof selectionService.getSelectedText !== 'function') {
-            logger.warn('Selection service missing getSelectedText method');
-          } else {
-            // Try multiple attempts to get selected text as it sometimes fails on first try
-            logger.debug('Calling selectionService.getSelectedText()');
-            
-            // First try - sometimes fails silently
-            selectedText = await selectionService.getSelectedText();
-            
-            if (!selectedText && process.platform === 'darwin') {
-              // On macOS, we can try a second time after a small delay
-              logger.debug('First attempt returned no text, trying again after delay...');
-              await new Promise(resolve => setTimeout(resolve, 100));
-              selectedText = await selectionService.getSelectedText();
-              
-              if (!selectedText) {
-                // Last attempt - try using the clipboard as fallback
-                logger.debug('Second attempt failed, trying clipboard fallback...');
-                try {
-                  // Try clipboard-based fallback if available
-                  if (typeof selectionService._getSelectionFromClipboard === 'function') {
-                    selectedText = await selectionService._getSelectionFromClipboard();
-                    logger.debug('Got selection from clipboard fallback');
-                  }
-                } catch (clipboardError) {
-                  logger.warn('Clipboard fallback failed:', clipboardError);
-                }
-              }
-            }
-            
-            logger.debug(`Selected text retrieved, length: ${selectedText ? selectedText.length : 0}`);
-            
-            if (selectedText) {
-              logger.debug(`Selection content: "${selectedText.substring(0, 50)}${selectedText.length > 50 ? '...' : ''}"`);
-            } else {
-              logger.debug('No text selected in the active application');
-              // Notify user that no text is selected
-              this.notify('No text is selected. The AI command will run without context.', 'info');
-            }
-          }
-        } catch (selectionError) {
-          logger.warn('Failed to get selected text for AI context:', selectionError);
-          // Continue with empty selection, but notify user
-          this.notify('Could not access selected text. The AI command will run without context.', 'warning');
-        }
+        // Prepare AI processing - do this while we're getting the selected text
+        const aiProcessMethod = typeof aiService.processCommand === 'function' 
+          ? 'processCommand' 
+          : (typeof aiService.processRequest === 'function' ? 'processRequest' : null);
         
-        logger.debug(`Selected text for AI context: ${selectedText ? 
-          `"${selectedText.substring(0, 30)}..." (${selectedText.length} chars)` : 
-          'none'}`);
-          
-        // Process AI request - check if processCommand exists first, 
-        // fall back to processRequest if it doesn't
-        logger.debug('Checking for AI processing methods');
-        let aiProcessMethod;
-        
-        if (typeof aiService.processCommand === 'function') {
-          logger.debug('Using aiService.processCommand method');
-          aiProcessMethod = 'processCommand';
-        } else if (typeof aiService.processRequest === 'function') {
-          logger.debug('Using aiService.processRequest method');
-          aiProcessMethod = 'processRequest';
-        } else {
+        if (!aiProcessMethod) {
           logger.error('AI service has no valid processing method');
           this.notify('AI service misconfigured', 'error');
           return false;
         }
         
+        // Now wait for selected text
+        const selectedText = await selectedTextPromise;
+          
         try {
-          // Log the actual values being passed
+          // Log the values being passed
           logger.debug(`Calling AI service ${aiProcessMethod} with:`, {
             command: normalizedText,
             hasSelectedText: Boolean(selectedText),
@@ -272,7 +219,13 @@ class TranscriptionService extends BaseService {
             
             if (responseText) {
               logger.info('AI response received, inserting text');
-              await this.insertText(responseText);
+              
+              // OPTIMIZATION: Add response to history in parallel with text insertion
+              await Promise.all([
+                this.insertText(responseText),
+                this._addToHistoryInBackground(responseText, true) // true for AI response
+              ]);
+              
               return true;
             } else {
               logger.warn('AI processing returned empty response');
@@ -298,10 +251,6 @@ class TranscriptionService extends BaseService {
         // This is regular text, just insert it
         logger.info('Inserting regular transcribed text');
         
-        // Get text insertion service
-        const textInsertionService = this.getService('textInsertion');
-        logger.debug(`Text insertion service available: ${Boolean(textInsertionService)}`);
-        
         if (!textInsertionService) {
           logger.error('Text insertion service not available');
           this.notify('Text insertion service not available', 'error');
@@ -309,7 +258,12 @@ class TranscriptionService extends BaseService {
         }
         
         try {
-          const insertionResult = await this.insertText(normalizedText);
+          // OPTIMIZATION: Add to history in parallel with text insertion
+          const [insertionResult] = await Promise.all([
+            this.insertText(normalizedText),
+            this._addToHistoryInBackground(normalizedText, false) // false for regular text
+          ]);
+          
           logger.debug(`Text insertion result: ${insertionResult}`);
           return insertionResult;
         } catch (insertionError) {
@@ -621,36 +575,67 @@ class TranscriptionService extends BaseService {
         return cachedText;
       }
 
-      // OPTIMIZATION: Start multiple operations in parallel
-      // 1. Prepare audio data
-      const wavDataPromise = AudioUtils.convertPcmToWav(audioBuffer);
+      // ENHANCED OPTIMIZATION: Run multiple independent operations in parallel
+      const parallelOperations = [
+        // 1. Convert PCM to WAV (CPU-intensive)
+        AudioUtils.convertPcmToWav(audioBuffer),
+        
+        // 2. Show notification (network/UI operation)
+        this.getService('notification')?.showNotification({
+          title: 'Processing Audio',
+          body: 'Preparing your recording...',
+          type: 'info',
+          timeout: 1000
+        })?.catch?.(err => {
+          logger.warn('Non-critical error showing notification:', err);
+          return null; // Non-critical error, continue processing
+        }) || Promise.resolve(null),
+        
+        // 3. Preload app name for future operations (improves text insertion speed later)
+        (this.getService('selection')?.preloadAppName instanceof Function 
+          ? this.getService('selection').preloadAppName().catch(err => {
+              logger.warn('Non-critical error preloading app name:', err);
+              return null; // Non-critical error, continue processing
+            })
+          : Promise.resolve(null)),
+        
+        // 4. Pre-initialize dictionary/context for improved transcription 
+        (this.getService('dictionary')?.preloadDictionary instanceof Function
+          ? this.getService('dictionary').preloadDictionary().catch(err => {
+              logger.warn('Non-critical error preloading dictionary:', err);
+              return null; // Non-critical error, continue processing
+            })
+          : Promise.resolve(null)),
+        
+        // 5. Prepare any AI services that might be needed
+        (this.getService('ai')?.preloadModels instanceof Function
+          ? this.getService('ai').preloadModels().catch(err => {
+              logger.warn('Non-critical error preloading AI models:', err);
+              return null; // Non-critical error, continue processing
+            })
+          : Promise.resolve(null))
+      ];
       
-      // 2. Show initial notification
-      this.getService('notification').showNotification({
-        title: 'Processing Audio',
-        body: 'Preparing your recording...',
-        type: 'info',
-        timeout: 1000 // Reduced from 1500
-      });
+      // Wait for parallel operations to complete
+      const [wavData, ...rest] = await Promise.all(parallelOperations);
       
-      // 3. Preload app name for future operations (improves text insertion speed later)
-      const selectionService = this.getService('selection');
-      const preloadAppNamePromise = selectionService.preloadAppName().catch(err => {
-        logger.error('Error preloading app name:', err);
-      });
+      // Now that we have the WAV data, create a temp file
+      // (This can't be parallelized as it depends on wavData)
+      const createTempFilePromise = AudioUtils.createTempFile(wavData);
       
-      // Wait for audio data preparation
-      const wavData = await wavDataPromise;
-      tempFile = await AudioUtils.createTempFile(wavData);
+      // While the file is being created, prepare the API options in parallel
+      const apiOptionsPromise = this._prepareTranscriptionOptions();
+      
+      // Wait for both operations to complete
+      const [tempFilePath, apiOptions] = await Promise.all([
+        createTempFilePromise,
+        apiOptionsPromise
+      ]);
+      
+      tempFile = tempFilePath;
 
       // Make API request using the WhisperAPIClient with timeout
-      const apiPromise = this.apiClient.transcribeAudio(tempFile, {
-        useCache: true,
-        language: 'en',
-        temperature: 0.3, // Slight increase from 0.0 to allow better formatting 
-        response_format: 'json', // Ensure we get JSON for faster parsing
-        formatText: true // Enable text formatting with proper capitalization and punctuation
-      });
+      const apiPromise = this.apiClient.transcribeAudio(tempFile, apiOptions);
       
       // Add timeout to the API call to prevent hanging
       const response = await Promise.race([
@@ -662,21 +647,11 @@ class TranscriptionService extends BaseService {
       
       const transcribedText = response.text;
       
-      // Cache the transcription result for similar audio
+      // Start cache update in the background without waiting
       if (audioSignature && transcribedText) {
-        // Add to cache
-        this.audioSignatureCache.set(audioSignature, transcribedText);
-        
-        // Limit cache size
-        if (this.audioSignatureCache.size > this.cacheMaxSize) {
-          // Remove oldest entry
-          const firstKey = this.audioSignatureCache.keys().next().value;
-          this.audioSignatureCache.delete(firstKey);
-        }
+        // Don't await this, let it run in the background
+        this._updateAudioCache(audioSignature, transcribedText);
       }
-      
-      // Wait for app name preloading to complete
-      await preloadAppNamePromise;
       
       // If transcription is empty, show notification and return early
       if (!transcribedText || transcribedText.trim() === '') {
@@ -690,35 +665,35 @@ class TranscriptionService extends BaseService {
         return '';
       }
       
-      // Process the transcribed text with faster notification
-      const processTextPromise = this.processAndInsertText(transcribedText);
+      // Now process the text while simultaneously showing a notification
+      const [processedText, _] = await Promise.all([
+        this.processAndInsertText(transcribedText),
+        (this.getService('notification')?.showNotification instanceof Function 
+          ? this.getService('notification').showNotification({
+              title: 'Transcribing',
+              body: 'Processing text...',
+              type: 'success',
+              timeout: 1000
+            }).catch(err => {
+              logger.warn('Non-critical error showing notification:', err);
+              return null; // Non-critical error, continue processing
+            })
+          : Promise.resolve(null))
+      ]);
       
-      // Show minimal notification
-      this.getService('notification').showNotification({
-        title: 'Transcribing',
-        body: 'Processing text...',
-        type: 'success',
-        timeout: 1000 // Reduced from 1500
-      });
-
-      // Wait for text processing to complete
-      const processedText = await processTextPromise;
-      
-      // OPTIMIZATION: Do these operations in the background without waiting
-      Promise.all([
-        // 1. Clean up temp file
+      // OPTIMIZATION: Clean up in the background
+      // Don't await this, let it run after we've returned
+      setTimeout(() => {
         AudioUtils.cleanupTempFile(tempFile).catch(err => {
           logger.error('Error cleaning up temp file:', err);
-        })
-      ]).catch(err => {
-        logger.error('Error in background cleanup tasks:', err);
-      });
+        });
+      }, 100);
       
       // Log performance
       const totalTime = Date.now() - startTime;
       logger.info(`Total processing time: ${totalTime}ms`);
 
-      return processedText;
+      return transcribedText;
     } catch (error) {
       logger.error('Error in transcription:', error);
       
@@ -749,6 +724,44 @@ class TranscriptionService extends BaseService {
     }
   }
   
+  /**
+   * Helper method to update the audio cache
+   * @param {string} signature - Audio signature
+   * @param {string} text - Transcription text
+   * @private
+   */
+  _updateAudioCache(signature, text) {
+    try {
+      // Add to cache
+      this.audioSignatureCache.set(signature, text);
+      
+      // Limit cache size
+      if (this.audioSignatureCache.size > this.cacheMaxSize) {
+        // Remove oldest entry
+        const firstKey = this.audioSignatureCache.keys().next().value;
+        this.audioSignatureCache.delete(firstKey);
+      }
+    } catch (error) {
+      logger.warn('Non-critical error updating audio cache:', error);
+    }
+  }
+  
+  /**
+   * Prepare API options for transcription
+   * @returns {Promise<Object>} API options
+   * @private
+   */
+  async _prepareTranscriptionOptions() {
+    // Can be extended to include more dynamic options in the future
+    return {
+      useCache: true,
+      language: 'en',
+      temperature: 0.0, // Use 0.0 temperature to minimize hallucinations
+      response_format: 'json', // Ensure we get JSON for faster parsing
+      formatText: true // Enable text formatting with proper capitalization and punctuation
+    };
+  }
+
   /**
    * Get API client cache statistics
    * @returns {Object} Cache statistics
@@ -836,6 +849,111 @@ class TranscriptionService extends BaseService {
     } catch (error) {
       console.error('[TranscriptionService] Error stopping transcription:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Get selected text with retry logic and robust error handling
+   * @param {Object} selectionService - The selection service
+   * @returns {Promise<string>} - Selected text or empty string
+   * @private
+   */
+  async _getSelectedTextSafely(selectionService) {
+    let selectedText = '';
+    
+    if (!selectionService) {
+      logger.warn('Selection service not available, proceeding without selected text');
+      return '';
+    }
+    
+    if (typeof selectionService.getSelectedText !== 'function') {
+      logger.warn('Selection service missing getSelectedText method');
+      return '';
+    }
+    
+    try {
+      logger.debug('Attempting to get selected text...');
+      
+      // First try - sometimes fails silently
+      selectedText = await Promise.resolve(selectionService.getSelectedText()).catch(err => {
+        logger.warn('Error on first attempt to get selected text:', err);
+        return '';
+      });
+      
+      if (!selectedText && process.platform === 'darwin') {
+        // On macOS, we can try a second time after a small delay
+        logger.debug('First attempt returned no text, trying again after delay...');
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        selectedText = await Promise.resolve(selectionService.getSelectedText()).catch(err => {
+          logger.warn('Error on second attempt to get selected text:', err);
+          return '';
+        });
+        
+        if (!selectedText) {
+          // Last attempt - try using the clipboard as fallback
+          logger.debug('Second attempt failed, trying clipboard fallback...');
+          try {
+            // Try clipboard-based fallback if available
+            if (typeof selectionService._getSelectionFromClipboard === 'function') {
+              selectedText = await Promise.resolve(selectionService._getSelectionFromClipboard()).catch(err => {
+                logger.warn('Error using clipboard fallback:', err);
+                return '';
+              });
+              
+              if (selectedText) {
+                logger.debug('Got selection from clipboard fallback');
+              }
+            }
+          } catch (clipboardError) {
+            logger.warn('Clipboard fallback failed:', clipboardError);
+          }
+        }
+      }
+      
+      logger.debug(`Selected text retrieved, length: ${selectedText ? selectedText.length : 0}`);
+      
+      if (selectedText) {
+        logger.debug(`Selection content: "${selectedText.substring(0, 50)}${selectedText.length > 50 ? '...' : ''}"`);
+      } else {
+        logger.debug('No text selected in the active application');
+        // Notify user that no text is selected - with safe notify call
+        try {
+          this.notify('No text is selected. The AI command will run without context.', 'info');
+        } catch (notifyError) {
+          logger.warn('Error showing notification:', notifyError);
+        }
+      }
+      
+      return selectedText || '';
+    } catch (selectionError) {
+      logger.warn('Failed to get selected text for AI context:', selectionError);
+      // Continue with empty selection, but notify user - with safe notify call
+      try {
+        this.notify('Could not access selected text. The AI command will run without context.', 'warning');
+      } catch (notifyError) {
+        logger.warn('Error showing notification:', notifyError);
+      }
+      return '';
+    }
+  }
+  
+  /**
+   * Add text to history in the background
+   * @param {string} text - Text to add to history
+   * @param {boolean} isAIResponse - Whether this is an AI response
+   * @returns {Promise<void>}
+   * @private
+   */
+  async _addToHistoryInBackground(text, isAIResponse) {
+    try {
+      const historyService = this.getService('history');
+      if (historyService && typeof historyService.addTranscription === 'function') {
+        await historyService.addTranscription(text, { isAIResponse });
+      }
+    } catch (error) {
+      // Just log the error but don't interrupt the main flow
+      logger.warn('Failed to add text to history:', error);
     }
   }
 }
