@@ -39,6 +39,7 @@ class TranscriptionService extends EventEmitter {
     this.currentSessionId = null;
     this.processingQueue = [];
     this.isProcessingQueue = false;
+    this.cachedMicrophoneAccess = null;
     
     // Initialize sub-modules
     this.engine = new TranscriptionEngine();
@@ -180,36 +181,55 @@ class TranscriptionService extends EventEmitter {
     }
     
     try {
+      // Quick log without blocking
       logger.info('Starting recording and transcription');
       
       // Generate a new session ID
       this.currentSessionId = `trans-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
       
-      // Check if we can access the microphone
-      const hasMicrophoneAccess = await this.recordingManager.checkMicrophoneAccess();
-      if (!hasMicrophoneAccess) {
-        logger.error('Microphone access denied');
-        this.notificationManager.showNotification('Microphone access denied. Voice commands are unavailable.', 'error');
-        return false;
+      // OPTIMIZATION: Start recording IMMEDIATELY with minimal delay
+      // This is the most important part to ensure first words aren't lost
+      const recordingPromise = this.recordingManager.startRecording({
+        sessionId: this.currentSessionId,
+        preFillBuffer: true
+      });
+      
+      // ONLY now that recording is underway, start the engine
+      // This can happen concurrently with recording
+      const enginePromise = this.engine.start(this.options);
+      
+      // Check microphone access later if needed - we're already recording
+      if (!this.cachedMicrophoneAccess) {
+        // Don't await this - we'll check after recording has started
+        this.recordingManager.checkMicrophoneAccess()
+          .then(result => this.cachedMicrophoneAccess = result)
+          .catch(err => logger.error('Microphone access check failed:', err));
       }
       
-      // Play an audible start sound first
-      await this.notificationManager.showNotification('Starting voice recognition', 'info', {
-        audioFeedback: true,
-        soundId: 'start-recording',
-        visual: false  // Only play sound, don't show visual notification
-      });
+      // Play notification AFTER recording has started
+      // Use setTimeout to ensure it doesn't block
+      setTimeout(() => {
+        this.notificationManager.showNotification('Starting voice recognition', 'info', {
+          audioFeedback: true,
+          soundId: 'start-recording',
+          visual: false
+        });
+      }, 0);
       
-      // Start the engine and recording
-      await this.engine.start(this.options);
-      
-      // Start the recording manager
-      const result = await this.recordingManager.startRecording({
-        sessionId: this.currentSessionId
-      });
+      // Wait for recording confirmation and engine
+      const [result] = await Promise.all([
+        recordingPromise,
+        enginePromise.catch(err => {
+          logger.error('Engine start error (non-blocking):', err);
+          return false;
+        })
+      ]);
       
       if (result) {
-        this.notificationManager.showNotification('Voice recognition active', 'info');
+        // Show success notification AFTER everything is ready
+        setTimeout(() => {
+          this.notificationManager.showNotification('Voice recognition active', 'info');
+        }, 0);
       }
       
       return result;

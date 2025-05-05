@@ -35,6 +35,11 @@ class RecordingManager extends EventEmitter {
     this.backgroundProcessing = false;
     this.lastProcessedChunkTime = 0;
     this.processingInterval = null;
+    
+    // Pre-buffer for capturing audio before recording formally starts
+    this.preBuffer = [];
+    this.isPreBuffering = false;
+    this.preBufferSize = 96000; // ~3 seconds of 16-bit, 16kHz audio (increased from 1s to 3s)
   }
 
   /**
@@ -62,6 +67,21 @@ class RecordingManager extends EventEmitter {
         
         // Listen for analysis events that can help detect speech
         this.recorderService.on('audio-analysis', this._handleAudioAnalysis.bind(this));
+        
+        // Start pre-buffering immediately to capture audio before recording starts
+        // IMPORTANT: Do this with minimal delay to ensure pre-buffer is ready
+        this._startPreBuffering();
+        
+        // Also start audio monitoring in the recorder service itself
+        // This ensures the microphone is active immediately
+        setTimeout(async () => {
+          try {
+            await this.recorderService.startAudioMonitoring();
+            logger.debug('Audio monitoring started at initialization');
+          } catch (error) {
+            logger.error('Error starting audio monitoring at init:', error);
+          }
+        }, 500); // Small delay to allow other initialization to complete
       }
       
       this.initialized = true;
@@ -148,6 +168,16 @@ class RecordingManager extends EventEmitter {
       
       this.isRecording = true;
       
+      // If pre-buffer option is enabled and we have pre-buffered data, add it to the recording
+      if (options.preFillBuffer && this.preBuffer.length > 0) {
+        logger.debug(`Adding ${this.preBuffer.length} pre-buffered chunks to recording`);
+        
+        // Add all pre-buffered audio to the beginning of our recording
+        for (const buffer of this.preBuffer) {
+          this.audioBufferManager.addBuffer(buffer);
+        }
+      }
+      
       // Start background processing
       this._startBackgroundProcessing();
       
@@ -209,23 +239,30 @@ class RecordingManager extends EventEmitter {
    * @private
    */
   _handleAudioData(audioData) {
-    if (!this.isRecording || !audioData) {
+    if (!audioData) return;
+    
+    // If we're pre-buffering but not recording, just add to pre-buffer
+    if (this.isPreBuffering && !this.isRecording) {
+      this._addToPreBuffer(audioData);
       return;
     }
     
-    // Add to buffer manager
-    this.audioBufferManager.addBuffer(audioData);
-    
-    // Process for silence detection
-    const speechEnded = this.silenceDetector.processAudio(audioData);
-    
-    // If we detect speech has ended, emit an event
-    if (speechEnded) {
-      logger.debug('Speech end detected by silence detector');
-      this.emit('speech-ended', {
-        timestamp: Date.now(),
-        audioDuration: this.audioBufferManager.getEstimatedDuration()
-      });
+    // Normal recording logic
+    if (this.isRecording) {
+      // Add to buffer manager
+      this.audioBufferManager.addBuffer(audioData);
+      
+      // Process for silence detection
+      const speechEnded = this.silenceDetector.processAudio(audioData);
+      
+      // If we detect speech has ended, emit an event
+      if (speechEnded) {
+        logger.debug('Speech end detected by silence detector');
+        this.emit('speech-ended', {
+          timestamp: Date.now(),
+          audioDuration: this.audioBufferManager.getEstimatedDuration()
+        });
+      }
     }
   }
   
@@ -361,6 +398,47 @@ class RecordingManager extends EventEmitter {
     } catch (error) {
       logger.error('Error in platform-specific microphone check:', error);
       return false;
+    }
+  }
+
+  /**
+   * Start pre-buffering audio to catch the first words
+   * @private
+   */
+  _startPreBuffering() {
+    if (this.isPreBuffering) return;
+    
+    this.isPreBuffering = true;
+    logger.debug('Starting audio pre-buffering');
+    
+    // Begin collecting audio data in the background
+    // The recorder service should already be emitting 'audio-data' events
+    if (this.recorderService && typeof this.recorderService.startAudioMonitoring === 'function') {
+      this.recorderService.startAudioMonitoring();
+    }
+  }
+  
+  /**
+   * Add audio data to pre-buffer
+   * @param {Buffer} audioData Audio data to add
+   * @private
+   */
+  _addToPreBuffer(audioData) {
+    if (!this.isPreBuffering || !audioData) return;
+    
+    // Add to pre-buffer
+    this.preBuffer.push(audioData);
+    
+    // Keep pre-buffer at the desired size
+    let preBufferLength = 0;
+    for (const buf of this.preBuffer) {
+      preBufferLength += buf.length;
+    }
+    
+    // Remove oldest buffers if we exceed the desired size
+    while (preBufferLength > this.preBufferSize && this.preBuffer.length > 0) {
+      const removed = this.preBuffer.shift();
+      preBufferLength -= removed.length;
     }
   }
 }

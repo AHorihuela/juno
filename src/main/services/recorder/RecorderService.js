@@ -22,6 +22,8 @@ class RecorderService extends BaseService {
     this.paused = false;
     this.recorder = null;
     this.audioRecording = new AudioRecording();
+    this.audioMonitoring = false;
+    this.monitorRecorder = null;
     
     // Initialize sub-modules
     this.services = null; // Will be set in _initialize
@@ -72,6 +74,17 @@ class RecorderService extends BaseService {
         logger.error('Error stopping recording during shutdown:', { metadata: { error } });
       }
     }
+    
+    // Also stop audio monitoring if active
+    if (this.audioMonitoring) {
+      try {
+        await this.stopAudioMonitoring();
+        logger.info('Audio monitoring stopped during shutdown');
+      } catch (error) {
+        logger.error('Error stopping audio monitoring during shutdown:', { metadata: { error } });
+      }
+    }
+    
     logger.info('RecorderService shutdown complete');
   }
 
@@ -332,29 +345,56 @@ class RecorderService extends BaseService {
    * @returns {Promise<void>}
    */
   async start(deviceId = null) {
+    // Check if already recording
     if (this.isAlreadyRecording()) {
-      return;
+      return true;
     }
     
-    logger.info('Starting recording...');
+    logger.info('Starting audio recording...');
     
     try {
+      // Step 1: Initialize recording state
       const selectedDeviceId = await this.initializeRecording(deviceId);
+      
+      // IMPORTANT: Keep monitoring active while setting up formal recording
+      // Store monitored data to transfer to new recorder
+      const wasMonitoring = this.audioMonitoring;
+      
+      // Step 2: Set up the recorder FIRST (highest priority)
+      logger.debug('Setting up recorder (high priority)');
+      const success = await this.setupRecorder(selectedDeviceId);
+      if (!success) {
+        logger.error('Failed to set up recorder');
+        return false;
+      }
+      
+      // Step 3: AFTER recorder is set up, we can safely stop monitoring
+      if (wasMonitoring) {
+        logger.debug('Transitioning from monitoring to full recording');
+        if (this.monitorRecorder) {
+          this.monitorRecorder.stop();
+          this.monitorRecorder = null;
+        }
+        this.audioMonitoring = false;
+      }
+      
+      // Step 4: Run initialization tasks in parallel (now less timing critical)
       await this.runInitializationTasks(selectedDeviceId);
-      await this.setupRecorder(selectedDeviceId);
-      await this.finalizeStartup();
+      
+      // Step 5: Complete startup
+      return await this.finalizeStartup();
     } catch (error) {
       logger.error('Error starting recording:', { metadata: { error } });
       this.getService('notification').showNotification(
         'Recording Error',
-        error.message || 'Failed to start recording',
+        'Failed to start recording: ' + error.message,
         'error'
       );
-      this.emit('error', error);
       
-      // Reset recording state on error
-      this.recording = false;
-      this.recorder = null;
+      // Reset state
+      this.shutdownRecorder();
+      
+      return false;
     }
   }
 
@@ -706,6 +746,79 @@ class RecorderService extends BaseService {
 
   isRecording() {
     return this.recording;
+  }
+  
+  /**
+   * Starts monitoring audio without formally recording
+   * Used for pre-buffering to avoid missing the first words
+   * @returns {Promise<boolean>} Success status
+   */
+  async startAudioMonitoring() {
+    // If already recording or monitoring, do nothing
+    if (this.recording || this.audioMonitoring) {
+      return true;
+    }
+    
+    logger.debug('Starting audio monitoring for pre-buffering');
+    
+    try {
+      // We need a minimal recorder just for monitoring
+      // This is a lightweight version of our start() method
+      const deviceId = this.micManager.getCurrentDeviceId();
+      
+      // Create a lightweight recorder just for monitoring
+      // This won't save to disk or start a formal recording session
+      this.monitorRecorder = record.start({
+        sampleRate: 16000,
+        channels: 1,
+        silence: false, // Don't auto-detect silence
+        deviceId: deviceId,
+        threshold: 0, // No threshold so we catch everything
+        verbose: false
+      });
+      
+      this.audioMonitoring = true;
+      
+      // Set up listeners that will emit audio-data events
+      // These will be captured by the pre-buffer in RecordingManager
+      this.monitorRecorder.on('data', (data) => {
+        // Emit the data event without saving to disk
+        this.emit('audio-data', data);
+      });
+      
+      logger.debug('Audio monitoring started successfully');
+      return true;
+    } catch (error) {
+      logger.error('Error starting audio monitoring:', { metadata: { error } });
+      return false;
+    }
+  }
+  
+  /**
+   * Stops audio monitoring if it's active
+   * @returns {Promise<boolean>} Success status
+   */
+  async stopAudioMonitoring() {
+    if (!this.audioMonitoring) {
+      return true;
+    }
+    
+    logger.debug('Stopping audio monitoring');
+    
+    try {
+      // Close the monitor recorder
+      if (this.monitorRecorder) {
+        this.monitorRecorder.stop();
+        this.monitorRecorder = null;
+      }
+      
+      this.audioMonitoring = false;
+      logger.debug('Audio monitoring stopped successfully');
+      return true;
+    } catch (error) {
+      logger.error('Error stopping audio monitoring:', { metadata: { error } });
+      return false;
+    }
   }
 }
 
