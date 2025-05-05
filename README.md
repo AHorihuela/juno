@@ -168,9 +168,11 @@ Additional documentation is available in the `docs` directory:
 - [Command Detection](docs/command-detection.md): How command triggers and action verbs are detected
 - [Building Instructions](docs/building.md): Detailed build instructions for different platforms
 
-Additional implementation details:
-- [Text Insertion Improvements](text-insertion-improvements.md): Recent improvements to text insertion reliability
-- [Selection Handling Fixes](selection-fixes.md): Fixes for selection-related issues
+Technical implementations and fixes:
+- [Technical Fixes](docs/fixes/index.md): Collection of implementation details and fixes, including:
+  - [Text Insertion Improvements](docs/fixes/text-insertion-improvements.md): Recent improvements to text insertion reliability
+  - [Selection Handling Fixes](docs/fixes/selection-fixes.md): Fixes for selection-related issues
+  - [Test Plan](docs/fixes/test-plan.md): Comprehensive testing plan
 
 Architecture documentation in key modules:
 - [Main Process Architecture](src/main/README.md)

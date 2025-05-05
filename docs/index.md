@@ -29,11 +29,12 @@ This document serves as a central index for all documentation related to the Jun
 - [Renderer Process Architecture](../src/renderer/README.md): Documentation for the renderer process
 - [Dictionary Service](../src/main/services/dictionary/README.md): Documentation for the dictionary service
 
-## Implementation Notes
+## Technical Fixes & Implementations
 
-- [Text Insertion Improvements](../text-insertion-improvements.md): Recent improvements to text insertion reliability
-- [Selection Handling Fixes](../selection-fixes.md): Fixes for selection-related issues
-- [Test Plan](../test-plan.md): Comprehensive testing plan
+- [Technical Fixes Index](fixes/index.md): Central index of all technical fixes
+- [Text Insertion Improvements](fixes/text-insertion-improvements.md): Recent improvements to text insertion reliability
+- [Selection Handling Fixes](fixes/selection-fixes.md): Fixes for selection-related issues
+- [Test Plan](fixes/test-plan.md): Comprehensive testing plan
 
 ## Changelog and Updates
 
