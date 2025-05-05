@@ -63,7 +63,21 @@ const App = () => {
 
       // Listen for transcriptions
       ipcRenderer.on('transcription', (text) => {
-        setTranscription(text);
+        console.log('[App] Received transcription:', text);
+        
+        // Ensure we're treating this as a string
+        const transcriptionText = typeof text === 'string' ? text : 
+                                 (text && text.toString ? text.toString() : 'Transcription received');
+        
+        setTranscription(transcriptionText);
+        
+        // Debug: Verify state update after state has been updated
+        setTimeout(() => {
+          // Use a function ref to get the latest state value
+          const latestTranscription = document.querySelector('.Latest-Transcription p');
+          console.log('[App] Current transcription state:', transcriptionText);
+          console.log('[App] Transcription in DOM:', latestTranscription ? latestTranscription.textContent : 'Element not found');
+        }, 100);
       });
 
       // Listen for navigation events from the main process

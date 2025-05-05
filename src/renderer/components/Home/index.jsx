@@ -6,6 +6,11 @@ const Home = ({ isRecording, error, transcription, settings }) => {
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [audioLevels, setAudioLevels] = useState(Array(10).fill(0));
   
+  // Debug transcription prop
+  useEffect(() => {
+    console.log('[Home] Transcription prop changed:', transcription);
+  }, [transcription]);
+  
   // Handle recording duration timer
   useEffect(() => {
     let timer;
@@ -54,6 +59,13 @@ const Home = ({ isRecording, error, transcription, settings }) => {
       ipcRenderer.invoke('start-recording');
     }
   };
+  
+  // Debug render conditions
+  console.log('[Home] Render conditions:', { 
+    transcriptionExists: !!transcription, 
+    transcriptionLength: transcription ? transcription.length : 0,
+    isRecording
+  });
   
   return (
     <>
@@ -144,7 +156,7 @@ const Home = ({ isRecording, error, transcription, settings }) => {
 
       {/* Latest Transcription */}
       {transcription && (
-        <div className="mt-4 bg-white rounded-lg border border-gray-200">
+        <div className="mt-4 bg-white rounded-lg border border-gray-200 Latest-Transcription">
           <div className="border-b border-gray-100 bg-gray-50/50 px-3 py-1.5 flex justify-between items-center">
             <h3 className="text-xs font-medium text-gray-700">Latest Transcription</h3>
             <div className="flex gap-2">

@@ -42,13 +42,21 @@ class RecorderTranscription {
       
       // Process result with type safety
       if (transcription) {
-        // Emit transcription event
+        // Ensure we're working with a string for the transcription
+        const transcriptionText = typeof transcription === 'string' 
+          ? transcription 
+          : (transcription && transcription.text ? transcription.text : 'Transcription received');
+        
+        // Log the actual transcription for debugging
+        logger.debug(`Emitting transcription event with text: "${transcriptionText}"`);
+        
+        // Emit transcription event with the correct text
         if (emitEvent) {
-          emitEvent('transcription', transcription);
+          emitEvent('transcription', transcriptionText);
         }
         
         // Get type-safe transcription data
-        const typeSafeData = RecorderUtilities.getTypeSafeTranscription(transcription);
+        const typeSafeData = RecorderUtilities.getTypeSafeTranscription(transcriptionText);
         
         logger.info('Transcription received:', { 
           metadata: { 
@@ -57,7 +65,7 @@ class RecorderTranscription {
           } 
         });
         
-        return transcription;
+        return transcriptionText;
       } else {
         // Handle empty transcription
         logger.warn('Empty transcription received');

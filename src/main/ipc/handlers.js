@@ -78,11 +78,18 @@ function setupIpcHandlers(mainWindow, serviceRegistry) {
 
   recorder.on('transcription', (text) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('transcription', text);
+      // Make sure we're sending the actual text, not just a boolean
+      const transcriptionText = typeof text === 'string' ? text : 
+                               (text && text.text ? text.text : 
+                               'Transcription received but empty');
+      
+      console.log('Sending transcription to renderer:', transcriptionText);
+      mainWindow.webContents.send('transcription', transcriptionText);
+      
       // Add transcription to history
       try {
         const history = serviceRegistry.get('history');
-        history.addTranscription(text);
+        history.addTranscription(transcriptionText);
       } catch (error) {
         console.error('Failed to add transcription to history:', error);
       }
