@@ -3,7 +3,7 @@
  */
 
 const electron = require('electron');
-const utils = require('./electron-test-utils');
+const utils = require('electron-test-utils');
 
 describe('Electron Test Utilities', () => {
   beforeEach(() => {

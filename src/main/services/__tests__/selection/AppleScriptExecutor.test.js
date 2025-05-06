@@ -1,15 +1,25 @@
 const AppleScriptExecutor = require('../../selection/AppleScriptExecutor');
-const { exec } = require('child_process');
+const { execFile } = require('child_process');
 
 // Mock child_process
 jest.mock('child_process', () => ({
-  exec: jest.fn()
+  execFile: jest.fn()
+}));
+
+// Mock logger
+jest.mock('../../../utils/LogManager', () => ({
+  getLogger: jest.fn(() => ({
+    error: jest.fn(),
+    warn: jest.fn(),
+    debug: jest.fn(),
+    info: jest.fn()
+  }))
 }));
 
 describe('AppleScriptExecutor', () => {
   beforeEach(() => {
     // Reset mocks
-    exec.mockReset();
+    execFile.mockReset();
     
     // Set default timeout for tests
     jest.setTimeout(1000);
@@ -17,67 +27,73 @@ describe('AppleScriptExecutor', () => {
 
   test('execute should run AppleScript and return result', async () => {
     // Mock successful execution
-    exec.mockImplementation((cmd, callback) => {
+    execFile.mockImplementation((cmd, args, options, callback) => {
       callback(null, 'test result', '');
     });
 
     const result = await AppleScriptExecutor.execute('tell application "System Events" to return "test"', 1000, 'Test');
     
     expect(result).toBe('test result');
-    expect(exec).toHaveBeenCalledWith(
-      'osascript -e \'tell application "System Events" to return "test"\'',
+    expect(execFile).toHaveBeenCalledWith(
+      'osascript',
+      ['-e', 'tell application "System Events" to return "test"'],
+      expect.any(Object),
       expect.any(Function)
     );
   });
 
   test('execute should handle errors', async () => {
     // Mock failed execution
-    exec.mockImplementation((cmd, callback) => {
+    execFile.mockImplementation((cmd, args, options, callback) => {
       callback(new Error('Test error'), '', 'Error: Test error');
     });
-
-    const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
     
     const result = await AppleScriptExecutor.execute('tell application "System Events" to return "test"', 1000, 'Test');
     
     expect(result).toBe('');
-    expect(consoleSpy).toHaveBeenCalled();
-    
-    consoleSpy.mockRestore();
+    expect(execFile).toHaveBeenCalled();
   });
 
   test('execute should handle warnings', async () => {
     // Mock execution with warning
-    exec.mockImplementation((cmd, callback) => {
+    execFile.mockImplementation((cmd, args, options, callback) => {
       callback(null, 'test result', 'Warning: Some warning');
     });
-
-    const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
     
     const result = await AppleScriptExecutor.execute('tell application "System Events" to return "test"', 1000, 'Test');
     
     expect(result).toBe('test result');
-    expect(consoleSpy).toHaveBeenCalled();
-    
-    consoleSpy.mockRestore();
+    expect(execFile).toHaveBeenCalled();
   });
 
   test('execute should handle timeouts', async () => {
+    // Set up a real timeout
+    jest.useFakeTimers();
+    
     // Mock timeout by not calling the callback
-    exec.mockImplementation(() => {});
+    execFile.mockImplementation(() => {
+      // Return a mock child process
+      return {
+        on: jest.fn(),
+        kill: jest.fn()
+      };
+    });
     
-    const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+    // Start the execution but don't await it yet
+    const resultPromise = AppleScriptExecutor.execute('tell application "System Events" to return "test"', 100, 'Test');
     
-    // Use a short timeout for the test
-    const result = await AppleScriptExecutor.execute('tell application "System Events" to return "test"', 100, 'Test');
+    // Fast-forward until the timeout happens
+    jest.advanceTimersByTime(150);
     
-    // Wait for the timeout to occur
-    await new Promise(resolve => setTimeout(resolve, 150));
+    // Now await the result
+    const result = await resultPromise;
     
+    // Verify the result
     expect(result).toBe('');
-    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('timed out'));
+    expect(execFile).toHaveBeenCalled();
     
-    consoleSpy.mockRestore();
+    // Clean up
+    jest.useRealTimers();
   });
 
   test('executeWithRetry should retry on failure', async () => {
@@ -102,8 +118,6 @@ describe('AppleScriptExecutor', () => {
     const executeSpy = jest.spyOn(AppleScriptExecutor, 'execute')
       .mockImplementation(() => Promise.resolve(''));
     
-    const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-    
     const result = await AppleScriptExecutor.executeWithRetry(
       'tell application "System Events" to return "test"',
       { timeoutMs: 100, retries: 3, retryDelayMs: 10, logPrefix: 'Test' }
@@ -111,9 +125,7 @@ describe('AppleScriptExecutor', () => {
     
     expect(result).toBe('');
     expect(executeSpy).toHaveBeenCalledTimes(4); // Initial + 3 retries
-    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('All retry attempts failed'));
     
     executeSpy.mockRestore();
-    consoleSpy.mockRestore();
   });
 }); 

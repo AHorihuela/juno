@@ -1,33 +1,34 @@
 const { normalizeShortcut, registerShortcuts, unregisterAllShortcuts } = require('../../main/utils/shortcutManager');
 const { globalShortcut } = require('electron');
-const serviceRegistry = require('../../main/services/ServiceRegistry');
 
 // Mock electron
 jest.mock('electron', () => ({
   globalShortcut: {
     register: jest.fn().mockReturnValue(true),
-    unregisterAll: jest.fn()
+    unregisterAll: jest.fn(),
+    unregister: jest.fn()
   }
 }));
 
-// Mock service registry
-jest.mock('../../main/services/ServiceRegistry', () => ({
-  get: jest.fn().mockImplementation((service) => {
-    if (service === 'config') {
-      return {
-        getKeyboardShortcut: jest.fn().mockResolvedValue('Command+Shift+Space')
-      };
-    }
-    if (service === 'recorder') {
-      return {
-        isRecording: jest.fn(),
-        start: jest.fn(),
-        stop: jest.fn()
-      };
-    }
-    return {};
+// Create mock services
+const mockConfigService = {
+  getKeyboardShortcut: jest.fn().mockResolvedValue('Command+Shift+Space')
+};
+
+const mockRecorderService = {
+  isRecording: jest.fn(),
+  start: jest.fn(),
+  stop: jest.fn()
+};
+
+// Create mock service registry
+const mockServiceRegistry = {
+  get: jest.fn(service => {
+    if (service === 'config') return mockConfigService;
+    if (service === 'recorder') return mockRecorderService;
+    return null;
   })
-}));
+};
 
 describe('ShortcutManager', () => {
   beforeEach(() => {
@@ -57,16 +58,9 @@ describe('ShortcutManager', () => {
   describe('registerShortcuts', () => {
     it('should register the normalized keyboard shortcut', async () => {
       // Mock the config service to return a shortcut with macOS symbols
-      serviceRegistry.get.mockImplementation((service) => {
-        if (service === 'config') {
-          return {
-            getKeyboardShortcut: jest.fn().mockResolvedValue('⌘⇧ Space')
-          };
-        }
-        return {};
-      });
+      mockConfigService.getKeyboardShortcut.mockResolvedValue('⌘⇧ Space');
 
-      await registerShortcuts();
+      await registerShortcuts(mockServiceRegistry);
 
       // Verify that the shortcut was normalized before registration
       expect(globalShortcut.register).toHaveBeenCalledWith(
@@ -77,16 +71,9 @@ describe('ShortcutManager', () => {
 
     it('should register ASCII shortcuts without modification', async () => {
       // Mock the config service to return an ASCII shortcut
-      serviceRegistry.get.mockImplementation((service) => {
-        if (service === 'config') {
-          return {
-            getKeyboardShortcut: jest.fn().mockResolvedValue('Command+Shift+Space')
-          };
-        }
-        return {};
-      });
+      mockConfigService.getKeyboardShortcut.mockResolvedValue('Command+Shift+Space');
 
-      await registerShortcuts();
+      await registerShortcuts(mockServiceRegistry);
 
       // Verify that the shortcut was registered as-is
       expect(globalShortcut.register).toHaveBeenCalledWith(

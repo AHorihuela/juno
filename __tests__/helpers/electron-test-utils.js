@@ -7,14 +7,14 @@ const electron = require('electron');
 /**
  * Creates a mock event object for IPC handlers
  * @param {Object} options - Options for the event
- * @param {string} options.sender - The sender of the event
+ * @param {Object} [options.sender] - The sender of the event
  * @returns {Object} A mock event object
  */
 function createMockIpcEvent(options = {}) {
   return {
     sender: {
       send: jest.fn(),
-      ...options.sender
+      ...(options.sender || {})
     },
     returnValue: undefined,
     reply: jest.fn()
@@ -27,16 +27,41 @@ function createMockIpcEvent(options = {}) {
  * @returns {Object} A mock BrowserWindow instance
  */
 function createMockBrowserWindow(options = {}) {
-  const window = new electron.BrowserWindow(options);
-  
-  // Allow overriding default mock implementations
-  if (options.loadURL) {
-    window.loadURL.mockImplementation(options.loadURL);
-  }
-  
-  if (options.webContents) {
-    Object.assign(window.webContents, options.webContents);
-  }
+  const defaultWebContents = {
+    id: 'mock-web-contents',
+    send: jest.fn(),
+    executeJavaScript: jest.fn(),
+    on: jest.fn()
+  };
+
+  const window = {
+    id: 'mock-window',
+    webContents: {
+      ...defaultWebContents,
+      ...(options.webContents || {})
+    },
+    loadURL: options.loadURL || jest.fn().mockResolvedValue(undefined),
+    loadFile: jest.fn().mockResolvedValue(undefined),
+    show: jest.fn(),
+    hide: jest.fn(),
+    close: jest.fn(),
+    destroy: jest.fn(),
+    isDestroyed: jest.fn().mockReturnValue(false),
+    isVisible: jest.fn().mockReturnValue(true),
+    on: jest.fn(),
+    once: jest.fn(),
+    removeAllListeners: jest.fn(),
+    setSize: jest.fn(),
+    getSize: jest.fn().mockReturnValue([800, 600]),
+    setPosition: jest.fn(),
+    getPosition: jest.fn().mockReturnValue([0, 0]),
+    setBounds: jest.fn(),
+    getBounds: jest.fn().mockReturnValue({ x: 0, y: 0, width: 800, height: 600 }),
+    setTitle: jest.fn(),
+    getTitle: jest.fn().mockReturnValue('Mock Window'),
+    flashFrame: jest.fn(),
+    options: options
+  };
   
   return window;
 }
@@ -66,13 +91,13 @@ function simulateIpcMessage(channel, ...args) {
  * @returns {Function|null} The handler function or null if not found
  */
 function findIpcHandler(channel) {
-  // This is a simplification - in a real implementation, we would need to
-  // track registered handlers when they're added via ipcMain.on/handle
-  const mockCalls = electron.ipcMain.on.mock.calls.concat(
-    electron.ipcMain.handle.mock.calls
-  );
+  // Access the mock call history to find handlers registered with on or handle
+  const onCalls = electron.ipcMain.on.mock?.calls || [];
+  const handleCalls = electron.ipcMain.handle.mock?.calls || [];
   
-  const handlerCall = mockCalls.find(call => call[0] === channel);
+  const allCalls = [...onCalls, ...handleCalls];
+  const handlerCall = allCalls.find(call => call[0] === channel);
+  
   return handlerCall ? handlerCall[1] : null;
 }
 

@@ -5,19 +5,35 @@ const { app } = require('electron');
 jest.mock('fs');
 jest.mock('electron', () => ({
   app: {
-    getPath: jest.fn(() => '/mock/user/data')
+    getPath: jest.fn(() => '/mock/user/data'),
+    getName: jest.fn(() => 'Juno'),
+    getVersion: jest.fn(() => '1.0.0')
   }
 }));
 
-const transcriptionHistoryService = require('../transcriptionHistoryService');
+const transcriptionHistoryServiceFactory = require('../transcriptionHistoryService');
 
 describe('TranscriptionHistoryService', () => {
   const mockHistoryFile = '/mock/user/data/transcription-history.json';
+  let transcriptionHistoryService;
   
   beforeEach(() => {
     jest.clearAllMocks();
     fs.existsSync.mockReturnValue(true);
     fs.readFileSync.mockReturnValue(JSON.stringify({ transcriptions: [] }));
+    
+    // Create a new instance for each test
+    transcriptionHistoryService = transcriptionHistoryServiceFactory();
+    
+    // Mock the initialize method to avoid needing to wait for initialization
+    transcriptionHistoryService.ensureHistoryFile = jest.fn();
+    transcriptionHistoryService.historyFile = mockHistoryFile;
+    
+    // Mock emitError to prevent unhandled errors
+    transcriptionHistoryService.emitError = jest.fn(error => {
+      console.log(`Mocked error: ${error.message}`);
+      return error;
+    });
   });
 
   describe('getHistory', () => {
@@ -44,6 +60,7 @@ describe('TranscriptionHistoryService', () => {
 
       const history = transcriptionHistoryService.getHistory();
       expect(history).toEqual([]);
+      expect(transcriptionHistoryService.emitError).toHaveBeenCalled();
     });
   });
 
