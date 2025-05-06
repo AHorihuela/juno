@@ -2,16 +2,8 @@
  * Tests for the ServiceRegistry
  */
 
-const ServiceRegistry = require('../ServiceRegistry');
+const ServiceRegistryClass = require('../ServiceRegistry');
 const BaseService = require('../BaseService');
-
-// Reset the module before each test
-beforeEach(() => {
-  jest.resetModules();
-  // Clear all services
-  ServiceRegistry.services.clear();
-  ServiceRegistry.initialized = false;
-});
 
 // Mock service class
 class MockService extends BaseService {
@@ -31,35 +23,42 @@ class MockService extends BaseService {
 }
 
 describe('ServiceRegistry', () => {
+  let registry;
+
+  beforeEach(() => {
+    jest.resetModules();
+    registry = new ServiceRegistryClass();
+  });
+
   test('should register a service', () => {
     const service = new MockService('Test');
-    ServiceRegistry.register('test', service);
+    registry.register('test', service);
     
-    expect(ServiceRegistry.services.has('test')).toBe(true);
-    expect(ServiceRegistry.services.get('test')).toBe(service);
+    expect(registry.services.has('test')).toBe(true);
+    expect(registry.services.get('test')).toBe(service);
   });
 
   test('should throw when registering a duplicate service', () => {
     const service1 = new MockService('Test1');
     const service2 = new MockService('Test2');
     
-    ServiceRegistry.register('test', service1);
+    registry.register('test', service1);
     
     expect(() => {
-      ServiceRegistry.register('test', service2);
+      registry.register('test', service2);
     }).toThrow('Service test is already registered');
   });
 
   test('should get a registered service', () => {
     const service = new MockService('Test');
-    ServiceRegistry.register('test', service);
+    registry.register('test', service);
     
-    expect(ServiceRegistry.get('test')).toBe(service);
+    expect(registry.get('test')).toBe(service);
   });
 
   test('should throw when getting an unregistered service', () => {
     expect(() => {
-      ServiceRegistry.get('nonexistent');
+      registry.get('nonexistent');
     }).toThrow('Service nonexistent not found');
   });
 
@@ -67,10 +66,10 @@ describe('ServiceRegistry', () => {
     const service1 = new MockService('Test1');
     const service2 = new MockService('Test2');
     
-    ServiceRegistry.register('test1', service1);
-    ServiceRegistry.register('test2', service2);
+    registry.register('test1', service1);
+    registry.register('test2', service2);
     
-    const allServices = ServiceRegistry.getAll();
+    const allServices = registry.getAll();
     
     expect(allServices).toEqual({
       test1: service1,
@@ -99,12 +98,12 @@ describe('ServiceRegistry', () => {
     const service3 = new MockService('Notification', mockInit3);
     
     // Register services
-    ServiceRegistry.register('config', service1);
-    ServiceRegistry.register('resource', service2);
-    ServiceRegistry.register('notification', service3);
+    registry.register('config', service1);
+    registry.register('resource', service2);
+    registry.register('notification', service3);
     
     // Initialize
-    await ServiceRegistry.initialize();
+    await registry.initialize();
     
     // Check that all services were initialized
     expect(mockInit1).toHaveBeenCalled();
@@ -115,21 +114,21 @@ describe('ServiceRegistry', () => {
     expect(initOrder).toEqual(['config', 'resource', 'notification']);
     
     // Check initialized flag
-    expect(ServiceRegistry.initialized).toBe(true);
+    expect(registry.initialized).toBe(true);
   });
 
   test('should skip already initialized services', async () => {
     const mockInit = jest.fn();
     const service = new MockService('Test', mockInit);
     
-    ServiceRegistry.register('test', service);
+    registry.register('test', service);
     
     // Initialize once
-    await ServiceRegistry.initialize();
+    await registry.initialize();
     expect(mockInit).toHaveBeenCalledTimes(1);
     
     // Initialize again
-    await ServiceRegistry.initialize();
+    await registry.initialize();
     // Should not call initialize again
     expect(mockInit).toHaveBeenCalledTimes(1);
   });
@@ -155,15 +154,15 @@ describe('ServiceRegistry', () => {
     const service3 = new MockService('Notification', jest.fn(), mockShutdown3);
     
     // Register services
-    ServiceRegistry.register('config', service1);
-    ServiceRegistry.register('resource', service2);
-    ServiceRegistry.register('notification', service3);
+    registry.register('config', service1);
+    registry.register('resource', service2);
+    registry.register('notification', service3);
     
     // Initialize
-    await ServiceRegistry.initialize();
+    await registry.initialize();
     
     // Shutdown
-    await ServiceRegistry.shutdown();
+    await registry.shutdown();
     
     // Check that all services were shut down
     expect(mockShutdown1).toHaveBeenCalled();
@@ -174,7 +173,7 @@ describe('ServiceRegistry', () => {
     expect(shutdownOrder).toEqual(['notification', 'resource', 'config']);
     
     // Check initialized flag
-    expect(ServiceRegistry.initialized).toBe(false);
+    expect(registry.initialized).toBe(false);
   });
 
   test('should handle initialization errors', async () => {
@@ -184,13 +183,13 @@ describe('ServiceRegistry', () => {
     
     const service = new MockService('Test', mockInit);
     
-    ServiceRegistry.register('test', service);
+    registry.register('test', service);
     
     // Initialize should throw
-    await expect(ServiceRegistry.initialize()).rejects.toThrow('Initialization error');
+    await expect(registry.initialize()).rejects.toThrow('Initialization error');
     
     // Should not be marked as initialized
-    expect(ServiceRegistry.initialized).toBe(false);
+    expect(registry.initialized).toBe(false);
   });
 
   test('should handle shutdown errors', async () => {
@@ -200,15 +199,15 @@ describe('ServiceRegistry', () => {
     
     const service = new MockService('Test', jest.fn(), mockShutdown);
     
-    ServiceRegistry.register('test', service);
+    registry.register('test', service);
     
     // Initialize
-    await ServiceRegistry.initialize();
+    await registry.initialize();
     
     // Shutdown should not throw despite service throwing
-    await expect(ServiceRegistry.shutdown()).resolves.not.toThrow();
+    await expect(registry.shutdown()).resolves.not.toThrow();
     
     // Should be marked as not initialized
-    expect(ServiceRegistry.initialized).toBe(false);
+    expect(registry.initialized).toBe(false);
   });
 }); 

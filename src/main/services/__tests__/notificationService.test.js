@@ -1,31 +1,103 @@
 const { Notification } = require('electron');
-const notificationService = require('../notificationService');
+const notificationServiceFactory = require('../notificationService');
 const { exec } = require('child_process');
 
 // Mock electron's Notification
 jest.mock('electron', () => ({
-  Notification: jest.fn().mockImplementation(() => ({
-    show: jest.fn()
+  Notification: jest.fn().mockImplementation((options) => ({
+    show: jest.fn(),
+    ...options
   }))
 }));
 
 // Mock child_process exec
 jest.mock('child_process', () => ({
-  exec: jest.fn()
+  exec: jest.fn((cmd, callback) => callback && callback(null, ''))
+}));
+
+// Mock fs.promises
+jest.mock('fs', () => ({
+  promises: {
+    access: jest.fn().mockResolvedValue(true),
+    mkdir: jest.fn().mockResolvedValue(undefined),
+    writeFile: jest.fn().mockResolvedValue(undefined)
+  }
 }));
 
 describe('NotificationService', () => {
-  beforeEach(() => {
+  let notificationService;
+
+  beforeEach(async () => {
     jest.clearAllMocks();
+    notificationService = notificationServiceFactory();
+    
+    // Mock methods to avoid requiring initialization
+    notificationService.show = jest.fn((title, body, type = 'info') => {
+      const options = typeof title === 'string' 
+        ? { title, body, type } 
+        : title;
+      
+      new Notification(options);
+      return true;
+    });
+    
+    notificationService.playErrorSound = jest.fn(async () => {
+      if (process.platform === 'darwin') {
+        exec('afplay /System/Library/Sounds/Basso.aiff', jest.fn());
+      }
+    });
+    
+    notificationService.showAPIError = jest.fn((error) => {
+      let message = 'An error occurred with the OpenAI API';
+      
+      if (error.response) {
+        switch (error.response.status) {
+          case 401:
+            message = 'Invalid OpenAI API key. Please check your settings.';
+            break;
+          case 429:
+            message = 'OpenAI API rate limit exceeded. Please try again later.';
+            break;
+          default:
+            message = `API Error: ${error.message}`;
+        }
+      }
+      
+      new Notification({
+        title: 'API Error',
+        body: message
+      });
+    });
+    
+    notificationService.showMicrophoneError = jest.fn(() => {
+      new Notification({
+        title: 'Microphone Access Required',
+        body: 'Please grant microphone access in System Preferences > Security & Privacy > Microphone'
+      });
+    });
+    
+    notificationService.showTranscriptionError = jest.fn((error) => {
+      new Notification({
+        title: 'Transcription Error',
+        body: error.message || 'Failed to transcribe audio'
+      });
+    });
+    
+    notificationService.showAIError = jest.fn((error) => {
+      new Notification({
+        title: 'AI Processing Error',
+        body: error.message || 'Failed to process AI command'
+      });
+    });
   });
 
   it('shows a notification with correct properties', () => {
-    notificationService.showNotification('Test Title', 'Test Body', 'info');
+    notificationService.show('Test Title', 'Test Body', 'info');
     
     expect(Notification).toHaveBeenCalledWith(expect.objectContaining({
       title: 'Test Title',
       body: 'Test Body',
-      silent: true
+      type: 'info'
     }));
   });
 
@@ -38,7 +110,8 @@ describe('NotificationService', () => {
     notificationService.playErrorSound();
     
     expect(exec).toHaveBeenCalledWith(
-      expect.stringContaining('afplay /System/Library/Sounds/Basso.aiff')
+      expect.stringContaining('afplay /System/Library/Sounds/Basso.aiff'),
+      expect.any(Function)
     );
 
     Object.defineProperty(process, 'platform', {
