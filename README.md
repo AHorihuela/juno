@@ -123,7 +123,7 @@ npm start
    - Custom rules
    - Action verbs
 
-## 🧪 Testing
+<!-- ## 🧪 Testing
 
 Run the test suite:
 ```bash
@@ -143,7 +143,7 @@ npm run test:coverage
 Run critical path tests only:
 ```bash
 npm run test:critical
-```
+``` -->
 
 ## 📦 Building for Distribution
 
