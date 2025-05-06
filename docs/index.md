@@ -42,4 +42,4 @@ This document serves as a central index for all documentation related to the Jun
 
 ---
 
-For the latest updates, refer to the [GitHub repository](https://github.com/yourusername/juno) or check the main [README](../README.md). 
+For the latest updates, refer to the [GitHub repository](https://github.com/ahorihuela/juno) or check the main [README](../README.md). 
