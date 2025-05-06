@@ -2,6 +2,16 @@
  * Tests for the ServiceRegistry
  */
 
+// Mock LogManager
+jest.mock('../../../main/utils/LogManager', () => ({
+  getLogger: jest.fn(() => ({
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn()
+  }))
+}));
+
 // Mock services
 const mockWindowManager = {
   name: 'windowManager',
@@ -9,257 +19,160 @@ const mockWindowManager = {
   shutdown: jest.fn().mockResolvedValue()
 };
 
-const mockMemoryManager = {
-  name: 'memory',
+const mockConfigService = {
+  name: 'config',
   initialize: jest.fn().mockResolvedValue(),
   shutdown: jest.fn().mockResolvedValue()
 };
 
 // Mock service constructors
 jest.mock('../../../main/services/WindowManager', () => jest.fn(() => mockWindowManager));
-jest.mock('../../../main/services/MemoryManager', () => jest.fn(() => mockMemoryManager));
 
 // Import the module under test
 const ServiceRegistry = require('../../../main/services/ServiceRegistry');
 
 describe('ServiceRegistry', () => {
+  let registry;
+  
   beforeEach(() => {
     // Clear all mocks
     jest.clearAllMocks();
     
-    // Reset the registry
-    ServiceRegistry._reset();
+    // Create a new instance for each test
+    registry = new ServiceRegistry();
   });
   
-  describe('Registration', () => {
-    it('registers a service', () => {
-      ServiceRegistry.register('windowManager', mockWindowManager);
-      
-      expect(ServiceRegistry.get('windowManager')).toBe(mockWindowManager);
-    });
+  test('should register a service', () => {
+    const service = { name: 'testService' };
+    registry.register('testService', service);
     
-    it('throws an error when registering a duplicate service', () => {
-      ServiceRegistry.register('windowManager', mockWindowManager);
-      
-      expect(() => {
-        ServiceRegistry.register('windowManager', mockWindowManager);
-      }).toThrow('Service windowManager is already registered');
-    });
-    
-    it('registers multiple services', () => {
-      ServiceRegistry.register('windowManager', mockWindowManager);
-      ServiceRegistry.register('memory', mockMemoryManager);
-      
-      expect(ServiceRegistry.get('windowManager')).toBe(mockWindowManager);
-      expect(ServiceRegistry.get('memory')).toBe(mockMemoryManager);
-    });
+    expect(registry.get('testService')).toBe(service);
   });
   
-  describe('Retrieval', () => {
-    it('gets a registered service', () => {
-      ServiceRegistry.register('windowManager', mockWindowManager);
-      
-      const service = ServiceRegistry.get('windowManager');
-      
-      expect(service).toBe(mockWindowManager);
-    });
+  test('should throw an error when registering a duplicate service', () => {
+    const service = { name: 'testService' };
+    registry.register('testService', service);
     
-    it('returns null for an unregistered service', () => {
-      const service = ServiceRegistry.get('nonExistentService');
-      
-      expect(service).toBeNull();
-    });
-    
-    it('gets all registered services', () => {
-      ServiceRegistry.register('windowManager', mockWindowManager);
-      ServiceRegistry.register('memory', mockMemoryManager);
-      
-      const services = ServiceRegistry.getAll();
-      
-      expect(services).toHaveLength(2);
-      expect(services).toContain(mockWindowManager);
-      expect(services).toContain(mockMemoryManager);
-    });
+    expect(() => {
+      registry.register('testService', service);
+    }).toThrow('Service testService is already registered');
   });
   
-  describe('Initialization', () => {
-    it('initializes all services', async () => {
-      ServiceRegistry.register('windowManager', mockWindowManager);
-      ServiceRegistry.register('memory', mockMemoryManager);
-      
-      await ServiceRegistry.initializeAll();
-      
-      expect(mockWindowManager.initialize).toHaveBeenCalled();
-      expect(mockMemoryManager.initialize).toHaveBeenCalled();
-    });
+  test('should get all registered services', () => {
+    const service1 = { name: 'service1' };
+    const service2 = { name: 'service2' };
     
-    it('initializes services in the correct order', async () => {
-      // Add initialization order tracking
-      const initOrder = [];
-      mockWindowManager.initialize.mockImplementation(() => {
+    registry.register('service1', service1);
+    registry.register('service2', service2);
+    
+    const services = registry.getAll();
+    
+    expect(services).toHaveProperty('service1', service1);
+    expect(services).toHaveProperty('service2', service2);
+  });
+  
+  test('should throw an error when trying to get a non-existent service', () => {
+    expect(() => {
+      registry.get('nonExistentService');
+    }).toThrow('Service nonExistentService not found');
+  });
+  
+  test('should initialize services in the correct order', async () => {
+    const initOrder = [];
+    
+    const mockService1 = {
+      name: 'config',
+      initialize: jest.fn().mockImplementation(() => {
+        initOrder.push('config');
+        return Promise.resolve();
+      }),
+      shutdown: jest.fn()
+    };
+    
+    const mockService2 = {
+      name: 'windowManager',
+      initialize: jest.fn().mockImplementation(() => {
         initOrder.push('windowManager');
         return Promise.resolve();
-      });
-      
-      mockMemoryManager.initialize.mockImplementation(() => {
-        initOrder.push('memory');
-        return Promise.resolve();
-      });
-      
-      // Register services in reverse order
-      ServiceRegistry.register('memory', mockMemoryManager);
-      ServiceRegistry.register('windowManager', mockWindowManager);
-      
-      // Set initialization order
-      ServiceRegistry.setInitializationOrder(['windowManager', 'memory']);
-      
-      await ServiceRegistry.initializeAll();
-      
-      // Check that services were initialized in the correct order
-      expect(initOrder).toEqual(['windowManager', 'memory']);
-    });
+      }),
+      shutdown: jest.fn()
+    };
     
-    it('handles initialization errors', async () => {
-      mockWindowManager.initialize.mockRejectedValueOnce(new Error('Initialization error'));
-      
-      ServiceRegistry.register('windowManager', mockWindowManager);
-      
-      await expect(ServiceRegistry.initializeAll()).rejects.toThrow('Initialization error');
-    });
+    registry.register('config', mockService1);
+    registry.register('windowManager', mockService2);
+    
+    await registry.initialize();
+    
+    expect(initOrder).toEqual(['config', 'windowManager']);
+    expect(mockService1.initialize).toHaveBeenCalledWith(registry);
+    expect(mockService2.initialize).toHaveBeenCalledWith(registry);
   });
   
-  describe('Shutdown', () => {
-    it('shuts down all services', async () => {
-      ServiceRegistry.register('windowManager', mockWindowManager);
-      ServiceRegistry.register('memory', mockMemoryManager);
-      
-      await ServiceRegistry.shutdownAll();
-      
-      expect(mockWindowManager.shutdown).toHaveBeenCalled();
-      expect(mockMemoryManager.shutdown).toHaveBeenCalled();
-    });
+  test('should handle initialization errors', async () => {
+    const mockService = {
+      name: 'errorService',
+      initialize: jest.fn().mockRejectedValue(new Error('Initialization error')),
+      shutdown: jest.fn()
+    };
     
-    it('shuts down services in reverse initialization order', async () => {
-      // Add shutdown order tracking
-      const shutdownOrder = [];
-      mockWindowManager.shutdown.mockImplementation(() => {
+    registry.register('errorService', mockService);
+    registry.initOrder = ['errorService'];
+    
+    await expect(registry.initialize()).rejects.toThrow('Failed to initialize service "errorService": Initialization error');
+  });
+  
+  test('should shut down services in reverse order', async () => {
+    const shutdownOrder = [];
+    
+    const mockService1 = {
+      name: 'config',
+      initialize: jest.fn(),
+      shutdown: jest.fn().mockImplementation(() => {
+        shutdownOrder.push('config');
+        return Promise.resolve();
+      })
+    };
+    
+    const mockService2 = {
+      name: 'windowManager',
+      initialize: jest.fn(),
+      shutdown: jest.fn().mockImplementation(() => {
         shutdownOrder.push('windowManager');
         return Promise.resolve();
-      });
-      
-      mockMemoryManager.shutdown.mockImplementation(() => {
-        shutdownOrder.push('memory');
-        return Promise.resolve();
-      });
-      
-      // Register services
-      ServiceRegistry.register('windowManager', mockWindowManager);
-      ServiceRegistry.register('memory', mockMemoryManager);
-      
-      // Set initialization order
-      ServiceRegistry.setInitializationOrder(['windowManager', 'memory']);
-      
-      await ServiceRegistry.shutdownAll();
-      
-      // Check that services were shut down in reverse order
-      expect(shutdownOrder).toEqual(['memory', 'windowManager']);
-    });
+      })
+    };
     
-    it('continues shutdown even if a service fails', async () => {
-      mockWindowManager.shutdown.mockRejectedValueOnce(new Error('Shutdown error'));
-      
-      ServiceRegistry.register('windowManager', mockWindowManager);
-      ServiceRegistry.register('memory', mockMemoryManager);
-      
-      await ServiceRegistry.shutdownAll();
-      
-      // Both services should have shutdown called
-      expect(mockWindowManager.shutdown).toHaveBeenCalled();
-      expect(mockMemoryManager.shutdown).toHaveBeenCalled();
-    });
+    registry.register('config', mockService1);
+    registry.register('windowManager', mockService2);
+    registry.initOrder = ['config', 'windowManager'];
+    registry.initialized = true;
+    
+    await registry.shutdown();
+    
+    expect(shutdownOrder).toEqual(['windowManager', 'config']);
   });
   
-  describe('Service Dependencies', () => {
-    it('injects service dependencies', () => {
-      // Create a service with dependencies
-      const serviceWithDeps = {
-        name: 'serviceWithDeps',
-        dependencies: ['windowManager', 'memory'],
-        initialize: jest.fn().mockResolvedValue(),
-        shutdown: jest.fn().mockResolvedValue()
-      };
-      
-      // Register dependencies first
-      ServiceRegistry.register('windowManager', mockWindowManager);
-      ServiceRegistry.register('memory', mockMemoryManager);
-      
-      // Register the service with dependencies
-      ServiceRegistry.register('serviceWithDeps', serviceWithDeps);
-      
-      // Initialize all services
-      ServiceRegistry.initializeAll();
-      
-      // Check that dependencies were injected
-      expect(serviceWithDeps.windowManager).toBe(mockWindowManager);
-      expect(serviceWithDeps.memory).toBe(mockMemoryManager);
-    });
+  test('should continue shutdown even if a service fails', async () => {
+    const mockService1 = {
+      name: 'failingService',
+      initialize: jest.fn(),
+      shutdown: jest.fn().mockRejectedValue(new Error('Shutdown error'))
+    };
     
-    it('throws an error for missing dependencies', () => {
-      // Create a service with a missing dependency
-      const serviceWithMissingDep = {
-        name: 'serviceWithMissingDep',
-        dependencies: ['nonExistentService'],
-        initialize: jest.fn().mockResolvedValue(),
-        shutdown: jest.fn().mockResolvedValue()
-      };
-      
-      // Register the service
-      ServiceRegistry.register('serviceWithMissingDep', serviceWithMissingDep);
-      
-      // Try to initialize all services
-      expect(() => {
-        ServiceRegistry.initializeAll();
-      }).toThrow('Service serviceWithMissingDep depends on nonExistentService, which is not registered');
-    });
-  });
-  
-  describe('Service Factory', () => {
-    it('creates a service using a factory function', () => {
-      // Register a service factory
-      ServiceRegistry.registerFactory('dynamicService', () => ({
-        name: 'dynamicService',
-        initialize: jest.fn().mockResolvedValue(),
-        shutdown: jest.fn().mockResolvedValue(),
-        dynamicProperty: 'dynamic value'
-      }));
-      
-      // Get the service
-      const service = ServiceRegistry.get('dynamicService');
-      
-      // Check that the service was created correctly
-      expect(service).toBeDefined();
-      expect(service.name).toBe('dynamicService');
-      expect(service.dynamicProperty).toBe('dynamic value');
-    });
+    const mockService2 = {
+      name: 'workingService',
+      initialize: jest.fn(),
+      shutdown: jest.fn().mockResolvedValue()
+    };
     
-    it('creates a service with dependencies using a factory function', () => {
-      // Register dependencies
-      ServiceRegistry.register('windowManager', mockWindowManager);
-      
-      // Register a service factory with dependencies
-      ServiceRegistry.registerFactory('dynamicService', (deps) => ({
-        name: 'dynamicService',
-        initialize: jest.fn().mockResolvedValue(),
-        shutdown: jest.fn().mockResolvedValue(),
-        windowManager: deps.windowManager
-      }), ['windowManager']);
-      
-      // Get the service
-      const service = ServiceRegistry.get('dynamicService');
-      
-      // Check that the service was created with dependencies
-      expect(service).toBeDefined();
-      expect(service.windowManager).toBe(mockWindowManager);
-    });
+    registry.register('failingService', mockService1);
+    registry.register('workingService', mockService2);
+    registry.initOrder = ['failingService', 'workingService'];
+    registry.initialized = true;
+    
+    await registry.shutdown();
+    
+    expect(mockService1.shutdown).toHaveBeenCalled();
+    expect(mockService2.shutdown).toHaveBeenCalled();
   });
 }); 

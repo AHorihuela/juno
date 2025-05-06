@@ -54,9 +54,27 @@ jest.mock('../../../main/services/BaseService', () => {
       this.name = name;
       this.getService = jest.fn();
       this.emitError = jest.fn();
+      
+      // Add logger to fix the undefined logger issue
+      this.logger = {
+        info: jest.fn(),
+        warn: jest.fn(),
+        error: jest.fn(),
+        debug: jest.fn()
+      };
     }
   };
 });
+
+// Mock LogManager
+jest.mock('../../../main/utils/LogManager', () => ({
+  getLogger: jest.fn(() => ({
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn()
+  }))
+}));
 
 // Mock overlay service
 const mockOverlayService = {
