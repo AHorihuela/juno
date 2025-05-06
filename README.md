@@ -72,7 +72,7 @@ Juno follows a modular, service-oriented architecture that separates concerns an
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/ahorihuela/juno.git
+   git clone https://github.com/AHorihuela/juno.git
    cd juno
    ```
 
