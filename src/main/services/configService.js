@@ -8,6 +8,10 @@ const path = require('path');
 const fs = require('fs');
 const { app } = require('electron');
 const BaseService = require('./BaseService');
+const LogManager = require('../utils/LogManager');
+
+// Get a logger for this module
+const logger = LogManager.getLogger('ConfigService');
 
 class ConfigService extends BaseService {
   constructor() {
@@ -48,7 +52,7 @@ class ConfigService extends BaseService {
       }
       return this.encryptionKey;
     } catch (error) {
-      console.error('Error managing encryption key:', error);
+      logger.error('Error managing encryption key', { metadata: { error } });
       this.emit('error', error);
       throw new Error('Failed to manage encryption key');
     }
@@ -141,11 +145,11 @@ class ConfigService extends BaseService {
         });
       }
     } catch (error) {
-      console.error('Error initializing store:', error);
+      logger.error('Error initializing store', { metadata: { error } });
       
       // If there's a JSON parse error, the config file is corrupted
       if (error instanceof SyntaxError) {
-        console.log('Config file corrupted, attempting recovery...');
+        logger.warn('Config file corrupted, attempting recovery...');
         try {
           // Get the config file path
           const userDataPath = (await import('electron')).app.getPath('userData');
@@ -154,7 +158,7 @@ class ConfigService extends BaseService {
           // Delete the corrupted file
           if (fs.existsSync(configPath)) {
             fs.unlinkSync(configPath);
-            console.log('Deleted corrupted config file');
+            logger.info('Deleted corrupted config file');
           }
           
           // Try initializing again
@@ -237,7 +241,7 @@ class ConfigService extends BaseService {
             },
           });
         } catch (recoveryError) {
-          console.error('Failed to recover config:', recoveryError);
+          logger.error('Failed to recover config', { metadata: { recoveryError } });
           throw new Error('Failed to initialize settings storage');
         }
       } else {
@@ -250,17 +254,17 @@ class ConfigService extends BaseService {
   // OpenAI API Key
   async getOpenAIApiKey() {
     const key = this.store.get('openaiApiKey', '');
-    console.log('Retrieved OpenAI API key, length:', key ? key.length : 0);
+    logger.debug('Retrieved OpenAI API key', { metadata: { length: key ? key.length : 0 } });
     return key;
   }
 
   async setOpenAIApiKey(key) {
-    console.log('Setting OpenAI API key, length:', key ? key.length : 0);
+    logger.debug('Setting OpenAI API key', { metadata: { length: key ? key.length : 0 } });
     if (!key) {
-      console.log('Deleting OpenAI API key');
+      logger.debug('Deleting OpenAI API key');
       this.store.delete('openaiApiKey');
     } else {
-      console.log('Storing new OpenAI API key');
+      logger.debug('Storing new OpenAI API key');
       this.store.set('openaiApiKey', key);
     }
   }
@@ -406,13 +410,13 @@ class ConfigService extends BaseService {
   async getAIRules() {
     const store = await this.initializeStore();
     const rules = store.get('aiRules');
-    console.log('[ConfigService] Retrieved AI rules:', rules);
+    logger.debug('Retrieved AI rules', { metadata: { rules } });
     return rules;
   }
 
   async setAIRules(rules) {
     const store = await this.initializeStore();
-    console.log('[ConfigService] Saving AI rules:', rules);
+    logger.debug('Saving AI rules', { metadata: { rules } });
     store.set('aiRules', rules);
   }
 
@@ -421,7 +425,7 @@ class ConfigService extends BaseService {
     const rules = await this.getAIRules();
     if (!rules.includes(rule)) {
       rules.push(rule);
-      console.log('[ConfigService] Adding new AI rule:', rule);
+      logger.debug('Adding new AI rule', { metadata: { rule } });
       await this.setAIRules(rules);
     }
   }
@@ -432,7 +436,7 @@ class ConfigService extends BaseService {
     const index = rules.indexOf(rule);
     if (index !== -1) {
       rules.splice(index, 1);
-      console.log('[ConfigService] Removing AI rule:', rule);
+      logger.debug('Removing AI rule', { metadata: { rule } });
       await this.setAIRules(rules);
     }
   }
@@ -502,7 +506,7 @@ class ConfigService extends BaseService {
         config = store.store;
         break;
     }
-    console.log(`[ConfigService] getConfig('${section}') ->`, config);
+    logger.debug(`getConfig('${section}')`, { metadata: { config } });
     return config;
   }
 }

@@ -6,6 +6,10 @@ const os = require('os');
 const path = require('path');
 const { promisify } = require('util');
 const crypto = require('crypto');
+const LogManager = require('../../utils/LogManager');
+
+// Get a logger for this module
+const logger = LogManager.getLogger('AudioUtils');
 
 // Promisify fs functions for better async performance
 const writeFileAsync = promisify(fs.writeFile);
@@ -150,7 +154,7 @@ function generateUniqueFilename() {
 async function createTempFile(wavData) {
   // OPTIMIZATION: Generate truly unique filenames to avoid collisions
   const tempFile = path.join(os.tmpdir(), generateUniqueFilename());
-  console.log('[AudioUtils] Creating temp WAV file:', tempFile);
+  logger.debug('Creating temp WAV file', { metadata: { tempFile } });
   
   try {
     // OPTIMIZATION: Use different write strategies based on file size
@@ -158,23 +162,23 @@ async function createTempFile(wavData) {
       // Use synchronous write for small files - faster for small data
       fs.writeFileSync(tempFile, wavData);
       const fileSize = fs.statSync(tempFile).size;
-      console.log('[AudioUtils] WAV file written synchronously, size:', fileSize);
+      logger.debug('WAV file written synchronously', { metadata: { size: fileSize } });
     } else if (wavData.length < 5 * 1024 * 1024) { // 1MB-5MB
       // Use async write for medium files
       await writeFileAsync(tempFile, wavData);
       const stats = await statAsync(tempFile);
-      console.log('[AudioUtils] WAV file written asynchronously, size:', stats.size);
+      logger.debug('WAV file written asynchronously', { metadata: { size: stats.size } });
     } else {
       // Use streaming write for larger files to reduce memory consumption
       return new Promise((resolve, reject) => {
         const writeStream = fs.createWriteStream(tempFile);
         writeStream.on('error', (err) => {
-          console.error('[AudioUtils] Error writing WAV file:', err);
+          logger.error('Error writing WAV file', { metadata: { err } });
           reject(err);
         });
         writeStream.on('finish', async () => {
           const stats = await statAsync(tempFile);
-          console.log('[AudioUtils] WAV file written via stream, size:', stats.size);
+          logger.debug('WAV file written via stream', { metadata: { size: stats.size } });
           resolve(tempFile);
         });
         
@@ -197,7 +201,7 @@ async function createTempFile(wavData) {
     
     return tempFile;
   } catch (error) {
-    console.error('[AudioUtils] Error creating temp file:', error);
+    logger.error('Error creating temp file', { metadata: { error } });
     throw error;
   }
 }
@@ -221,13 +225,13 @@ async function cleanupTempFile(filePath) {
     if (exists) {
       // Use async unlink for better performance
       await unlinkAsync(filePath);
-      console.log('[AudioUtils] Cleaned up temp file:', filePath);
+      logger.debug('Cleaned up temp file', { metadata: { filePath } });
       return true;
     }
     
     return false;
   } catch (error) {
-    console.error('[AudioUtils] Error cleaning up temp file:', error);
+    logger.error('Error cleaning up temp file', { metadata: { error } });
     return false;
   }
 }

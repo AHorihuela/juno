@@ -11,6 +11,10 @@
  */
 const { BrowserWindow } = require('electron');
 const path = require('path');
+const LogManager = require('./LogManager');
+
+// Get a logger for this module
+const logger = LogManager.getLogger('windowManagerUtil');
 
 /**
  * Creates the main application window
@@ -19,7 +23,7 @@ const path = require('path');
  */
 function createMainWindow(serviceRegistry) {
   try {
-    console.log('Creating window...');
+    logger.info('Creating window...');
     const mainWindow = new BrowserWindow({
       width: 800,
       height: 800,
@@ -65,12 +69,12 @@ function createMainWindow(serviceRegistry) {
       });
     });
 
-    console.log('Loading index.html...');
+    logger.info('Loading index.html...');
     mainWindow.loadFile('dist/index.html');
 
     // Show window when ready to show
     mainWindow.once('ready-to-show', async () => {
-      console.log('Window ready to show');
+      logger.debug('Window ready to show');
       
       // Initialize window manager first
       const windowMgr = serviceRegistry.get('windowManager');
@@ -84,51 +88,51 @@ function createMainWindow(serviceRegistry) {
       try {
         const config = serviceRegistry.get('config');
         const startupBehavior = await config.getStartupBehavior();
-        console.log('Applying startup behavior:', startupBehavior);
+        logger.info('Applying startup behavior', { metadata: { startupBehavior } });
         
         // In development mode, always show the window
         if (process.env.NODE_ENV === 'development' || startupBehavior === 'normal') {
           mainWindow.show();
-          console.log('Window shown due to development mode or normal startup behavior');
+          logger.debug('Window shown due to development mode or normal startup behavior');
         } else {
           // Only minimize in production with minimized setting
           mainWindow.hide();
-          console.log('Window hidden due to minimized startup behavior in production');
+          logger.debug('Window hidden due to minimized startup behavior in production');
         }
       } catch (error) {
-        console.error('Error applying startup behavior:', error);
+        logger.error('Error applying startup behavior', { metadata: { error } });
         // Default to showing the window if there's an error
         mainWindow.show();
       }
       
       // Open DevTools in development
       if (process.env.NODE_ENV === 'development') {
-        console.log('Opening DevTools in development mode');
+        logger.info('Opening DevTools in development mode');
         mainWindow.webContents.openDevTools({ mode: 'detach' });
       }
     });
 
     mainWindow.on('closed', () => {
       // Clear the reference in the window manager
-      console.log("'closed' event triggered for main window.");
+      logger.debug("'closed' event triggered for main window.");
       if (serviceRegistry) {
         const windowMgr = serviceRegistry.get('windowManager');
-        console.log("Retrieved 'windowManager' from serviceRegistry:", windowMgr ? 'Exists' : 'null or undefined');
+        logger.debug("Retrieved 'windowManager' from serviceRegistry:", windowMgr ? 'Exists' : 'null or undefined');
         if (windowMgr) {
-          console.log("Calling windowMgr.clearMainWindow()...");
+          logger.debug("Calling windowMgr.clearMainWindow()...");
           windowMgr.clearMainWindow();
-          console.log("Finished calling windowMgr.clearMainWindow().");
+          logger.debug("Finished calling windowMgr.clearMainWindow().");
         } else {
-          console.error("Cannot call clearMainWindow because windowMgr is null or undefined.");
+          logger.error('Cannot call clearMainWindow because windowMgr is null or undefined.');
         }
       } else {
-        console.error("serviceRegistry is not available in 'closed' event handler.");
+        logger.error("serviceRegistry is not available in 'closed' event handler.");
       }
     });
 
     return mainWindow;
   } catch (error) {
-    console.error('Error creating window:', error);
+    logger.error('Error creating window', { metadata: { error } });
     throw error;
   }
 }

@@ -6,6 +6,10 @@
  * so this file simply re-exports the factory function.
  */
 const SelectionServiceImpl = require('./selection/SelectionService');
+const LogManager = require('../utils/LogManager');
+
+// Get a logger for this module
+const logger = LogManager.getLogger('selectionServiceCompat');
 
 // Get the singleton instance
 function getSelectionServiceInstance() {
@@ -20,11 +24,11 @@ function getSelectionServiceInstance() {
 async function getSelectionInParallel() {
   const selectionService = getSelectionServiceInstance();
   if (!selectionService) {
-    console.error('[SelectionService Compatibility] SelectionService not initialized');
+    logger.error('SelectionService not initialized');
     return '';
   }
-  
-  console.log('[SelectionService Compatibility] Getting selection in parallel');
+
+  logger.debug('Getting selection in parallel');
   return selectionService.getSelectionInParallel();
 }
 

@@ -2,6 +2,10 @@
  * Advanced command detection utility for identifying AI commands in transcribed text
  * with confidence scoring to minimize false positives.
  */
+const LogManager = require('./LogManager');
+
+// Get a logger for this module
+const logger = LogManager.getLogger('commandDetection');
 
 /**
  * Determines if transcribed text contains an AI command with high confidence
@@ -144,13 +148,16 @@ function detectAICommand(transcribedText, actionVerbs, actionVerbsEnabled, aiTri
  * @param {string} transcribedText - The original transcribed text
  */
 function logCommandDetection(result, transcribedText) {
-  console.log('[Command Detection] Analysis:');
-  console.log(`  Text: "${transcribedText}"`);
-  console.log(`  Confidence: ${result.confidenceScore}`);
-  console.log(`  Is Command: ${result.isCommand}`);
-  console.log(`  Needs Confirmation: ${result.needsConfirmation}`);
-  console.log(`  Trigger Word Detected: ${result.isAITriggerWordDetected}`);
-  console.log(`  Detected Verb: ${result.detectedVerb || 'None'}`);
+  logger.debug('Command Detection Analysis', {
+    metadata: {
+      text: transcribedText,
+      confidence: result.confidenceScore,
+      isCommand: result.isCommand,
+      needsConfirmation: result.needsConfirmation,
+      triggerWordDetected: result.isAITriggerWordDetected,
+      detectedVerb: result.detectedVerb || 'None'
+    }
+  });
 }
 
 module.exports = {
