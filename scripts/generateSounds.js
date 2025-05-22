@@ -1,3 +1,8 @@
+/**
+ * Generates various sound effect files (e.g., start.wav, stop.wav)
+ * and saves them to the assets/sounds directory. This script is typically
+ * run manually when sound assets need to be updated or recreated.
+ */
 const fs = require('fs');
 const path = require('path');
 const WavEncoder = require('wav-encoder');

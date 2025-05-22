@@ -1,4 +1,10 @@
-// Test script for AppleScript execution
+/**
+ * Test script for AppleScript execution capabilities.
+ *
+ * This script verifies that Juno can correctly execute AppleScript commands,
+ * both from a script file and as inline commands. This is crucial for
+ * integrations with other macOS applications and system functionalities.
+ */
 const { execFile } = require('child_process');
 const fs = require('fs');
 const os = require('os');
