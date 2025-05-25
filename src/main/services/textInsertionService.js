@@ -3,6 +3,7 @@ const { execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const AppleScriptExecutor = require('./selection/AppleScriptExecutor');
 const BaseService = require('./BaseService');
 const LogManager = require('../utils/LogManager');
 const pasteLogger = require('../utils/PasteLogger');
@@ -233,73 +234,6 @@ class TextInsertionService extends BaseService {
    * @returns {Promise<string>} - Script output
    * @private
    */
-  _executeAppleScript(scriptPath, timeout = this.timeouts.applescript) {
-    return new Promise((resolve, reject) => {
-      // Create a timeout handler
-      const timeoutId = setTimeout(() => {
-        logger.warn('AppleScript execution timed out after', timeout, 'ms');
-        reject(new Error(`AppleScript execution timed out after ${timeout}ms`));
-      }, timeout);
-      
-      // Execute the script
-      execFile('osascript', [scriptPath], { timeout }, (error, stdout, stderr) => {
-        // Clear the timeout
-        clearTimeout(timeoutId);
-        
-        if (error) {
-          logger.error('AppleScript execution error:', { 
-            metadata: { 
-              error: error.message,
-              code: error.code,
-              signal: error.signal,
-              stderr
-            } 
-          });
-          reject(error);
-        } else {
-          resolve(stdout.trim());
-        }
-      });
-    });
-  }
-  
-  /**
-   * Execute inline AppleScript (fallback method)
-   * @param {string} script - AppleScript code
-   * @param {number} timeout - Timeout in milliseconds
-   * @returns {Promise<string>} - Script output
-   * @private
-   */
-  _executeInlineAppleScript(script, timeout = this.timeouts.applescript) {
-    return new Promise((resolve, reject) => {
-      // Create a timeout handler
-      const timeoutId = setTimeout(() => {
-        logger.warn('Inline AppleScript execution timed out after', timeout, 'ms');
-        reject(new Error(`Inline AppleScript execution timed out after ${timeout}ms`));
-      }, timeout);
-      
-      // Execute the script
-      execFile('osascript', ['-e', script], { timeout }, (error, stdout, stderr) => {
-        // Clear the timeout
-        clearTimeout(timeoutId);
-        
-        if (error) {
-          logger.error('Inline AppleScript execution error:', { 
-            metadata: { 
-              error: error.message,
-              code: error.code,
-              signal: error.signal,
-              stderr
-            } 
-          });
-          reject(error);
-        } else {
-          resolve(stdout.trim());
-        }
-      });
-    });
-  }
-
   /**
    * Insert text at the current cursor position
    * @param {string} text - Text to insert
@@ -455,7 +389,7 @@ class TextInsertionService extends BaseService {
           }
           
           logger.debug('Executing AppleScript from file:', scriptPath);
-          return await this._executeAppleScript(scriptPath);
+          return await AppleScriptExecutor.executeFile(scriptPath, this.timeouts.applescript);
         },
         
         // Method 2: Inline paste AppleScript
@@ -463,7 +397,7 @@ class TextInsertionService extends BaseService {
           logger.debug('Trying insertion method 2: Inline paste AppleScript');
           const script = `tell application "System Events" to keystroke "v" using command down`;
           logger.debug('Executing inline AppleScript:', script);
-          return await this._executeInlineAppleScript(script);
+          return await AppleScriptExecutor.execute(script, this.timeouts.applescript);
         },
         
         // Method 3: Direct key simulation with delay
@@ -476,7 +410,7 @@ class TextInsertionService extends BaseService {
             end tell
           `;
           logger.debug('Executing delayed inline AppleScript');
-          return await this._executeInlineAppleScript(script);
+          return await AppleScriptExecutor.execute(script, this.timeouts.applescript);
         }
       );
     } else {
@@ -493,7 +427,7 @@ class TextInsertionService extends BaseService {
           }
           
           logger.debug('Executing AppleScript from file:', scriptPath);
-          return await this._executeAppleScript(scriptPath);
+          return await AppleScriptExecutor.executeFile(scriptPath, this.timeouts.applescript);
         },
         
         // Method 2: Delete + paste via inline AppleScript
@@ -507,7 +441,7 @@ class TextInsertionService extends BaseService {
             end tell
           `;
           logger.debug('Executing inline AppleScript:', script);
-          return await this._executeInlineAppleScript(script);
+          return await AppleScriptExecutor.execute(script, this.timeouts.applescript);
         },
         
         // Method 3: Simple paste fallback
@@ -515,7 +449,7 @@ class TextInsertionService extends BaseService {
           logger.debug('Trying insertion method 3: Simple paste fallback');
           const script = `tell application "System Events" to keystroke "v" using command down`;
           logger.debug('Executing inline AppleScript:', script);
-          return await this._executeInlineAppleScript(script);
+          return await AppleScriptExecutor.execute(script, this.timeouts.applescript);
         }
       );
     }
@@ -580,7 +514,7 @@ class TextInsertionService extends BaseService {
             keystroke "v" using command down
           end tell
         `;
-        return await this._executeInlineAppleScript(script);
+        return await AppleScriptExecutor.execute(script, this.timeouts.applescript);
       },
       
       // Method 2: Simulate menu paste (more reliable in some apps)
@@ -598,7 +532,7 @@ class TextInsertionService extends BaseService {
             end tell
           end tell
         `;
-        return await this._executeInlineAppleScript(script);
+        return await AppleScriptExecutor.execute(script, this.timeouts.applescript);
       }
     ];
     

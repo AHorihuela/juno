@@ -5,6 +5,7 @@ const fs = require('fs');
 const { exec } = require('child_process');
 const BaseService = require('./BaseService');
 const os = require('os');
+const { playSound } = require('../utils/NativeSoundPlayer');
 
 // Change this number (1-4) to test different variations
 const CURRENT_VARIATION = 1;
@@ -150,99 +151,6 @@ class AudioFeedbackService extends BaseService {
     };
   }
 
-  // Play sound using native player
-  playNativeSound(soundPath, sync = false) {
-    if (process.platform === 'darwin') {
-      // On macOS, use afplay with specified volume for better control
-      const cmd = `afplay -v 2.0 "${soundPath}"`;
-      
-      if (sync) {
-        return new Promise((resolve, reject) => {
-          // Create a child process to monitor and control
-          const process = exec(cmd, (error) => {
-            if (error) {
-              console.error('[AudioFeedback] Native player error:', error);
-              reject(error);
-            }
-            // Note: We don't resolve here because we'll do that on the 'exit' event
-          });
-          
-          process.on('exit', (code) => {
-            if (code === 0) {
-              console.log('[AudioFeedback] Native playback completed successfully');
-              resolve();
-            } else {
-              console.error('[AudioFeedback] Native playback failed with code:', code);
-              reject(new Error(`afplay exited with code ${code}`));
-            }
-          });
-          
-          // Also handle process errors
-          process.on('error', (err) => {
-            console.error('[AudioFeedback] Native playback process error:', err);
-            reject(err);
-          });
-        });
-      } else {
-        // Async execution for better performance, but still track errors
-        const process = exec(cmd);
-        process.on('error', (error) => {
-          console.error('[AudioFeedback] Native player async error:', error);
-        });
-        
-        return Promise.resolve();
-      }
-    } else if (process.platform === 'win32') {
-      const cmd = sync 
-        ? `powershell -c "(New-Object Media.SoundPlayer '${soundPath}').PlaySync()"`
-        : `powershell -c "(New-Object Media.SoundPlayer '${soundPath}').Play()"`;
-      
-      if (sync) {
-        return new Promise((resolve, reject) => {
-          exec(cmd, (error) => {
-            if (error) {
-              console.error('[AudioFeedback] Native player error:', error);
-              reject(error);
-            } else {
-              resolve();
-            }
-          });
-        });
-      } else {
-        // Async execution for better performance
-        exec(cmd, (error) => {
-          if (error) {
-            console.error('[AudioFeedback] Native player error:', error);
-          }
-        });
-        return Promise.resolve();
-      }
-    } else {
-      // Linux
-      const cmd = `paplay "${soundPath}"`;
-      if (sync) {
-        return new Promise((resolve, reject) => {
-          exec(cmd, (error) => {
-            if (error) {
-              console.error('[AudioFeedback] Native player error:', error);
-              reject(error);
-            } else {
-              resolve();
-            }
-          });
-        });
-      } else {
-        // Async execution for better performance
-        exec(cmd, (error) => {
-          if (error) {
-            console.error('[AudioFeedback] Native player error:', error);
-          }
-        });
-        return Promise.resolve();
-      }
-    }
-  }
-
   // Add a method to explicitly enable audio playback
   enableAudio() {
     this.audioEnabled = true;
@@ -275,7 +183,7 @@ class AudioFeedbackService extends BaseService {
       // This ensures the sound is heard without delaying recording too much
       await Promise.race([
         this.useNativeFallback 
-          ? this.playNativeSound(this.startPath, true) // Use sync mode
+          ? playSound(this.startPath, true) // Use sync mode
           : player.play({
               path: this.startPath,
               sync: true // Wait for completion
@@ -290,7 +198,7 @@ class AudioFeedbackService extends BaseService {
       try {
         // Always try native player as a second attempt
         await Promise.race([
-          this.playNativeSound(this.startPath, true),
+          playSound(this.startPath, true),
           new Promise(resolve => setTimeout(resolve, 500)) // Timeout for native player
         ]);
         console.log('[AudioFeedback] Native player completed start sound in:', Date.now() - startTime, 'ms');
@@ -322,7 +230,7 @@ class AudioFeedbackService extends BaseService {
       // This ensures the sound is heard without delaying UI response too much
       await Promise.race([
         this.useNativeFallback 
-          ? this.playNativeSound(this.stopPath, true) // Use sync mode
+          ? playSound(this.stopPath, true) // Use sync mode
           : player.play({
               path: this.stopPath,
               sync: true // Wait for completion
@@ -335,7 +243,7 @@ class AudioFeedbackService extends BaseService {
       console.warn('[AudioFeedback] Stop sound playback failed, falling back to native player:', error);
       try {
         // Try native player as fallback
-        await this.playNativeSound(this.stopPath, true);
+        await playSound(this.stopPath, true);
       } catch (fallbackError) {
         console.error('[AudioFeedback] Native fallback also failed:', fallbackError);
       }

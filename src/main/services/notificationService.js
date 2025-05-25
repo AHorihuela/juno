@@ -3,6 +3,7 @@ const path = require('path');
 const { exec } = require('child_process');
 const fs = require('fs').promises;
 const BaseService = require('./BaseService');
+const { playSound } = require('../utils/NativeSoundPlayer');
 
 class NotificationService extends BaseService {
   constructor() {
@@ -99,50 +100,30 @@ class NotificationService extends BaseService {
   }
 
   async playErrorSound() {
+    let soundFilePath = this.errorSound; // This is a path for win/linux
+    if (process.platform === 'darwin') {
+      if (!this.errorSound.includes('/')) { // If it's a system sound name like 'Basso'
+        soundFilePath = `/System/Library/Sounds/${this.errorSound}.aiff`;
+      }
+      // If this.errorSound is already a path, it will be used directly.
+    }
+    // For other platforms, this.errorSound is expected to be a full path already.
+
     try {
       if (!this.initialized) {
         throw new Error('NotificationService not initialized');
       }
-
-      if (process.platform === 'darwin') {
-        // On macOS, use system sound
-        await new Promise((resolve, reject) => {
-          exec(`afplay /System/Library/Sounds/${this.errorSound}.aiff`, (error) => {
-            if (error) {
-              console.error('Failed to play error sound:', error);
-              reject(error);
-            } else {
-              resolve();
-            }
-          });
-        });
-      } else if (process.platform === 'win32') {
-        // On Windows, use PowerShell to play sound
-        await new Promise((resolve, reject) => {
-          exec(`powershell -c "(New-Object Media.SoundPlayer '${this.errorSound}').PlaySync()"`, (error) => {
-            if (error) {
-              console.error('Failed to play error sound:', error);
-              reject(error);
-            } else {
-              resolve();
-            }
-          });
-        });
-      } else {
-        // On Linux, try to use paplay (PulseAudio)
-        await new Promise((resolve, reject) => {
-          exec(`paplay ${this.errorSound}`, (error) => {
-            if (error) {
-              console.error('Failed to play error sound:', error);
-              reject(error);
-            } else {
-              resolve();
-            }
-          });
-        });
+      if (!soundFilePath) {
+        // Assuming this.logger is available, similar to other services
+        // If not, console.warn or a specific logger instance for this service should be used.
+        console.warn('No sound file path determined for error sound.'); 
+        return;
       }
+      await playSound(soundFilePath, true); // Play synchronously
     } catch (error) {
-      this.emitError(error);
+      // Assuming this.logger is available
+      console.error('Failed to play error sound via NativeSoundPlayer:', error);
+      // this.emitError(error); // Decide if this is still needed. For now, removed as per thinking process.
     }
   }
 
