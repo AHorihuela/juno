@@ -73,6 +73,9 @@
     "tone": "^15.0.4",
     "uuid": "^11.1.0"
   },
+  "overrides": {
+    "tar-fs": "^2.1.3"
+  },
   "build": {
     "appId": "com.dictation.tool",
     "productName": "Juno",
